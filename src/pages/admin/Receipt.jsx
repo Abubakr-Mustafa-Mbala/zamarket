@@ -11,7 +11,7 @@ export default function Receipt() {
   const { settings } = useAuth()
   const [size, setSize] = useState(() => localStorage.getItem('zm-receipt-size') || '80')
   const { data: o, loading } = useData(() => q(
-    supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,product:products(name,normal_price,price),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
+    supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,choices,note,product:products(name,normal_price,price),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
   ), [id])
   if (loading || !o) return <Loading />
 
@@ -39,6 +39,7 @@ export default function Receipt() {
         <div className="r-row"><span>Order</span><span>#{o.order_number}</span></div>
         <div className="r-row"><span>Date</span><span>{datetime(o.created_at)}</span></div>
         <div className="r-row"><span>Printed</span><span>{datetime(new Date())}</span></div>
+        {o.needed_by && <div className="r-row r-strong"><span>Needed by</span><span>{new Date(o.needed_by + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>}
         <div className="r-rule" />
         <div className="r-strong">{o.customer?.full_name}</div>
         <div>{o.customer?.phone}</div>
@@ -48,6 +49,8 @@ export default function Receipt() {
           <div key={k} className="r-item">
             <div className="r-row"><span className="r-strong">{i.product?.name}</span><span>{money(i.line_total)}</span></div>
             <div className="r-sub">{i.quantity} × {money(i.unit_price)}{i.offer ? ` · ${i.offer.name}` : ''}</div>
+            {i.choices && Object.keys(i.choices).length > 0 && <div className="r-sub">{Object.entries(i.choices).map(([k, v]) => `${k}: ${v}`).join(', ')}</div>}
+            {i.note && <div className="r-sub">"{i.note}"</div>}
           </div>
         ))}
         <div className="r-rule" />

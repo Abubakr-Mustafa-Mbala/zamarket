@@ -4,7 +4,7 @@ import { useAuth } from './lib/auth'
 import { configured } from './lib/supabase'
 import Shell from './components/Shell'
 import { Loading } from './components/ui'
-import { PublicShell, Storefront, ProductPage, ReferralCapture } from './pages/public/Marketplace'
+import { PublicShell, Storefront, ProductPage, ReferralCapture, StorePage, SearchPage, SellersPage, GoLink } from './pages/public/Marketplace'
 import { Cart, Checkout, OrderConfirmed, ReviewPage } from './pages/public/Checkout'
 import { Login, Account, Apply, homeFor } from './pages/public/Auth'
 const named = (loader, name) => lazy(() => loader().then((m) => ({ default: m[name] })))
@@ -30,10 +30,18 @@ const Customers = named(adminPeople, 'Customers')
 const Deliveries = named(adminPeople, 'Deliveries')
 const Vendors = named(adminPartners, 'Vendors')
 const Resellers = named(adminPartners, 'Resellers')
-const Marketing = named(adminGrowth, 'Marketing')
+const MarketingHub = lazy(() => import('./pages/marketing/MarketingHub'))
+const growthPages = () => import('./pages/public/GrowthPages')
+const MagnetPage = named(growthPages, 'MagnetPage')
+const InvitePage = named(growthPages, 'InvitePage')
 const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
+const earningsPages = () => import('./pages/shared/EarningsPages')
+const AdminEarnings = named(earningsPages, 'AdminEarnings')
+const PartnerEarnings = named(earningsPages, 'PartnerEarnings')
+const ResellerEarnings = named(earningsPages, 'ResellerEarnings')
+const VendorEarnings = named(earningsPages, 'VendorEarnings')
 const AddStock = lazy(() => import('./pages/admin/AddStock'))
 const Reports = named(adminSetup, 'Reports')
 const Team = named(adminSetup, 'Team')
@@ -47,8 +55,9 @@ const VendorHome = named(vendorPages, 'VendorHome')
 const VendorProducts = named(vendorPages, 'VendorProducts')
 const VendorOrders = named(vendorPages, 'VendorOrders')
 const VendorPayouts = named(vendorPages, 'VendorPayouts')
+const VendorMarketing = named(vendorPages, 'VendorMarketing')
 
-const STAFF = ['founder', 'ops', 'finance', 'delivery']
+const STAFF = ['founder', 'ops', 'finance', 'delivery', 'marketing']
 
 // Waits for the session AND profile before deciding. Redirecting while either is still
 // loading is what causes "signed in, then thrown back to the login page".
@@ -66,6 +75,11 @@ function Guard({ roles, children }) {
   if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
   if (!roles.includes(role)) return <Navigate to={homeFor(role)} replace />
   return children
+}
+
+function StaffHome() {
+  const { role } = useAuth()
+  return role === 'marketing' ? <Navigate to="/admin/marketing" replace /> : <Dashboard />
 }
 
 function Founder({ children }) {
@@ -90,19 +104,26 @@ export default function App() {
       <Route element={<PublicShell />}>
         <Route path="/" element={<Storefront />} />
         <Route path="/p/:id" element={<ProductPage />} />
+        <Route path="/store/:id" element={<StorePage />} />
+        <Route path="/search" element={<SearchPage />} />
+        <Route path="/sellers" element={<SellersPage />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
         <Route path="/order/:number" element={<OrderConfirmed />} />
         <Route path="/review" element={<ReviewPage />} />
         <Route path="/account" element={<Account />} />
         <Route path="/apply/:kind" element={<Apply />} />
+        <Route path="/free/:slug" element={<MagnetPage />} />
+        <Route path="/invite/:code" element={<InvitePage />} />
       </Route>
       <Route path="/r/:code" element={<ReferralCapture />} />
+      <Route path="/r/:code/:product" element={<ReferralCapture />} />
+      <Route path="/go/:code" element={<GoLink />} />
       <Route path="/login" element={<Login />} />
 
       <Route path="/admin/orders/:id/receipt" element={<Guard roles={STAFF}><Receipt /></Guard>} />
       <Route path="/admin" element={<Guard roles={STAFF}><Shell kind="staff" /></Guard>}>
-        <Route index element={<Dashboard />} />
+        <Route index element={<StaffHome />} />
         <Route path="add-stock" element={<AddStock />} />
         <Route path="orders" element={<OrdersList />} />
         <Route path="orders/:id" element={<OrderDetail />} />
@@ -116,9 +137,12 @@ export default function App() {
         <Route path="offers" element={<Offers />} />
         <Route path="resellers" element={<Resellers />} />
         <Route path="vendors" element={<Vendors />} />
-        <Route path="marketing" element={<Marketing />} />
+        <Route path="marketing" element={<MarketingHub />} />
+        <Route path="marketing/:section" element={<MarketingHub />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="finance" element={<Finance />} />
+        <Route path="earnings" element={<AdminEarnings />} />
+        <Route path="earnings/:scope/:id" element={<PartnerEarnings />} />
         <Route path="reports" element={<Reports />} />
         <Route path="team" element={<Founder><Team /></Founder>} />
         <Route path="settings" element={<Founder><Settings /></Founder>} />
@@ -130,6 +154,7 @@ export default function App() {
         <Route path="products" element={<ResellerProducts />} />
         <Route path="new-sale" element={<ResellerNewSale />} />
         <Route path="commissions" element={<ResellerCommissions />} />
+        <Route path="earnings" element={<ResellerEarnings />} />
       </Route>
 
       <Route path="/vendor" element={<Guard roles={['vendor']}><Shell kind="vendor" /></Guard>}>
@@ -137,8 +162,14 @@ export default function App() {
         <Route path="products" element={<VendorProducts />} />
         <Route path="orders" element={<VendorOrders />} />
         <Route path="payouts" element={<VendorPayouts />} />
+        <Route path="earnings" element={<VendorEarnings />} />
+        <Route path="marketing" element={<VendorMarketing />} />
       </Route>
 
+      <Route element={<PublicShell />}>
+        <Route path="/:store" element={<StorePage />} />
+        <Route path="/:store/:product" element={<ProductPage />} />
+      </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>

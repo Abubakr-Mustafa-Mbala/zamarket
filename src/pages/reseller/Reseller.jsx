@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
@@ -40,6 +41,7 @@ export function ResellerHome() {
           <div className="progress"><div style={{ width: `${progress}%` }} /></div>
         </div>
       )}
+      <Link to="/sell/earnings" className="card between" style={{ color: 'inherit' }}><span><span className="strong">See your earnings chart</span><br /><span className="small muted">Day by day, pick any dates, all your records</span></span><span aria-hidden>›</span></Link>
       <div className="card stack-sm">
         <h3>Your link</h3>
         <p className="small muted">Anyone who orders through this link is credited to you.</p>
@@ -64,7 +66,7 @@ export function ResellerProducts() {
   const { settings } = useAuth()
   const [kit, setKit] = useState(null)
   const { data, loading } = useData(async () => ({
-    products: await q(supabase.from('products').select('id,name,description,benefits,faqs,images,price,normal_price,commission_type,commission_value,stock_available,owner_type').eq('status', 'published').order('name')),
+    products: await q(supabase.from('products').select('id,slug,name,description,benefits,faqs,images,price,normal_price,commission_type,commission_value,stock_available,owner_type').eq('status', 'published').order('name')),
     offers: await q(supabase.from('public_offers').select('*')),
   }), [])
   if (loading || !data) return <Loading />
@@ -98,12 +100,12 @@ function SellingKit({ p, r, offers, onClose }) {
   const { settings } = useAuth()
   const c = commissionLabel(p, settings)
   const link = `${window.location.origin}/r/${r?.code}`
-  const productLink = `${window.location.origin}/p/${p.id}`
+  const productLink = `${window.location.origin}/r/${r?.code}/${p.slug}`
   const save = p.normal_price && n(p.normal_price) > n(p.price) ? n(p.normal_price) - n(p.price) : 0
   const benefits = (p.benefits || []).map((b) => `✅ ${b}`).join('\n')
   const deal = offers.find((o) => DEAL_TYPES.includes(o.type))
   const offerLine = deal ? `\n🔥 ${deal.name}: ${offerCopy(deal, p.name).get} for ${money(deal.deal_price)}${deal.end_at ? ` — until ${date(deal.end_at)}` : ''}` : ''
-  const whatsapp = `Hi! Have you seen the ${p.name}? 👀\n\n${benefits}\n\n💰 Only ${money(p.price)}${save ? ` (normally ${money(p.normal_price)})` : ''}${offerLine}\n🚚 Delivery in Lusaka, other areas by arrangement\n\nOrder here: ${link}\nOr reply and I'll sort it for you.`
+  const whatsapp = `Hi! Have you seen the ${p.name}? 👀\n\n${benefits}\n\n💰 Only ${money(p.price)}${save ? ` (normally ${money(p.normal_price)})` : ''}${offerLine}\n🚚 Delivery in Lusaka, other areas by arrangement\n\nOrder here: ${productLink}\nOr reply and I'll sort it for you.`
   const caption = `${p.name} — ${money(p.price)}${save ? ` (save ${money(save)})` : ''}. ${(p.benefits || []).slice(0, 2).join('. ')}. Order via the link in bio or DM me. #Lusaka #Zambia`
   return (
     <Modal title={`Selling kit: ${p.name}`} onClose={onClose} wide>
@@ -114,7 +116,7 @@ function SellingKit({ p, r, offers, onClose }) {
           <Stat label="You earn" value={money(c.perUnit)} sub="per completed sale" tone="copper" />
         </div>
         {p.images?.length > 0 && <div className="row">{p.images.map((src, i) => <a key={i} href={src} target="_blank" rel="noreferrer"><img src={src} alt="" style={{ width: 72, height: 72, objectFit: 'cover', borderRadius: 8 }} /></a>)}</div>}
-        <div className="stack-sm"><h3>Your link</h3><CopyLine text={link} /><div className="tiny muted">Product page (still credited to you if they came through your link first): {productLink}</div></div>
+        <div className="stack-sm"><h3>Your link for this product</h3><CopyLine text={productLink} /><div className="tiny muted">Your shop-wide link: {link}</div></div>
         <div className="stack-sm">
           <div className="between"><h3>WhatsApp message</h3><a className="btn sm primary" href={`https://wa.me/?text=${encodeURIComponent(whatsapp)}`} target="_blank" rel="noreferrer">Open WhatsApp</a></div>
           <div className="share-box">{whatsapp}</div>

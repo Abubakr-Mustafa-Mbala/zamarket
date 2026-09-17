@@ -5,6 +5,7 @@ import { useCart } from '../../lib/cart'
 import { money } from '../../lib/format'
 import { Field, Input, Select, Textarea, useToast } from '../../components/ui'
 import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
+import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
 
 export function useLocations() {
   const [provinces, setProvinces] = useState([])
@@ -32,6 +33,10 @@ function CartLine({ it, setQty, onRemove }) {
         <div>
           <div className="strong">{it.name}</div>
           {it.offer_name && <div className="offer-tag" style={{ marginTop: 2 }}>{it.offer_name}</div>}
+          {it.choices && Object.entries(it.choices).map(([k, v]) => <div key={k} className="small">{k}: <span className="strong">{v}</span></div>)}
+          {it.note && <div className="small">“{it.note}”</div>}
+          {it.fulfilment === 'made_to_order' && <div className="tiny muted">Made to order{it.vendor_name ? ` by ${it.vendor_name}` : ''}</div>}
+          {it.fulfilment === 'service' && <div className="tiny muted">Booking{it.duration_text ? `, ${it.duration_text}` : ''}{it.service_location ? `, ${LOCATION_TEXT[it.service_location].toLowerCase()}` : ''}</div>}
           <div className="small muted">
             {it.units > 1 ? `${it.units} units per deal · ${money(it.price)} per deal` : `${money(it.price)} each`}
             {saving > 0 && <span className="save"> · save {money(saving * it.qty)}</span>}
@@ -129,7 +134,18 @@ function Bumps() {
 }
 
 export function Checkout() {
-  const { items, subtotal, savings, payload, clear, ref } = useCart()
+  const { items, subtotal, savings, payload, clear, attribution, madeToOrder, needsAddress, needsDelivery, setChoice, touch } = useCart()
+  const [booked, setBooked] = useState({})
+  const rules = madeToOrder.length ? dateRules(madeToOrder) : null
+  const [neededBy, setNeededBy] = useState('')
+  const slotItems = items.filter((i) => i.fulfilment === 'service' && i.time_slots?.length)
+  const missingTime = slotItems.find((i) => !i.choices?.Time)
+  const dateError = rules ? checkDate(neededBy, rules) || (missingTime ? `Choose a time for ${missingTime.name}` : null) : null
+  useEffect(() => {
+    if (!neededBy || !slotItems.length) return
+    Promise.all(slotItems.map((i) => supabase.rpc('booked_slots', { p_product: i.id, p_date: neededBy }).then(({ data }) => [i.id, data])))
+      .then((rows) => setBooked(Object.fromEntries(rows)))
+  }, [neededBy, slotItems.map((i) => i.id).join(',')])
   const [fdOffers, setFdOffers] = useState([])
   const productIds = [...new Set(items.map((i) => i.id))].join(',')
   useEffect(() => {
@@ -144,24 +160,39 @@ export function Checkout() {
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const [f, setF] = useState({ full_name: '', phone: '', email: '', province_id: '', district_id: '', area: '', address: '', instructions: '' })
+  // If they stop before placing the order, the team can follow up.
+  useEffect(() => {
+    const digits = (f.phone || '').replace(/\D/g, '')
+    if (!f.full_name.trim() || digits.length < 9) return
+    const t = setTimeout(() => {
+      supabase.rpc('capture_checkout_lead', {
+        p_name: f.full_name.trim(), p_phone: f.phone,
+        p_items: items.map((i) => `${i.qty} × ${i.name}`).join(', ').slice(0, 180),
+        p_campaign_code: touch?.type === 'campaign' ? touch.code : null,
+        p_store: touch?.type === 'store' ? touch.code : touch?.store || null,
+      })
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [f.full_name, f.phone])
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v, ...(k === 'province_id' ? { district_id: '' } : {}) }))
   const dlist = districts.filter((d) => String(d.province_id) === String(f.province_id))
   const district = districts.find((d) => String(d.id) === String(f.district_id))
   const local = district?.is_local_zone
-  const fee = local ? (freeDelivery ? 0 : localFee) : 0
+  const fee = needsDelivery && local ? (freeDelivery ? 0 : localFee) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
   if (!items.length) return <div className="card empty"><h3>Your cart is empty</h3><Link to="/">Browse products</Link></div>
 
   const submit = async (e) => {
     e.preventDefault()
+    if (dateError) return toast(dateError, true)
     setBusy(true)
     const { data, error } = await supabase.rpc('place_order', {
       payload: {
+        needed_by: rules ? neededBy : null,
         customer: { ...f, province_id: f.province_id || null, district_id: f.district_id || null },
         items: payload(),
-        referral_code: ref || null,
-        source: ref ? `reseller:${ref}` : 'organic',
+        ...attribution(),
         channel: 'marketplace',
       },
     })
@@ -181,9 +212,39 @@ export function Checkout() {
         <Field label="Province"><Select value={f.province_id} onChange={set('province_id')} options={provinces.map((p) => [p.id, p.name])} placeholder="Choose province" required /></Field>
         <Field label="District"><Select value={f.district_id} onChange={set('district_id')} options={dlist.map((d) => [d.id, d.name])} placeholder={f.province_id ? 'Choose district' : 'Choose province first'} required /></Field>
         <Field label="Area / township"><Input value={f.area} onChange={set('area')} placeholder="e.g. Kabulonga" /></Field>
-        <Field label="Delivery address" span><Input value={f.address} onChange={set('address')} placeholder="Street, plot or house number, landmark" required /></Field>
+        <Field label={needsDelivery ? 'Delivery address' : 'Address for the service'} span><Input value={f.address} onChange={set('address')} placeholder="Street, plot or house number, landmark" required={needsAddress} /></Field>
         <Field label="Delivery instructions (optional)" span><Textarea value={f.instructions} onChange={set('instructions')} rows={2} /></Field>
       </div>
+
+      {rules && (
+        <div className="card stack-sm">
+          <h3>{madeToOrder.every((l) => l.fulfilment === 'service') ? 'When would you like to book?' : 'When do you need it?'}</h3>
+          <p className="small muted">{madeToOrder.map((l) => l.name).join(', ')} {madeToOrder.length > 1 ? 'need' : 'needs'} a date. {rules.lead > 0 ? `Order at least ${rules.lead} day${rules.lead > 1 ? 's' : ''} ahead. ` : ''}Available {daysText(rules.allowed)}.</p>
+          {rules.allowed.length === 0 ? (
+            <p className="small bad">These items are made on different days, so they can't be delivered together. Please order them separately.</p>
+          ) : (
+            <>
+              <input className="input" type="date" required min={rules.min} value={neededBy} onChange={(e) => setNeededBy(e.target.value)} />
+              {neededBy && checkDate(neededBy, rules) && <div className="small bad">{checkDate(neededBy, rules)}</div>}
+              {!neededBy && rules.first && <button type="button" className="btn sm" onClick={() => setNeededBy(rules.first)}>Earliest: {niceDate(rules.first)}</button>}
+              {neededBy && !checkDate(neededBy, rules) && slotItems.map((i) => {
+                const b = booked[i.id]
+                return (
+                  <div key={i.key} className="field">
+                    <label>Time for {i.name}</label>
+                    <div className="chips wrap">
+                      {i.time_slots.map((t) => {
+                        const full = b && (Number(b.slots?.[t] || 0) >= Number(b.capacity || 1))
+                        return <button key={t} type="button" disabled={full} className={`chip ${i.choices?.Time === t ? 'on' : ''}`} onClick={() => setChoice(i.key, 'Time', t)} title={full ? 'Already booked' : ''}>{t}{full ? ' · booked' : ''}</button>
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </>
+          )}
+        </div>
+      )}
 
       <Bumps />
 
@@ -197,17 +258,17 @@ export function Checkout() {
         {savings > 0 && <div className="between small mt"><span>Offer savings</span><span className="save money">−{money(savings)}</span></div>}
         <div className="between small mt">
           <span>Delivery</span>
-          <span>{!f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : money(localFee)) : 'Confirmed by phone'}</span>
+          <span>{!needsDelivery ? 'Not needed' : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : money(localFee)) : 'Confirmed by phone'}</span>
         </div>
         {fdNext != null && (!f.district_id || local) && <div className="tiny save">Add {money(fdNext - subtotal)} more for free delivery in Lusaka</div>}
         <div className="between strong mt"><span>Total</span><span className="money">{money(subtotal + fee)}{f.district_id && !local ? ' + delivery' : ''}</span></div>
         {deposit && <div className="tiny muted mt">Deposit plan: you'll pay a deposit when we confirm, the rest on delivery.</div>}
       </div>
-      {f.district_id && !local && (
+      {needsDelivery && f.district_id && !local && (
         <div className="card flat small">You're outside our standard Lusaka delivery area. Place the order anyway — we'll call to confirm whether we can deliver and what it will cost before you pay anything.</div>
       )}
       <p className="small muted">No payment is taken now. We'll contact you to confirm the order and arrange payment and delivery. Offer prices are confirmed when you place the order.</p>
-      <button className="btn primary block" disabled={busy}>{busy ? 'Placing order…' : 'Place order'}</button>
+      <button className="btn primary block" disabled={busy || (rules && rules.allowed.length === 0)}>{busy ? 'Placing order…' : 'Place order'}</button>
     </form>
   )
 }
@@ -225,6 +286,48 @@ export function OrderConfirmed() {
       <p>We'll contact you shortly to confirm your order and payment. {local ? "Once everything is confirmed, we'll arrange delivery to you." : "Since you're outside Lusaka District, we'll also confirm the delivery cost with you first."}</p>
       <p className="small muted">Keep your phone nearby — we usually call within a few hours.</p>
       <Link className="btn primary" to="/">Back to the store</Link>
+      <InviteCard orderNumber={number} />
+    </div>
+  )
+}
+
+function InviteCard({ orderNumber }) {
+  const toast = useToast()
+  const [phone, setPhone] = useState('')
+  const [invite, setInvite] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const get = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    const { data, error } = await supabase.rpc('get_invite', { p_phone: phone, p_order_number: Number(orderNumber) })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    setInvite(data)
+  }
+  const link = invite ? `${window.location.host}/invite/${invite.code}` : ''
+  const message = invite ? `I just ordered from ZaMarket in Lusaka. Have a look: https://${link}` : ''
+  const copy = async () => { try { await navigator.clipboard.writeText(`https://${link}`); toast('Link copied') } catch { toast('Could not copy', true) } }
+  return (
+    <div className="invite-card">
+      <h2>Invite a friend</h2>
+      {!invite ? (
+        <>
+          <p>When a friend places their first order through your link and it's delivered, you get a reward.</p>
+          <form onSubmit={get} className="invite-form">
+            <input className="input" type="tel" required placeholder="Phone number you ordered with" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <button className="btn buy" disabled={busy}>{busy ? 'Getting link…' : 'Get my link'}</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p>Your link. Earn {money(invite.reward)} for every friend's first completed order.</p>
+          <div className="invite-link">{link}</div>
+          <div className="btn-row" style={{ justifyContent: 'center' }}>
+            <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(message)}`} target="_blank" rel="noreferrer">Share on WhatsApp</a>
+            <button type="button" className="btn" onClick={copy}>Copy link</button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

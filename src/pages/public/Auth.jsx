@@ -3,9 +3,10 @@ import { Link, useNavigate, useParams, Navigate, useSearchParams } from 'react-r
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Field, Input, Textarea, Select, useToast, Loading } from '../../components/ui'
-import { CATEGORIES } from '../../lib/statuses'
+import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
 
 export function homeFor(role) {
+  if (role === 'marketing') return '/admin/marketing'
   if (['founder', 'ops', 'finance', 'delivery'].includes(role)) return '/admin'
   if (role === 'reseller') return '/sell'
   if (role === 'vendor') return '/vendor'
@@ -225,7 +226,7 @@ export function Apply() {
             <summary style={{ display: 'inline' }}>Read them</summary>
             <span className="small muted" style={{ display: 'block', marginTop: 6 }}>
               {isVendor
-                ? 'A marketplace fee is taken from each sale. Orders and payments go through ZaMarket. Do not take our customers off the platform. Keep products and service to a good standard. We can suspend accounts that break these rules.'
+                ? 'A marketplace fee is taken from each sale. Customers pay ZaMarket for ZaMarket orders, and you are paid your share once the order is complete. You will see a customer\'s phone and address after we confirm their order; do not ask them to pay you directly or move ZaMarket orders off the platform. Keep products and service to a good standard. We can suspend accounts that break these rules.'
                 : 'You earn only on sales that are delivered and not returned, after a 24-hour check. Buying for yourself or fake orders are not paid. Earnings are not guaranteed. We can suspend accounts that break these rules.'}
             </span>
           </details>

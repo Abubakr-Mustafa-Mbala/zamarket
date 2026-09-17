@@ -11,6 +11,8 @@ do $$ begin
   create type user_role as enum ('founder','ops','finance','delivery','vendor','reseller','customer');
 exception when duplicate_object then null; end $$;
 
+alter type user_role add value if not exists 'marketing';
+
 do $$ begin
   create type application_status as enum ('pending','approved','rejected','suspended','terminated');
 exception when duplicate_object then null; end $$;
@@ -90,6 +92,8 @@ insert into settings (key, value, description) values
   ('default_packaging_cost', '5', 'Default packaging cost per unit'),
   ('capital_allocation', '{"inventory":200,"packaging":50,"delivery":50,"advertising":100,"reserve":100}', 'Starting capital plan (USD)'),
   ('simple_mode_default', 'true', 'New staff start in Simple mode'),
+  ('referral_reward', '20', 'Reward paid to a customer when a friend they invited completes a first order (K)'),
+  ('own_audience_fee_pct', '5', 'Marketplace fee when a vendor brings the customer through their own store link (%)'),
   ('business_name', '"ZaMarket"', 'Name printed on receipts'),
   ('business_phone', '""', 'Phone printed on receipts'),
   ('receipt_footer', '"Thank you for shopping with us!"', 'Message at the bottom of receipts')
@@ -226,10 +230,31 @@ create table if not exists products (
   landed_cost_total numeric not null default 0,
   landed_units int not null default 0,
   evaluation jsonb default '{}',
+  fulfilment text not null default 'in_stock',
+  lead_time_days int not null default 0,
+  order_days int[],
+  daily_limit int,
+  options jsonb not null default '[]',
+  note_label text,
   created_by uuid references profiles(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table products add column if not exists fulfilment text not null default 'in_stock';
+alter table products add column if not exists lead_time_days int not null default 0;
+alter table products add column if not exists order_days int[];
+alter table products add column if not exists daily_limit int;
+alter table products add column if not exists options jsonb not null default '[]';
+alter table products add column if not exists note_label text;
+alter table products add column if not exists service_location text;
+alter table products add column if not exists duration_text text;
+alter table products add column if not exists time_slots text[];
+alter table products add column if not exists slot_capacity int not null default 1;
+alter table products drop constraint if exists products_fulfilment_check;
+alter table products add constraint products_fulfilment_check check (fulfilment in ('in_stock', 'made_to_order', 'service'));
+alter table products drop constraint if exists products_service_location_check;
+alter table products add constraint products_service_location_check check (service_location is null or service_location in ('at_customer', 'at_seller', 'online'));
 
 -- ---------- Procurement ----------
 create table if not exists purchases (
@@ -349,8 +374,14 @@ create table if not exists order_items (
   quantity int not null check (quantity > 0),
   unit_price numeric not null,
   unit_cost_snapshot numeric not null default 0,
-  line_total numeric not null
+  line_total numeric not null,
+  reserved_qty int not null default 0
 );
+alter table order_items add column if not exists reserved_qty int not null default 0;
+alter table order_items add column if not exists choices jsonb not null default '{}';
+alter table order_items add column if not exists note text;
+alter table order_items add column if not exists vendor_status text not null default 'new';
+alter table orders add column if not exists needed_by date;
 
 create table if not exists payments (
   id uuid primary key default gen_random_uuid(),
@@ -405,6 +436,9 @@ create table if not exists settlements (
   created_at timestamptz not null default now()
 );
 
+alter table settlements add column if not exists order_number int;
+update settlements st set order_number = o.order_number from orders o where o.id = st.order_id and st.order_number is null;
+
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
   order_id uuid references orders(id),
@@ -443,6 +477,91 @@ create table if not exists leads (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Marketing department ----------
+alter table leads add column if not exists email text;
+alter table leads add column if not exists owner_id uuid references profiles(id);
+alter table leads add column if not exists channel text not null default 'other';
+alter table leads add column if not exists campaign_id uuid;
+alter table leads add column if not exists magnet_id uuid;
+alter table leads add column if not exists vendor_id uuid references vendors(id);
+alter table leads add column if not exists interest text;
+alter table leads add column if not exists next_follow_up date;
+alter table leads add column if not exists last_contact_at timestamptz;
+alter table leads add column if not exists order_id uuid references orders(id);
+alter table leads add column if not exists lost_reason text;
+alter table leads add column if not exists area text;
+alter table leads add column if not exists updated_at timestamptz not null default now();
+alter table leads drop constraint if exists leads_stage_check;
+update leads set stage = case stage when 'purchased' then 'won' when 'view' then 'new' when 'interest' then 'new' when 'cart' then 'new' when 'checkout' then 'new' when 'abandoned' then 'new' else stage end
+  where stage in ('view','interest','cart','checkout','abandoned','purchased');
+alter table leads alter column stage set default 'new';
+alter table leads add constraint leads_stage_check check (stage in ('new','contacted','engaged','won','lost'));
+alter table leads drop constraint if exists leads_channel_check;
+alter table leads add constraint leads_channel_check check (channel in ('warm','content','cold','paid','referral','reseller','organic','other'));
+create unique index if not exists leads_open_phone on leads (phone) where stage in ('new','contacted','engaged');
+
+create table if not exists lead_activities (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid not null references leads(id) on delete cascade,
+  user_id uuid references profiles(id),
+  kind text not null check (kind in ('call','whatsapp','sms','in_person','email','dm','note','system')),
+  outcome text check (outcome in ('no_answer','not_interested','interested','follow_up','ordered','wrong_number')),
+  note text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists content_posts (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  platform text not null default 'instagram',
+  format text not null default 'post' check (format in ('post','reel','video','story','article','live','status','other')),
+  url text,
+  posted_on date not null default current_date,
+  campaign_id uuid,
+  product_id uuid references products(id),
+  vendor_id uuid references vendors(id),
+  owner_id uuid references profiles(id),
+  views int not null default 0,
+  engagement int not null default 0,
+  notes text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists lead_magnets (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  slug text unique,
+  audience text,
+  problem text,
+  format text not null default 'guide' check (format in ('guide','checklist','voucher','quiz','sample','calculator','video','other')),
+  headline text not null,
+  description text,
+  bullets text[] default '{}',
+  cta_text text not null default 'Send it to me',
+  delivery_type text not null default 'link' check (delivery_type in ('link','voucher','message')),
+  delivery_value text,
+  product_id uuid references products(id),
+  vendor_id uuid references vendors(id),
+  campaign_id uuid,
+  status text not null default 'draft' check (status in ('draft','live','paused')),
+  views int not null default 0,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists marketing_goals (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  outreach_daily int not null default 20,
+  content_weekly int not null default 5,
+  engaged_weekly int not null default 10,
+  updated_at timestamptz not null default now()
+);
+
+alter table referrals add column if not exists code text;
+alter table referrals add column if not exists referrer_customer_id uuid references customers(id);
+create unique index if not exists referrals_code_key on referrals (code) where order_id is null;
+alter table orders add column if not exists invite_code text;
+
 -- ---------- Finance ----------
 create table if not exists expenses (
   id uuid primary key default gen_random_uuid(),
@@ -451,6 +570,40 @@ create table if not exists expenses (
   description text,
   spent_on date not null default current_date,
   created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists campaigns (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  code text not null unique,
+  owner_type text not null default 'marketplace' check (owner_type in ('marketplace', 'vendor')),
+  vendor_id uuid references vendors(id),
+  goal text not null default 'customers' check (goal in ('customers', 'resellers', 'vendors')),
+  platform text not null default 'meta',
+  destination text not null default '/',
+  budget numeric not null default 0,
+  status text not null default 'active' check (status in ('draft', 'active', 'paused', 'ended')),
+  starts_on date,
+  ends_on date,
+  notes text,
+  visits int not null default 0,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists ad_requests (
+  id uuid primary key default gen_random_uuid(),
+  vendor_id uuid not null references vendors(id),
+  goal text not null,
+  promote text not null default 'store',
+  product_id uuid references products(id),
+  budget numeric,
+  audience text,
+  notes text,
+  status text not null default 'new' check (status in ('new', 'in_progress', 'live', 'done', 'declined')),
+  reply text,
+  campaign_id uuid references campaigns(id),
   created_at timestamptz not null default now()
 );
 
@@ -463,6 +616,20 @@ create table if not exists marketing_spend (
   notes text,
   created_at timestamptz not null default now()
 );
+alter table marketing_spend add column if not exists campaign_id uuid references campaigns(id);
+alter table campaigns add column if not exists channel text;
+alter table leads drop constraint if exists leads_campaign_fk;
+alter table leads add constraint leads_campaign_fk foreign key (campaign_id) references campaigns(id);
+alter table content_posts drop constraint if exists content_campaign_fk;
+alter table content_posts add constraint content_campaign_fk foreign key (campaign_id) references campaigns(id);
+alter table lead_magnets drop constraint if exists magnets_campaign_fk;
+alter table lead_magnets add constraint magnets_campaign_fk foreign key (campaign_id) references campaigns(id);
+alter table leads drop constraint if exists leads_magnet_fk;
+alter table leads add constraint leads_magnet_fk foreign key (magnet_id) references lead_magnets(id);
+alter table vendors add column if not exists slug text;
+create unique index if not exists vendors_slug_key on vendors (slug);
+alter table orders add column if not exists store_vendor_id uuid references vendors(id);
+alter table orders add column if not exists campaign_id uuid references campaigns(id);
 
 create table if not exists founder_contributions (
   id uuid primary key default gen_random_uuid(),
@@ -501,6 +668,28 @@ create table if not exists quotes (
 );
 
 -- ---------- Helpers ----------
+-- Zambian phone numbers in one format: 0977123456 (accepts +260 977 123 456, 260977123456, 977123456).
+create or replace function norm_phone(p text) returns text
+language sql immutable as $$
+  select case
+    when d ~ '^260[0-9]{9}$' then '0' || substr(d, 4)
+    when d ~ '^[0-9]{9}$' then '0' || d
+    else d end
+  from (select regexp_replace(coalesce(p, ''), '[^0-9]', '', 'g') as d) x;
+$$;
+
+create or replace function lusaka_date(ts timestamptz) returns date
+language sql immutable as $$ select (ts at time zone 'Africa/Lusaka')::date $$;
+
+create or replace function order_has_vendor(p_order uuid, p_vendor uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select p_vendor is not null and exists (select 1 from order_items where order_id = p_order and vendor_id = p_vendor);
+$$;
+
+create or replace function order_reseller(p_order uuid) returns uuid
+language sql stable security definer set search_path = public as $$
+  select reseller_id from orders where id = p_order;
+$$;
 create or replace function my_role() returns user_role
 language sql stable security definer set search_path = public as $$
   select role from profiles where id = auth.uid();
@@ -508,7 +697,19 @@ $$;
 
 create or replace function is_staff() returns boolean
 language sql stable security definer set search_path = public as $$
-  select coalesce((select role in ('founder','ops','finance','delivery') from profiles where id = auth.uid()), false);
+  select coalesce((select role::text in ('founder','ops','finance','delivery') from profiles where id = auth.uid()), false);
+$$;
+
+-- Marketing work: founders, operations and the marketing team.
+create or replace function can_market() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select role::text in ('founder','ops','marketing') from profiles where id = auth.uid()), false);
+$$;
+
+-- Founders and ops see every lead; marketers see their own and the unassigned pool.
+create or replace function sees_all_leads() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select role::text in ('founder','ops') from profiles where id = auth.uid()), false);
 $$;
 
 create or replace function is_founder() returns boolean
@@ -628,6 +829,118 @@ create trigger trg_no_delete_commissions before delete on commissions for each r
 drop trigger if exists trg_no_delete_settlements on settlements;
 create trigger trg_no_delete_settlements before delete on settlements for each row execute function block_delete();
 
+-- ---------- Clean links ----------
+-- Words the website already uses, so no store can take them.
+create or replace function reserved_slug(p text) returns boolean
+language sql immutable as $$
+  select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
+    'search','sellers','store','stores','p','r','go','free','invite','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+$$;
+
+create or replace function make_slug(p text) returns text
+language sql immutable as $$
+  select nullif(trim(both '-' from regexp_replace(regexp_replace(lower(coalesce(p, '')), '''', '', 'g'), '[^a-z0-9]+', '-', 'g')), '');
+$$;
+
+create or replace function slug_products() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare base text; candidate text; k int := 1;
+begin
+  if tg_op = 'UPDATE' and new.slug is not distinct from old.slug and new.slug is not null then return new; end if;
+  base := coalesce(make_slug(new.slug), make_slug(new.name), 'product');
+  base := left(base, 60);
+  candidate := base;
+  while exists (select 1 from products where slug = candidate and id <> new.id) loop
+    k := k + 1; candidate := base || '-' || k;
+  end loop;
+  new.slug := candidate;
+  return new;
+end $$;
+drop trigger if exists trg_slug_products on products;
+create trigger trg_slug_products before insert or update of slug, name on products for each row execute function slug_products();
+
+create or replace function slug_vendors() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare base text; candidate text; k int := 1;
+begin
+  if tg_op = 'UPDATE' and new.slug is not distinct from old.slug and new.slug is not null then return new; end if;
+  if tg_op = 'UPDATE' and new.slug is distinct from old.slug and old.slug is not null and auth.uid() is not null and not is_founder() then
+    raise exception 'Only a founder can change a store link';
+  end if;
+  base := left(coalesce(make_slug(new.slug), make_slug(new.business_name), 'store'), 40);
+  if reserved_slug(base) then base := base || '-store'; end if;
+  candidate := base;
+  while exists (select 1 from vendors where slug = candidate and id <> new.id) loop
+    k := k + 1; candidate := base || '-' || k;
+  end loop;
+  new.slug := candidate;
+  return new;
+end $$;
+drop trigger if exists trg_slug_vendors on vendors;
+create trigger trg_slug_vendors before insert or update of slug, business_name on vendors for each row execute function slug_vendors();
+
+update products set slug = null where slug is null or slug !~ '^[a-z0-9]+(-[a-z0-9]+)*$';
+update vendors set slug = null where slug is null;
+
+-- ---------- Guards: fields only staff (or the system) may change ----------
+create or replace function guard_partner_fields() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return new; end if;
+  if tg_table_name = 'profiles' then
+    if new.role is distinct from old.role and not is_founder() then raise exception 'Only a founder can change roles'; end if;
+    return new;
+  end if;
+  if is_staff() then return new; end if;
+  if tg_table_name = 'vendors' then
+    if new.status is distinct from old.status or new.fee_pct_override is distinct from old.fee_pct_override
+       or new.health is distinct from old.health or new.user_id is distinct from old.user_id
+       or new.reviewed_by is distinct from old.reviewed_by or new.reviewed_at is distinct from old.reviewed_at then
+      raise exception 'Only the marketplace team can change approval, fees or account health';
+    end if;
+  elsif tg_table_name = 'products' then
+    -- only applies to a vendor editing their own product (orders placed by logged-in users also update stock)
+    if old.vendor_id is null or old.vendor_id is distinct from my_vendor_id() then return new; end if;
+    if new.vendor_id is distinct from old.vendor_id or new.owner_type is distinct from old.owner_type
+       or new.commission_type is distinct from old.commission_type or new.commission_value is distinct from old.commission_value
+       or new.cost_override is distinct from old.cost_override
+       or new.landed_cost_total is distinct from old.landed_cost_total or new.landed_units is distinct from old.landed_units
+       or new.stock_available is distinct from old.stock_available or new.stock_reserved is distinct from old.stock_reserved
+       or new.stock_sold is distinct from old.stock_sold then
+      raise exception 'Only the marketplace team can change commission, cost or stock';
+    end if;
+    if new.status not in ('draft', 'submitted') then raise exception 'Vendors can save drafts or send products for review'; end if;
+    if old.status not in ('draft', 'submitted', 'rejected') and (new.price is distinct from old.price or new.name is distinct from old.name) then
+      raise exception 'Published products can only be changed by the marketplace team';
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_guard_vendors on vendors;
+create trigger trg_guard_vendors before update on vendors for each row execute function guard_partner_fields();
+drop trigger if exists trg_guard_profiles on profiles;
+create trigger trg_guard_profiles before update on profiles for each row execute function guard_partner_fields();
+drop trigger if exists trg_guard_products on products;
+create trigger trg_guard_products before update on products for each row execute function guard_partner_fields();
+
+-- Order status may only change through set_order_status (the state machine). Delivery-fee changes are audited.
+create or replace function guard_order_update() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.status is distinct from old.status and coalesce(current_setting('zm.order_fn', true), '') <> 'on' then
+    raise exception 'Change order status with the status buttons, not by editing the order';
+  end if;
+  if coalesce(current_setting('zm.order_fn', true), '') <> 'on'
+     and (new.delivery_fee is distinct from old.delivery_fee or new.total is distinct from old.total) then
+    perform log_audit('order.delivery_fee', 'orders', new.id,
+      jsonb_build_object('delivery_fee', old.delivery_fee, 'total', old.total),
+      jsonb_build_object('delivery_fee', new.delivery_fee, 'total', new.total, 'fee_status', new.delivery_fee_status));
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_guard_orders on orders;
+create trigger trg_guard_orders before update on orders for each row execute function guard_order_update();
+
 -- ---------- Inventory ----------
 create or replace function apply_movement(p_product uuid, p_type movement_type, p_qty int, p_reason text, p_ref_type text, p_ref_id uuid)
 returns void language plpgsql security definer set search_path = public as $$
@@ -646,8 +959,8 @@ begin
     when 'adjustment' then update products set stock_available = stock_available + p_qty where id = p_product;
   end case;
 
-  update products set status = 'out_of_stock' where id = p_product and stock_available <= 0 and status = 'published';
-  update products set status = 'published' where id = p_product and stock_available > 0 and status = 'out_of_stock';
+  update products set status = 'out_of_stock' where id = p_product and stock_available <= 0 and status = 'published' and owner_type = 'founder' and fulfilment = 'in_stock';
+  update products set status = 'published' where id = p_product and stock_available > 0 and status = 'out_of_stock' and fulfilment = 'in_stock';
 end $$;
 
 -- Manual adjustment (needs a reason; audited)
@@ -872,6 +1185,12 @@ declare
   v_seller text := 'founder';
   v_manual boolean := coalesce((payload->>'is_manual')::boolean, false);
   off offers%rowtype;
+  v_needed date := nullif(payload->>'needed_by', '')::date;
+  v_today date := lusaka_date(now());
+  booked int;
+  v_choices jsonb;
+  v_store vendors%rowtype;
+  v_campaign campaigns%rowtype;
   deal record;
   deals int;
   v_line numeric;
@@ -881,16 +1200,32 @@ begin
   if jsonb_array_length(coalesce(payload->'items','[]'::jsonb)) = 0 then raise exception 'Cart is empty'; end if;
 
   -- customer (matched on phone)
+  perform set_config('zm.order_fn', 'on', true);
+  if length(norm_phone(c->>'phone')) < 10 then raise exception 'Please enter a full phone number, e.g. 0977 123 456'; end if;
+  -- An existing customer's saved details only change when staff record the sale; the order keeps its own address either way.
   insert into customers (full_name, phone, email, province_id, district_id, area, address)
-  values (c->>'full_name', c->>'phone', nullif(c->>'email',''), (c->>'province_id')::int, (c->>'district_id')::int, c->>'area', c->>'address')
+  values (c->>'full_name', norm_phone(c->>'phone'), nullif(c->>'email',''), (c->>'province_id')::int, (c->>'district_id')::int, c->>'area', c->>'address')
   on conflict (phone) do update set
-    full_name = excluded.full_name,
-    email = coalesce(excluded.email, customers.email),
-    province_id = coalesce(excluded.province_id, customers.province_id),
-    district_id = coalesce(excluded.district_id, customers.district_id),
-    area = coalesce(excluded.area, customers.area),
-    address = coalesce(excluded.address, customers.address)
+    full_name = case when is_staff() then excluded.full_name else customers.full_name end,
+    email = case when is_staff() then coalesce(excluded.email, customers.email) else coalesce(customers.email, excluded.email) end,
+    province_id = case when is_staff() then coalesce(excluded.province_id, customers.province_id) else coalesce(customers.province_id, excluded.province_id) end,
+    district_id = case when is_staff() then coalesce(excluded.district_id, customers.district_id) else coalesce(customers.district_id, excluded.district_id) end,
+    area = case when is_staff() then coalesce(excluded.area, customers.area) else coalesce(customers.area, excluded.area) end,
+    address = case when is_staff() then coalesce(excluded.address, customers.address) else coalesce(customers.address, excluded.address) end
   returning * into cust;
+
+  -- campaign link (/go/code) or a vendor's own store link (/store-name): last link the customer used wins
+  if coalesce(payload->>'campaign_code', '') <> '' then
+    select * into v_campaign from campaigns where code = lower(payload->>'campaign_code');
+    if found and v_source = 'organic' then v_source := 'campaign:' || v_campaign.code; end if;
+  end if;
+  if coalesce(payload->>'invite_code', '') <> '' and v_source = 'organic' then
+    v_source := 'referral:' || lower(payload->>'invite_code');
+  end if;
+  if coalesce(payload->>'store_ref', '') <> '' then
+    select * into v_store from vendors where slug = lower(payload->>'store_ref') and status = 'approved';
+    if found and v_source = 'organic' then v_source := 'vendor:' || v_store.slug; end if;
+  end if;
 
   -- reseller attribution
   if coalesce(payload->>'referral_code','') <> '' then
@@ -898,7 +1233,11 @@ begin
     if found then
       v_seller := 'reseller';
       if v_source = 'organic' then v_source := 'reseller:' || rs.code; end if;
-      if rs.phone = cust.phone then flags := array_append(flags, 'self_purchase'); end if;
+      if norm_phone(rs.phone) = cust.phone
+         or exists (select 1 from profiles pf where pf.id = rs.user_id and norm_phone(pf.phone) = cust.phone)
+         or (rs.user_id is not null and rs.user_id = auth.uid() and coalesce((payload->>'is_manual')::boolean, false) = false) then
+        flags := array_append(flags, 'self_purchase');
+      end if;
     end if;
   end if;
 
@@ -919,7 +1258,26 @@ begin
     select * into prod from products where id = (item->>'product_id')::uuid for update;
     if not found then raise exception 'Product not found'; end if;
     if prod.status not in ('published','out_of_stock') and not v_manual then raise exception 'Product % is not available', prod.name; end if;
+    if prod.status = 'out_of_stock' and prod.fulfilment = 'in_stock' and prod.owner_type = 'vendor' and not v_manual then raise exception '% is out of stock', prod.name; end if;
     off := null;
+    -- made-to-order: needs a date far enough ahead, on a day the seller bakes/makes, within their daily limit
+    if prod.fulfilment in ('made_to_order', 'service') then
+      if v_needed is null then
+        raise exception '%', case when prod.fulfilment = 'service' then prod.name || ' needs a booking date. Please choose one.' else prod.name || ' is made to order. Please choose the date you need it.' end;
+      end if;
+      if v_needed < v_today + prod.lead_time_days then
+        raise exception '% needs to be ordered % day(s) ahead. The earliest date is %.', prod.name, prod.lead_time_days, to_char(v_today + prod.lead_time_days, 'Dy DD Mon');
+      end if;
+      if prod.order_days is not null and array_length(prod.order_days, 1) > 0 and not (extract(dow from v_needed)::int = any(prod.order_days)) then
+        raise exception '% is not available on %s. Please pick another date.', prod.name, to_char(v_needed, 'FMDay');
+      end if;
+    end if;
+    v_choices := coalesce(item->'choices', '{}'::jsonb);
+    if prod.fulfilment = 'service' and prod.time_slots is not null and array_length(prod.time_slots, 1) > 0 then
+      if coalesce(v_choices->>'Time', '') = '' or not ((v_choices->>'Time') = any(prod.time_slots)) then
+        raise exception 'Please choose a time for %', prod.name;
+      end if;
+    end if;
     if coalesce(item->>'offer_id', '') <> '' then
       select * into off from offers where id = (item->>'offer_id')::uuid for update;
       if not found or off.product_id <> prod.id then raise exception 'That offer does not apply to %', prod.name; end if;
@@ -938,11 +1296,34 @@ begin
       if unit <> prod.price and not is_staff() then unit := prod.price; end if;
       v_line := unit * qty;
     end if;
-    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total)
-    values (o.id, prod.id, off.id, prod.vendor_id, qty, v_line / qty, product_effective_cost(prod), v_line);
+    if prod.fulfilment = 'service' and prod.time_slots is not null and array_length(prod.time_slots, 1) > 0 then
+      select coalesce(sum(i.quantity), 0) into booked from order_items i join orders x on x.id = i.order_id
+       where i.product_id = prod.id and x.needed_by = v_needed and i.choices->>'Time' = v_choices->>'Time'
+         and x.status not in ('cancelled', 'refunded', 'returned', 'fraud_review') and x.id <> o.id;
+      if booked + qty > prod.slot_capacity then
+        raise exception '% at % on % is already booked. Please pick another time.', prod.name, v_choices->>'Time', to_char(v_needed, 'Dy DD Mon');
+      end if;
+    end if;
+    if prod.fulfilment in ('made_to_order', 'service') and prod.daily_limit is not null then
+      select coalesce(sum(i.quantity), 0) into booked from order_items i join orders x on x.id = i.order_id
+       where i.product_id = prod.id and x.needed_by = v_needed and x.status not in ('cancelled', 'refunded', 'returned', 'fraud_review') and x.id <> o.id;
+      if booked + qty > prod.daily_limit then
+        raise exception '% is fully booked for %. Only % left that day.', prod.name, to_char(v_needed, 'Dy DD Mon'), greatest(prod.daily_limit - booked, 0);
+      end if;
+    end if;
+    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note)
+    values (o.id, prod.id, off.id, prod.vendor_id, qty, v_line / qty, product_effective_cost(prod), v_line,
+            case when prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then least(qty, greatest(prod.stock_available, 0)) else 0 end,
+            v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''));
     sub := sub + v_line;
-    if prod.owner_type = 'founder' and prod.stock_available >= qty then
-      perform apply_movement(prod.id, 'reserve', qty, 'Order ' || o.order_number, 'order', o.id);
+    if prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then
+      if prod.stock_available > 0 then
+        perform apply_movement(prod.id, 'reserve', least(qty, prod.stock_available), 'Order ' || o.order_number, 'order', o.id);
+      end if;
+      if prod.stock_available < qty then
+        flags := array_append(flags, 'not_enough_stock');
+        update orders set risk_flags = flags where id = o.id;
+      end if;
     end if;
   end loop;
 
@@ -954,11 +1335,42 @@ begin
       and sub >= coalesce((ofr.config->>'minSpend')::numeric, 0)
   ) then fee := 0; end if;
 
-  update orders set subtotal = sub, delivery_fee = fee, total = sub + fee where id = o.id;
-  insert into deliveries (order_id, status) values (o.id, (case when local_zone then 'fee_confirmed' else 'fee_pending' end)::delivery_status);
+  if not exists (select 1 from order_items i join products p on p.id = i.product_id where i.order_id = o.id and p.fulfilment <> 'service') then
+    fee := 0;
+    update orders set delivery_fee_status = 'confirmed' where id = o.id;
+  end if;
+  if v_store.id is not null and exists (select 1 from order_items where order_id = o.id and vendor_id = v_store.id) then
+    update orders set store_vendor_id = v_store.id, seller_type = case when seller_type = 'founder' then 'vendor' else seller_type end where id = o.id;
+  end if;
+  if v_campaign.id is not null then update orders set campaign_id = v_campaign.id where id = o.id; end if;
+  update orders set subtotal = sub, delivery_fee = fee, total = sub + fee,
+    needed_by = case when exists (select 1 from order_items i join products p on p.id = i.product_id where i.order_id = o.id and p.fulfilment in ('made_to_order', 'service')) then v_needed else null end
+  where id = o.id;
+  if exists (select 1 from order_items i join products p on p.id = i.product_id where i.order_id = o.id and p.fulfilment <> 'service') then
+    insert into deliveries (order_id, status) values (o.id, (case when local_zone then 'fee_confirmed' else 'fee_pending' end)::delivery_status);
+  end if;
+  -- referral: a friend invited by an existing customer (not themselves), on their first order
+  if coalesce(payload->>'invite_code', '') <> '' then
+    declare r referrals%rowtype;
+    begin
+      select * into r from referrals where code = lower(payload->>'invite_code') and order_id is null limit 1;
+      if found and r.referrer_phone <> cust.phone
+         and not exists (select 1 from orders x where x.customer_id = cust.id and x.id <> o.id and x.status not in ('cancelled','fraud_review')) then
+        update orders set invite_code = r.code where id = o.id;
+        insert into referrals (referrer_name, referrer_phone, referrer_customer_id, referred_phone, order_id, reward, status)
+        values (r.referrer_name, r.referrer_phone, r.referrer_customer_id, cust.phone, o.id, setting_num('referral_reward'), 'purchased');
+      end if;
+    end;
+  end if;
+  -- any open lead for this phone is won
+  update leads set stage = 'won', order_id = o.id, next_follow_up = null, updated_at = now()
+   where phone = cust.phone and stage in ('new','contacted','engaged');
+  insert into lead_activities (lead_id, kind, outcome, note)
+  select id, 'system', 'ordered', 'Placed order #' || o.order_number from leads where order_id = o.id;
   perform log_audit(case when v_manual then 'order.manual' else 'order.placed' end, 'orders', o.id, null,
     jsonb_build_object('total', sub + fee, 'source', v_source, 'channel', v_channel, 'seller', v_seller));
 
+  perform set_config('zm.order_fn', 'off', true);
   return jsonb_build_object('order_id', o.id, 'order_number', o.order_number, 'total', sub + fee, 'is_local', local_zone);
 end $$;
 
@@ -1013,11 +1425,13 @@ begin
     raise exception 'Cannot move an order from % to %', o.status, p_status;
   end if;
 
+  perform set_config('zm.order_fn', 'on', true);
   update orders set status = p_status,
     confirmed_at = case when p_status = 'confirmed' then now() else confirmed_at end,
     completed_at = case when p_status = 'completed' then now() else completed_at end,
     payment_status = (case when p_status = 'paid' then 'paid' when p_status = 'refunded' then 'refunded' else payment_status::text end)::payment_status
   where id = p_order;
+  perform set_config('zm.order_fn', 'off', true);
 
   if p_status = 'delivered' then
     update deliveries set status = 'delivered', delivered_at = now() where order_id = p_order;
@@ -1029,11 +1443,21 @@ begin
 
   -- completion: stock becomes sold, commissions + settlements are created
   if p_status = 'completed' then
+    update referrals set status = 'eligible' where order_id = p_order and status = 'purchased';
     src := setting_text('commission_source');
     for it in select oi.* from order_items oi where oi.order_id = p_order loop
       select * into prod from products where id = it.product_id;
-      if prod.owner_type = 'founder' then
-        perform apply_movement(it.product_id, 'sale', it.quantity, 'Order ' || o.order_number, 'order', p_order);
+      if prod.owner_type = 'founder' and (prod.fulfilment = 'in_stock' or it.reserved_qty > 0) then
+        if it.reserved_qty > 0 then
+          perform apply_movement(it.product_id, 'sale', it.reserved_qty, 'Order ' || o.order_number, 'order', p_order);
+        end if;
+        if it.quantity > it.reserved_qty then  -- sold beyond what was reserved: take it from available stock
+          insert into inventory_movements (product_id, type, quantity, reason, reference_type, reference_id, user_id)
+          values (it.product_id, 'sale', it.quantity - it.reserved_qty, 'Order ' || o.order_number || ' (not reserved)', 'order', p_order, auth.uid());
+          update products set stock_available = stock_available - (it.quantity - it.reserved_qty),
+                              stock_sold = stock_sold + (it.quantity - it.reserved_qty) where id = it.product_id;
+        end if;
+        update order_items set reserved_qty = 0 where id = it.id;
       end if;
       gross := it.line_total;
       comm := 0;
@@ -1042,9 +1466,10 @@ begin
       end if;
       if it.vendor_id is not null then
         select * into vend from vendors where id = it.vendor_id;
-        fee_pct := coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct'));
-        insert into settlements (vendor_id, order_id, gross, marketplace_fee, reseller_commission, net_payable, status)
-        values (it.vendor_id, p_order, gross, round(gross * fee_pct / 100, 2),
+        fee_pct := case when o.store_vendor_id = it.vendor_id then least(coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')), setting_num('own_audience_fee_pct'))
+                        else coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')) end;
+        insert into settlements (vendor_id, order_id, order_number, gross, marketplace_fee, reseller_commission, net_payable, status)
+        values (it.vendor_id, p_order, o.order_number, gross, round(gross * fee_pct / 100, 2),
                 case when src = 'on_top' then comm else 0 end,
                 round(gross - gross * fee_pct / 100 - case when src = 'on_top' then comm else 0 end, 2), 'pending');
       end if;
@@ -1064,13 +1489,15 @@ begin
   if p_status in ('cancelled','refunded','returned') then
     for it in select * from order_items where order_id = p_order loop
       if o.status in ('pending','confirmed','payment_pending','paid','processing','ready_for_dispatch','out_for_delivery','failed_delivery','customer_unreachable','fraud_review') then
-        if (select stock_reserved from products where id = it.product_id) >= it.quantity then
-          perform apply_movement(it.product_id, 'release', it.quantity, 'Order ' || o.order_number || ' ' || p_status, 'order', p_order);
+        if it.reserved_qty > 0 then
+          perform apply_movement(it.product_id, 'release', it.reserved_qty, 'Order ' || o.order_number || ' ' || p_status, 'order', p_order);
+          update order_items set reserved_qty = 0 where id = it.id;
         end if;
       elsif p_status = 'returned' then
         perform apply_movement(it.product_id, 'return', it.quantity, 'Order ' || o.order_number || ' returned', 'order', p_order);
       end if;
     end loop;
+    update referrals set status = 'void' where order_id = p_order and status <> 'paid';
     update offers ofr set units_used = greatest(0, ofr.units_used - x.q)
     from (select offer_id, sum(quantity) q from order_items where order_id = p_order and offer_id is not null group by offer_id) x
     where ofr.id = x.offer_id;
@@ -1134,7 +1561,18 @@ begin
   elsif p_table = 'resellers' then
     update resellers set status = p_status, reviewed_by = auth.uid(), reviewed_at = now() where id = p_id returning user_id into uid;
     if p_status = 'approved' then
-      update resellers set code = coalesce(resellers.code, lower(regexp_replace(split_part(full_name,' ',1), '[^a-zA-Z0-9]', '', 'g')) || substr(replace(id::text,'-',''),1,4)) where id = p_id;
+      -- clean, readable link names: john → john-banda → john2, john3 …
+      if (select code from resellers where id = p_id) is null then
+        declare fname text; v_full text; cand text; k int := 2;
+        begin
+          select replace(make_slug(split_part(full_name, ' ', 1)), '-', ''), make_slug(full_name) into fname, v_full from resellers where id = p_id;
+          fname := coalesce(fname, 'reseller'); v_full := coalesce(v_full, fname);
+          cand := fname;
+          if exists (select 1 from resellers where code = cand) then cand := v_full; end if;
+          while exists (select 1 from resellers where code = cand) loop cand := fname || k; k := k + 1; end loop;
+          update resellers set code = cand where id = p_id;
+        end;
+      end if;
       if uid is not null then update profiles set role = 'reseller' where id = uid and role = 'customer'; end if;
     end if;
   else
@@ -1150,7 +1588,7 @@ begin
   select * into o from orders where order_number = p_order_number;
   if not found then raise exception 'Order not found'; end if;
   select * into cust from customers where id = o.customer_id;
-  if cust.phone <> p_phone then raise exception 'Phone number does not match this order'; end if;
+  if cust.phone <> norm_phone(p_phone) then raise exception 'Phone number does not match this order'; end if;
   for it in select * from order_items where order_id = o.id loop
     insert into reviews (order_id, product_id, vendor_id, customer_name, product_rating, vendor_rating, delivery_rating, marketplace_rating, comment, verified)
     values (o.id, it.product_id, it.vendor_id, cust.full_name, (p_ratings->>'product')::int, (p_ratings->>'vendor')::int,
@@ -1163,32 +1601,35 @@ create or replace view public_products as
 select p.id, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
        p.status, p.stock_available, p.owner_type, v.business_name as vendor_name,
        (select round(avg(product_rating),1) from reviews r where r.product_id = p.id and r.approved) as rating,
-       (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count
+       (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
+       p.vendor_id, p.fulfilment, p.lead_time_days, p.order_days, p.daily_limit, p.options, p.note_label, p.created_at,
+       p.service_location, p.duration_text, p.time_slots, p.slot_capacity, v.slug as vendor_slug
 from products p left join vendors v on v.id = p.vendor_id
-where p.status in ('published','out_of_stock');
+where p.status in ('published','out_of_stock') and (p.vendor_id is null or v.status = 'approved');
 
 -- Reseller earnings summary
 create or replace function reseller_summary(p_reseller uuid) returns jsonb
 language sql stable security definer set search_path = public as $$
-  select jsonb_build_object(
-    'sales_today', (select count(*) from orders where reseller_id = p_reseller and created_at::date = current_date and status not in ('cancelled','fraud_review')),
+  select case when not coalesce(is_staff() or p_reseller = my_reseller_id(), false) then null else jsonb_build_object(
+    'sales_today', (select count(*) from orders where reseller_id = p_reseller and lusaka_date(created_at) = lusaka_date(now()) and status not in ('cancelled','fraud_review')),
     'sales_month', (select count(*) from orders where reseller_id = p_reseller and date_trunc('month', created_at) = date_trunc('month', now()) and status not in ('cancelled','fraud_review')),
     'revenue_month', (select coalesce(sum(subtotal),0) from orders where reseller_id = p_reseller and date_trunc('month', created_at) = date_trunc('month', now()) and status not in ('cancelled','fraud_review')),
     'pending', (select coalesce(sum(amount),0) from commissions where reseller_id = p_reseller and status in ('pending','verified')),
     'approved', (select coalesce(sum(amount),0) from commissions where reseller_id = p_reseller and status = 'approved'),
     'paid', (select coalesce(sum(amount),0) from commissions where reseller_id = p_reseller and status = 'paid')
-  );
+  ) end;
 $$;
 
 -- Founder dashboard numbers
 create or replace function dashboard_summary(p_from date default (current_date - 30), p_to date default current_date) returns jsonb
 language sql stable security definer set search_path = public as $$
-  with o as (
-    select * from orders where created_at::date between p_from and p_to and status not in ('cancelled','fraud_review')
+  with guard as (select is_staff() as ok),
+  o as (
+    select * from orders where lusaka_date(created_at) between p_from and p_to and status not in ('cancelled','fraud_review')
   ), items as (
     select oi.*, p.owner_type from order_items oi join o on o.id = oi.order_id join products p on p.id = oi.product_id
   )
-  select jsonb_build_object(
+  select case when not (select ok from guard) then null else jsonb_build_object(
     'orders', (select count(*) from o),
     'completed', (select count(*) from o where status = 'completed'),
     'revenue', (select coalesce(sum(subtotal),0) from o),
@@ -1210,10 +1651,583 @@ language sql stable security definer set search_path = public as $$
     'waiting_demand', (select count(*) from stock_requests where not fulfilled),
     'contributions', (select coalesce(sum(amount),0) from founder_contributions),
     'withdrawals', (select coalesce(sum(amount),0) from founder_withdrawals),
-    'refund_count', (select count(*) from orders where created_at::date between p_from and p_to and status in ('refunded','returned')),
-    'cod_failed', (select count(*) from orders where created_at::date between p_from and p_to and status in ('failed_delivery','customer_unreachable'))
+    'refund_count', (select count(*) from orders where lusaka_date(created_at) between p_from and p_to and status in ('refunded','returned')),
+    'cod_failed', (select count(*) from orders where lusaka_date(created_at) between p_from and p_to and status in ('failed_delivery','customer_unreachable'))
+  ) end;
+$$;
+
+
+-- Which times are already taken for a service on a date (counts only).
+create or replace function booked_slots(p_product uuid, p_date date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'slots', coalesce((select jsonb_object_agg(t, n) from (
+       select i.choices->>'Time' t, sum(i.quantity) n from order_items i join orders o on o.id = i.order_id
+       where i.product_id = p_product and o.needed_by = p_date and i.choices ? 'Time'
+         and o.status not in ('cancelled', 'refunded', 'returned', 'fraud_review') group by 1) x), '{}'),
+    'day', (select coalesce(sum(i.quantity), 0) from order_items i join orders o on o.id = i.order_id
+       where i.product_id = p_product and o.needed_by = p_date and o.status not in ('cancelled', 'refunded', 'returned', 'fraud_review')),
+    'capacity', (select slot_capacity from products where id = p_product),
+    'daily_limit', (select daily_limit from products where id = p_product));
+$$;
+
+-- ---------- Vendor order desk ----------
+-- Vendors see the customer's name and area straight away; phone and address once ZaMarket has confirmed the order.
+-- Customers still pay ZaMarket, and vendors never get raw access to the customers or orders tables.
+create or replace function vendor_orders_list() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v uuid := my_vendor_id();
+begin
+  if v is null then raise exception 'Not allowed'; end if;
+  return coalesce((
+    select jsonb_agg(x order by (x->>'sort'))
+    from (
+      select jsonb_build_object(
+        'order_id', o.id, 'order_number', o.order_number, 'created_at', o.created_at, 'needed_by', o.needed_by,
+        'status', o.status, 'district', d.name, 'area', o.area,
+        'customer', c.full_name,
+        'repeat', (select count(distinct x.id) from orders x join order_items xi on xi.order_id = x.id
+                   where x.customer_id = o.customer_id and xi.vendor_id = v and x.id <> o.id and x.status not in ('cancelled','fraud_review')),
+        'contact', case when o.status in ('confirmed','payment_pending','paid','processing','ready_for_dispatch','out_for_delivery','delivered','completed','failed_delivery')
+                        then jsonb_build_object('phone', c.phone, 'address', o.address, 'instructions', o.instructions) end,
+        'sort', coalesce(o.needed_by::text, to_char(lusaka_date(o.created_at), 'YYYY-MM-DD')) || o.order_number,
+        'cancel_requested', coalesce(o.notes, '') like '%[Vendor requested cancellation]%',
+        'items', (select jsonb_agg(jsonb_build_object('id', i.id, 'name', p.name, 'quantity', i.quantity, 'line_total', i.line_total,
+                                                       'choices', i.choices, 'note', i.note, 'vendor_status', i.vendor_status) order by p.name)
+                  from order_items i join products p on p.id = i.product_id where i.order_id = o.id and i.vendor_id = v),
+        'total', (select sum(i.line_total) from order_items i where i.order_id = o.id and i.vendor_id = v)
+      ) as x
+      from orders o left join districts d on d.id = o.district_id left join customers c on c.id = o.customer_id
+      where exists (select 1 from order_items i where i.order_id = o.id and i.vendor_id = v)
+      order by o.created_at desc limit 500
+    ) t), '[]');
+end $$;
+
+-- Vendor progress on their items: new → preparing → ready (staff mark collected)
+create or replace function vendor_set_item_status(p_item uuid, p_status text)
+returns void language plpgsql security definer set search_path = public as $$
+declare it order_items%rowtype; o orders%rowtype;
+begin
+  select * into it from order_items where id = p_item for update;
+  if not found then raise exception 'Not found'; end if;
+  if not (is_staff() or it.vendor_id = my_vendor_id()) then raise exception 'Not allowed'; end if;
+  if p_status not in ('new', 'preparing', 'ready', 'collected') then raise exception 'Unknown status'; end if;
+  if p_status = 'collected' and not is_staff() then raise exception 'The marketplace team marks items as collected'; end if;
+  select * into o from orders where id = it.order_id;
+  if o.status in ('cancelled', 'refunded', 'fraud_review') then raise exception 'This order is %', o.status; end if;
+  if not is_staff() and o.status in ('pending', 'customer_unreachable') and p_status <> 'new' then
+    raise exception 'Wait until we confirm this order with the customer before you start';
+  end if;
+  update order_items set vendor_status = p_status where id = p_item;
+  perform log_audit('order_item.vendor_status', 'orders', it.order_id, jsonb_build_object('status', it.vendor_status), jsonb_build_object('status', p_status, 'item', p_item));
+end $$;
+
+-- Public store pages: who the seller is, never how to reach them outside ZaMarket.
+create or replace view public_vendors as
+select v.id, v.business_name, v.category, v.description, split_part(coalesce(v.location, ''), ',', 1) as town,
+       (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as rating,
+       (select count(*) from reviews r where r.vendor_id = v.id and r.approved) as review_count,
+       (select count(*) from products p where p.vendor_id = v.id and p.status = 'published') as product_count
+, v.slug
+from vendors v where v.status = 'approved';
+
+create or replace function vendor_summary() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'sales', coalesce((select sum(i.line_total) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and o.status not in ('cancelled','refunded','returned','fraud_review')), 0),
+    'units', coalesce((select sum(i.quantity) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and o.status not in ('cancelled','refunded','returned','fraud_review')), 0),
+    'returns', (select count(distinct o.id) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and o.status in ('refunded','returned')),
+    'to_make', (select count(*) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and i.vendor_status in ('new','preparing') and o.status not in ('cancelled','refunded','returned','fraud_review','completed','delivered')),
+    'rating', (select round(avg(vendor_rating), 1) from reviews where vendor_id = my_vendor_id() and approved),
+    'reviews', coalesce((select jsonb_agg(jsonb_build_object('rating', vendor_rating, 'comment', comment, 'created_at', created_at) order by created_at desc) from (select * from reviews where vendor_id = my_vendor_id() order by created_at desc limit 5) r), '[]')
   );
 $$;
+
+-- ---------- Marketing: campaign links ----------
+-- /go/<code> → counts the visit and returns where to send the person (only paths on this site).
+create or replace function go_link(p_code text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare c campaigns%rowtype; dest text;
+begin
+  select * into c from campaigns where code = lower(p_code);
+  if not found then return jsonb_build_object('path', '/', 'found', false); end if;
+  dest := case when c.destination ~ '^/[A-Za-z0-9/_?=&.%-]*$' and c.destination !~ '//' then c.destination else '/' end;
+  if c.status = 'active' and (c.ends_on is null or c.ends_on >= lusaka_date(now())) then
+    update campaigns set visits = visits + 1 where id = c.id;
+    return jsonb_build_object('path', dest, 'found', true, 'code', c.code, 'live', true);
+  end if;
+  return jsonb_build_object('path', dest, 'found', true, 'code', c.code, 'live', false);
+end $$;
+
+create or replace function validate_campaign() returns trigger
+language plpgsql as $$
+begin
+  new.code := make_slug(new.code);
+  if new.code is null then raise exception 'Give the link a short name, e.g. amina-cakes'; end if;
+  if new.destination !~ '^/' or new.destination ~ '//' then raise exception 'The destination must be a page on ZaMarket, starting with /'; end if;
+  if new.owner_type = 'vendor' and new.vendor_id is null then raise exception 'Choose which vendor this campaign is for'; end if;
+  return new;
+end $$;
+drop trigger if exists trg_validate_campaign on campaigns;
+create trigger trg_validate_campaign before insert or update on campaigns for each row execute function validate_campaign();
+
+create or replace function campaign_stats(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not can_market() then raise exception 'Not allowed'; end if;
+  return coalesce((select jsonb_agg(x order by x->>'created_at' desc) from (
+    select jsonb_build_object('id', c.id, 'name', c.name, 'code', c.code, 'status', c.status, 'platform', c.platform, 'goal', c.goal,
+      'owner_type', c.owner_type, 'vendor', v.business_name, 'destination', c.destination, 'budget', c.budget, 'visits', c.visits, 'created_at', c.created_at,
+      'orders', (select count(*) from orders o where o.campaign_id = c.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+      'channel', campaign_channel(c),
+      'leads', (select count(*) from leads l where l.campaign_id = c.id and lusaka_date(l.created_at) between p_from and p_to),
+      'engaged', (select count(*) from leads l where l.campaign_id = c.id and l.stage in ('engaged','won') and lusaka_date(l.created_at) between p_from and p_to),
+      'completed', (select count(*) from orders o where o.campaign_id = c.id and o.status = 'completed' and lusaka_date(o.created_at) between p_from and p_to),
+      'revenue', (select coalesce(sum(o.subtotal), 0) from orders o where o.campaign_id = c.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+      'spend', (select coalesce(sum(m.amount), 0) from marketing_spend m where m.campaign_id = c.id and m.spent_on between p_from and p_to),
+      'applications', case when c.goal = 'resellers' then (select count(*) from resellers r where lusaka_date(r.created_at) between p_from and p_to)
+                           when c.goal = 'vendors' then (select count(*) from vendors vv where lusaka_date(vv.created_at) between p_from and p_to) end
+    ) as x
+    from campaigns c left join vendors v on v.id = c.vendor_id) t), '[]');
+end $$;
+
+-- Vendors: how sales from their own store link are doing
+create or replace function vendor_store_stats() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'slug', (select slug from vendors where id = my_vendor_id()),
+    'own_orders', (select count(*) from orders where store_vendor_id = my_vendor_id() and status not in ('cancelled','fraud_review')),
+    'own_sales', (select coalesce(sum(i.line_total), 0) from orders o join order_items i on i.order_id = o.id and i.vendor_id = my_vendor_id()
+                  where o.store_vendor_id = my_vendor_id() and o.status not in ('cancelled','fraud_review')),
+    'own_fee_pct', setting_num('own_audience_fee_pct'),
+    'normal_fee_pct', coalesce((select fee_pct_override from vendors where id = my_vendor_id()), setting_num('marketplace_fee_pct'))
+  );
+$$;
+
+-- ---------- Earnings tracker ----------
+-- Dates are Zambian local dates (Africa/Lusaka).
+-- What one completed order actually left the marketplace with.
+create or replace function order_profit(p_order uuid) returns numeric
+language sql stable security definer set search_path = public as $$
+  select case when auth.uid() is not null and not is_staff() then null else o.subtotal + o.delivery_fee
+    - coalesce((select sum(oi.unit_cost_snapshot * oi.quantity) from order_items oi join products p on p.id = oi.product_id
+                where oi.order_id = o.id and p.owner_type = 'founder'), 0)
+    - coalesce((select sum(net_payable) from settlements st where st.order_id = o.id and st.status <> 'cancelled'), 0)
+    - coalesce((select sum(amount) from commissions c where c.order_id = o.id and c.status not in ('rejected','reversed')), 0)
+    - coalesce((select sum(delivery_cost + fuel_cost) from deliveries d where d.order_id = o.id), 0) end
+  from orders o where o.id = p_order;
+$$;
+
+create or replace function earnings_guard(p_scope text, p_id uuid) returns void
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if p_scope = 'business' and is_staff() then return; end if;
+  if p_scope = 'reseller' and (is_staff() or p_id = my_reseller_id()) then return; end if;
+  if p_scope = 'vendor' and (is_staff() or p_id = my_vendor_id()) then return; end if;
+  raise exception 'Not allowed';
+end $$;
+
+-- One row per day/week/month in the range.
+-- business: sales = order value placed, earned = profit on completed orders minus expenses & ads,
+--           paid = cash received, pending = unpaid order value, costs = expenses + ads
+-- reseller: sales = value they sold, earned = commission, paid = commission paid, pending = not yet paid
+-- vendor:   sales = value of their items sold, earned = payout owed, paid = paid out, pending = not yet paid, costs = marketplace fees
+create or replace function earnings_series(p_scope text, p_id uuid, p_from date, p_to date, p_bucket text default 'day')
+returns table (bucket date, orders bigint, units bigint, sales numeric, earned numeric, paid numeric, pending numeric, costs numeric)
+language plpgsql stable security definer set search_path = public as $$
+#variable_conflict use_column
+declare b text := case when p_bucket in ('day', 'week', 'month') then p_bucket else 'day' end;
+begin
+  perform earnings_guard(p_scope, p_id);
+  if p_to - p_from > 1100 then raise exception 'Choose a range of 3 years or less'; end if;
+  return query
+  with s as (
+    select generate_series(date_trunc(b, p_from::timestamp), date_trunc(b, p_to::timestamp), ('1 ' || b)::interval)::date as bk
+  ),
+  o as (  -- orders placed in range that count
+    select date_trunc(b, lusaka_date(x.created_at)::timestamp)::date as bk, x.*
+    from orders x
+    where lusaka_date(x.created_at) between p_from and p_to and x.status not in ('cancelled', 'fraud_review')
+      and (p_scope = 'business'
+           or (p_scope = 'reseller' and x.reseller_id = p_id)
+           or (p_scope = 'vendor' and exists (select 1 from order_items vi where vi.order_id = x.id and vi.vendor_id = p_id)))
+  ),
+  oi as (
+    select o.bk, i.quantity, i.line_total from o join order_items i on i.order_id = o.id
+    where p_scope <> 'vendor' or i.vendor_id = p_id
+  ),
+  placed as (
+    select bk, count(distinct id) as orders, sum(subtotal) filter (where payment_status <> 'paid') as unpaid from o group by bk
+  ),
+  lines as (select bk, sum(quantity) as units, sum(line_total) as sales from oi group by bk),
+  money as (
+    -- business
+    select date_trunc(b, lusaka_date(x.completed_at)::timestamp)::date as bk, sum(order_profit(x.id)) as earned, 0::numeric as paid, 0::numeric as pend, 0::numeric as costs
+      from orders x where p_scope = 'business' and x.status = 'completed' and lusaka_date(x.completed_at) between p_from and p_to group by 1
+    union all
+    select date_trunc(b, lusaka_date(py.created_at)::timestamp)::date, 0, sum(py.amount), 0, 0
+      from payments py where p_scope = 'business' and lusaka_date(py.created_at) between p_from and p_to group by 1
+    union all
+    select date_trunc(b, e.spent_on::timestamp)::date, -sum(e.amount), 0, 0, sum(e.amount)
+      from expenses e where p_scope = 'business' and e.spent_on between p_from and p_to group by 1
+    union all
+    select date_trunc(b, m.spent_on::timestamp)::date, -sum(m.amount), 0, 0, sum(m.amount)
+      from marketing_spend m where p_scope = 'business' and m.spent_on between p_from and p_to group by 1
+    -- reseller
+    union all
+    select date_trunc(b, lusaka_date(c.created_at)::timestamp)::date, sum(c.amount), 0,
+           sum(c.amount) filter (where c.status in ('pending', 'verified', 'approved')), 0
+      from commissions c where p_scope = 'reseller' and c.reseller_id = p_id and c.status not in ('rejected', 'reversed')
+        and lusaka_date(c.created_at) between p_from and p_to group by 1
+    union all
+    select date_trunc(b, lusaka_date(c.paid_at)::timestamp)::date, 0, sum(c.amount), 0, 0
+      from commissions c where p_scope = 'reseller' and c.reseller_id = p_id and c.status = 'paid'
+        and lusaka_date(c.paid_at) between p_from and p_to group by 1
+    -- vendor
+    union all
+    select date_trunc(b, lusaka_date(st.created_at)::timestamp)::date, sum(st.net_payable), 0,
+           sum(st.net_payable) filter (where st.status in ('pending', 'eligible', 'approved')), sum(st.marketplace_fee)
+      from settlements st where p_scope = 'vendor' and st.vendor_id = p_id and st.status <> 'cancelled'
+        and lusaka_date(st.created_at) between p_from and p_to group by 1
+    union all
+    select date_trunc(b, lusaka_date(st.paid_at)::timestamp)::date, 0, sum(st.net_payable), 0, 0
+      from settlements st where p_scope = 'vendor' and st.vendor_id = p_id and st.status = 'paid'
+        and lusaka_date(st.paid_at) between p_from and p_to group by 1
+  ),
+  m as (select bk, sum(earned) earned, sum(paid) paid, sum(pend) pend, sum(costs) costs from money group by bk)
+  select s.bk,
+         coalesce(placed.orders, 0), coalesce(lines.units, 0)::bigint, round(coalesce(lines.sales, 0), 2),
+         round(coalesce(m.earned, 0), 2), round(coalesce(m.paid, 0), 2),
+         round(case when p_scope = 'business' then coalesce(placed.unpaid, 0) else coalesce(m.pend, 0) end, 2),
+         round(coalesce(m.costs, 0), 2)
+  from s
+  left join placed on placed.bk = s.bk
+  left join lines on lines.bk = s.bk
+  left join m on m.bk = s.bk
+  order by s.bk;
+end $$;
+
+-- The records behind the chart, newest first.
+create or replace function earnings_records(p_scope text, p_id uuid, p_from date, p_to date)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare r jsonb;
+begin
+  perform earnings_guard(p_scope, p_id);
+  if p_scope = 'business' then
+    select coalesce(jsonb_agg(x order by x->>'created_at' desc), '[]') into r from (
+      select jsonb_build_object(
+        'id', o.id, 'order_number', o.order_number, 'created_at', o.created_at, 'status', o.status, 'payment_status', o.payment_status,
+        'customer', c.full_name, 'channel', o.channel, 'seller', coalesce(rs.full_name, 'Founder'),
+        'items', (select string_agg(i.quantity || ' × ' || p.name, ', ') from order_items i join products p on p.id = i.product_id where i.order_id = o.id),
+        'amount', o.total, 'earned', case when o.status = 'completed' then round(order_profit(o.id), 2) end) as x
+      from orders o left join customers c on c.id = o.customer_id left join resellers rs on rs.id = o.reseller_id
+      where lusaka_date(o.created_at) between p_from and p_to
+      order by o.created_at desc limit 2000) t;
+  elsif p_scope = 'reseller' then
+    select coalesce(jsonb_agg(x order by x->>'created_at' desc), '[]') into r from (
+      select jsonb_build_object(
+        'id', o.id, 'order_number', o.order_number, 'created_at', o.created_at, 'status', o.status,
+        'customer', split_part(c.full_name, ' ', 1), 'channel', o.channel,
+        'items', (select string_agg(i.quantity || ' × ' || p.name, ', ') from order_items i join products p on p.id = i.product_id where i.order_id = o.id),
+        'amount', o.subtotal,
+        'earned', (select sum(cm.amount) from commissions cm where cm.order_id = o.id),
+        'earning_status', (select cm.status from commissions cm where cm.order_id = o.id order by cm.created_at desc limit 1),
+        'paid_at', (select max(cm.paid_at) from commissions cm where cm.order_id = o.id)) as x
+      from orders o left join customers c on c.id = o.customer_id
+      where o.reseller_id = p_id and lusaka_date(o.created_at) between p_from and p_to
+      order by o.created_at desc limit 2000) t;
+  else
+    select coalesce(jsonb_agg(x order by x->>'created_at' desc), '[]') into r from (
+      select jsonb_build_object(
+        'id', o.id, 'order_number', o.order_number, 'created_at', o.created_at, 'status', o.status,
+        'items', (select string_agg(i.quantity || ' × ' || p.name, ', ') from order_items i join products p on p.id = i.product_id where i.order_id = o.id and i.vendor_id = p_id),
+        'amount', (select sum(i.line_total) from order_items i where i.order_id = o.id and i.vendor_id = p_id),
+        'fee', (select sum(st.marketplace_fee) from settlements st where st.order_id = o.id and st.vendor_id = p_id and st.status <> 'cancelled'),
+        'earned', (select sum(st.net_payable) from settlements st where st.order_id = o.id and st.vendor_id = p_id and st.status <> 'cancelled'),
+        'earning_status', (select st.status from settlements st where st.order_id = o.id and st.vendor_id = p_id order by st.created_at desc limit 1),
+        'paid_at', (select max(st.paid_at) from settlements st where st.order_id = o.id and st.vendor_id = p_id)) as x
+      from orders o
+      where exists (select 1 from order_items i where i.order_id = o.id and i.vendor_id = p_id)
+        and lusaka_date(o.created_at) between p_from and p_to
+      order by o.created_at desc limit 2000) t;
+  end if;
+  return r;
+end $$;
+
+-- Founders: how every reseller and vendor is doing in a period.
+create or replace function partner_leaderboard(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'resellers', coalesce((select jsonb_agg(x order by (x->>'sales')::numeric desc) from (
+      select jsonb_build_object('id', r.id, 'name', r.full_name, 'code', r.code, 'status', r.status,
+        'orders', (select count(*) from orders o where o.reseller_id = r.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+        'sales', (select coalesce(sum(o.subtotal), 0) from orders o where o.reseller_id = r.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+        'earned', (select coalesce(sum(c.amount), 0) from commissions c where c.reseller_id = r.id and c.status not in ('rejected','reversed') and lusaka_date(c.created_at) between p_from and p_to),
+        'paid', (select coalesce(sum(c.amount), 0) from commissions c where c.reseller_id = r.id and c.status = 'paid' and lusaka_date(c.paid_at) between p_from and p_to)) as x
+      from resellers r where r.status in ('approved', 'suspended')) t), '[]'),
+    'vendors', coalesce((select jsonb_agg(x order by (x->>'sales')::numeric desc) from (
+      select jsonb_build_object('id', v.id, 'name', v.business_name, 'status', v.status,
+        'orders', (select count(distinct i.order_id) from order_items i join orders o on o.id = i.order_id where i.vendor_id = v.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+        'sales', (select coalesce(sum(i.line_total), 0) from order_items i join orders o on o.id = i.order_id where i.vendor_id = v.id and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+        'earned', (select coalesce(sum(st.net_payable), 0) from settlements st where st.vendor_id = v.id and st.status <> 'cancelled' and lusaka_date(st.created_at) between p_from and p_to),
+        'fees', (select coalesce(sum(st.marketplace_fee), 0) from settlements st where st.vendor_id = v.id and st.status <> 'cancelled' and lusaka_date(st.created_at) between p_from and p_to)) as x
+      from vendors v where v.status in ('approved', 'suspended')) t), '[]')
+  );
+end $$;
+
+
+-- =====================================================================
+-- Marketing department: leads, outreach, content, lead magnets, referrals
+-- =====================================================================
+
+-- Which of the four ways of getting customers a campaign belongs to
+create or replace function campaign_channel(c campaigns) returns text
+language sql immutable as $$
+  select coalesce(c.channel, case
+    when c.platform in ('meta', 'google') then 'paid'
+    when c.platform in ('instagram', 'facebook', 'tiktok', 'youtube', 'print') then 'content'
+    when c.platform in ('whatsapp') then 'warm'
+    when c.platform in ('outreach') then 'cold'
+    when c.platform in ('referral') then 'referral'
+    else 'other' end);
+$$;
+
+-- Clean, readable codes: chanda → chanda-mulenga → chanda2
+create or replace function clean_code(p_first text, p_full text, p_taken text) returns text
+language plpgsql stable as $$
+declare f text := coalesce(nullif(replace(make_slug(p_first), '-', ''), ''), 'friend'); v_full text := coalesce(make_slug(p_full), f); cand text := f; k int := 2; hit boolean;
+begin
+  loop
+    execute format('select exists (select 1 from %s where code = $1)', p_taken) into hit using cand;
+    exit when not hit;
+    if cand = f and v_full <> f then cand := v_full; else cand := f || k; k := k + 1; end if;
+  end loop;
+  return cand;
+end $$;
+
+-- Create or refresh an open lead for a phone number (one open lead per person)
+create or replace function upsert_lead(p_name text, p_phone text, p_channel text, p_interest text,
+  p_campaign uuid default null, p_magnet uuid default null, p_vendor uuid default null, p_product uuid default null, p_email text default null, p_source text default null)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare v_phone text := norm_phone(p_phone); v_id uuid;
+begin
+  if length(v_phone) < 10 then return null; end if;
+  select id into v_id from leads where phone = v_phone and stage in ('new','contacted','engaged');
+  if v_id is null then
+    insert into leads (name, phone, email, channel, interest, campaign_id, magnet_id, vendor_id, product_id, source, stage)
+    values (nullif(p_name, ''), v_phone, nullif(p_email, ''), coalesce(p_channel, 'other'), p_interest, p_campaign, p_magnet, p_vendor, p_product, p_source, 'new')
+    returning id into v_id;
+    insert into lead_activities (lead_id, kind, note) values (v_id, 'system', 'New lead: ' || coalesce(p_interest, p_source, 'enquiry'));
+  else
+    update leads set name = coalesce(nullif(p_name, ''), name), email = coalesce(nullif(p_email, ''), email),
+      interest = coalesce(p_interest, interest), campaign_id = coalesce(campaign_id, p_campaign), magnet_id = coalesce(magnet_id, p_magnet),
+      vendor_id = coalesce(vendor_id, p_vendor), product_id = coalesce(product_id, p_product), updated_at = now()
+    where id = v_id;
+  end if;
+  return v_id;
+end $$;
+
+-- Checkout: someone typed their name and phone but may not finish. Becomes a lead to follow up.
+create or replace function capture_checkout_lead(p_name text, p_phone text, p_items text, p_campaign_code text default null, p_store text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare c campaigns%rowtype; v uuid;
+begin
+  if length(norm_phone(p_phone)) < 10 or coalesce(p_name, '') = '' then return; end if;
+  if exists (select 1 from customers cu join orders o on o.customer_id = cu.id where cu.phone = norm_phone(p_phone) and o.created_at > now() - interval '15 minutes') then return; end if;
+  if coalesce(p_campaign_code, '') <> '' then select * into c from campaigns where code = lower(p_campaign_code); end if;
+  if coalesce(p_store, '') <> '' then select id into v from vendors where slug = lower(p_store); end if;
+  perform upsert_lead(left(p_name, 80), p_phone, case when c.id is not null then campaign_channel(c) else 'organic' end,
+                      left('Started checkout: ' || coalesce(p_items, ''), 200), c.id, null, coalesce(c.vendor_id, v), null, null, 'checkout');
+end $$;
+
+-- "Tell me when it's back" requests are leads too
+create or replace function stock_request_lead() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform upsert_lead(new.customer_name, new.phone, 'organic',
+    'Wants ' || new.quantity || ' × ' || (select name from products where id = new.product_id) || ' when back in stock',
+    null, null, (select vendor_id from products where id = new.product_id), new.product_id, null, 'stock_request');
+  return new;
+end $$;
+drop trigger if exists trg_stock_request_lead on stock_requests;
+create trigger trg_stock_request_lead after insert on stock_requests for each row execute function stock_request_lead();
+
+-- Log a call / message and move the lead along
+create or replace function log_lead_activity(p_lead uuid, p_kind text, p_outcome text, p_note text, p_next date default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare l leads%rowtype; new_stage text;
+begin
+  select * into l from leads where id = p_lead for update;
+  if not found then raise exception 'Lead not found'; end if;
+  if not (sees_all_leads() or (can_market() and (l.owner_id = auth.uid() or l.owner_id is null))) then raise exception 'Not allowed'; end if;
+  insert into lead_activities (lead_id, user_id, kind, outcome, note) values (p_lead, auth.uid(), p_kind, nullif(p_outcome, ''), nullif(p_note, ''));
+  new_stage := case
+    when p_outcome = 'ordered' then 'won'
+    when p_outcome in ('not_interested', 'wrong_number') then 'lost'
+    when p_outcome in ('interested', 'follow_up') then 'engaged'
+    when p_kind not in ('note', 'system') and l.stage = 'new' then 'contacted'
+    else l.stage end;
+  update leads set stage = new_stage,
+    owner_id = coalesce(owner_id, case when p_kind not in ('note','system') then auth.uid() end),
+    last_contact_at = case when p_kind not in ('note', 'system') then now() else last_contact_at end,
+    next_follow_up = case when new_stage in ('won', 'lost') then null when p_next is not null then p_next else next_follow_up end,
+    lost_reason = case when new_stage = 'lost' then coalesce(nullif(p_note, ''), replace(p_outcome, '_', ' ')) else lost_reason end,
+    updated_at = now()
+  where id = p_lead;
+end $$;
+
+-- Lead magnets people can see (never the download link or voucher until they sign up)
+create or replace view public_magnets as
+select m.id, m.slug, m.name, m.format, m.headline, m.description, m.bullets, m.cta_text, m.delivery_type, m.audience,
+       v.business_name as vendor_name, v.slug as vendor_slug, p.name as product_name, p.slug as product_slug
+from lead_magnets m left join vendors v on v.id = m.vendor_id left join products p on p.id = m.product_id
+where m.status = 'live';
+
+create or replace function view_magnet(p_slug text) returns void
+language sql security definer set search_path = public as $$
+  update lead_magnets set views = views + 1 where slug = lower(p_slug) and status = 'live';
+$$;
+
+create or replace function claim_magnet(p_slug text, p_name text, p_phone text, p_email text default null, p_campaign_code text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare m lead_magnets%rowtype; c campaigns%rowtype;
+begin
+  select * into m from lead_magnets where slug = lower(p_slug) and status = 'live';
+  if not found then raise exception 'This offer has ended'; end if;
+  if coalesce(p_name, '') = '' then raise exception 'Please enter your name'; end if;
+  if length(norm_phone(p_phone)) < 10 then raise exception 'Please enter a full phone number, e.g. 0977 123 456'; end if;
+  if coalesce(p_campaign_code, '') <> '' then select * into c from campaigns where code = lower(p_campaign_code); end if;
+  perform upsert_lead(left(p_name, 80), p_phone, case when c.id is not null then campaign_channel(c) when m.campaign_id is not null then (select campaign_channel(x) from campaigns x where x.id = m.campaign_id) else 'content' end,
+                      'Claimed: ' || m.name, coalesce(c.id, m.campaign_id), m.id, m.vendor_id, m.product_id, left(p_email, 120), 'lead_magnet');
+  return jsonb_build_object('type', m.delivery_type, 'value', m.delivery_value, 'name', m.name);
+end $$;
+
+-- Customer invites: a clean link per customer, e.g. /invite/chanda
+create or replace function get_invite(p_phone text, p_order_number int) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype; cu customers%rowtype; r referrals%rowtype;
+begin
+  select * into o from orders where order_number = p_order_number;
+  if not found then raise exception 'Order not found'; end if;
+  select * into cu from customers where id = o.customer_id;
+  if cu.phone <> norm_phone(p_phone) then raise exception 'That phone number does not match this order'; end if;
+  select * into r from referrals where referrer_customer_id = cu.id and order_id is null and code is not null limit 1;
+  if not found then
+    insert into referrals (referrer_name, referrer_phone, referrer_customer_id, code, status, reward)
+    values (cu.full_name, cu.phone, cu.id, clean_code(split_part(cu.full_name, ' ', 1), cu.full_name, 'referrals'), 'created', setting_num('referral_reward'))
+    returning * into r;
+  end if;
+  return jsonb_build_object('code', r.code, 'reward', setting_num('referral_reward'), 'name', split_part(cu.full_name, ' ', 1));
+end $$;
+
+create or replace function invite_info(p_code text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('name', split_part(referrer_name, ' ', 1), 'found', true)
+  from referrals where code = lower(p_code) and order_id is null limit 1;
+$$;
+
+-- Vendors: results of campaigns ZaMarket runs for them
+create or replace function vendor_campaigns() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', c.id, 'name', c.name, 'code', c.code, 'status', c.status, 'platform', c.platform, 'starts_on', c.starts_on, 'ends_on', c.ends_on,
+    'visits', c.visits,
+    'leads', (select count(*) from leads l where l.campaign_id = c.id),
+    'engaged', (select count(*) from leads l where l.campaign_id = c.id and l.stage in ('engaged','won')),
+    'orders', (select count(*) from orders o where o.campaign_id = c.id and o.status not in ('cancelled','fraud_review')),
+    'sales', (select coalesce(sum(i.line_total), 0) from orders o join order_items i on i.order_id = o.id and i.vendor_id = c.vendor_id where o.campaign_id = c.id and o.status not in ('cancelled','fraud_review')),
+    'spend', (select coalesce(sum(amount), 0) from marketing_spend m where m.campaign_id = c.id)
+  ) order by c.created_at desc), '[]')
+  from campaigns c where c.vendor_id = my_vendor_id() and my_vendor_id() is not null;
+$$;
+
+-- The marketing overview
+create or replace function marketing_overview(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare ch text[] := array['warm','content','cold','paid','referral','reseller','organic','other'];
+begin
+  if not can_market() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'leads', (select count(*) from leads where lusaka_date(created_at) between p_from and p_to),
+    'engaged', (select count(*) from leads where lusaka_date(created_at) between p_from and p_to and stage in ('engaged','won')),
+    'won', (select count(*) from leads where stage = 'won' and lusaka_date(updated_at) between p_from and p_to),
+    'lost', (select count(*) from leads where stage = 'lost' and lusaka_date(updated_at) between p_from and p_to),
+    'open', (select count(*) from leads where stage in ('new','contacted','engaged')),
+    'due', (select count(*) from leads where stage in ('new','contacted','engaged') and next_follow_up <= lusaka_date(now())),
+    'untouched', (select count(*) from leads where stage = 'new' and last_contact_at is null),
+    'marketing_orders', (select count(*) from orders where lusaka_date(created_at) between p_from and p_to and status not in ('cancelled','fraud_review')
+                          and (campaign_id is not null or invite_code is not null or reseller_id is not null or store_vendor_id is not null
+                               or exists (select 1 from leads l where l.order_id = orders.id))),
+    'marketing_sales', (select coalesce(sum(subtotal), 0) from orders where lusaka_date(created_at) between p_from and p_to and status not in ('cancelled','fraud_review')
+                          and (campaign_id is not null or invite_code is not null or reseller_id is not null or store_vendor_id is not null
+                               or exists (select 1 from leads l where l.order_id = orders.id))),
+    'all_sales', (select coalesce(sum(subtotal), 0) from orders where lusaka_date(created_at) between p_from and p_to and status not in ('cancelled','fraud_review')),
+    'new_customers', (select count(*) from customers cu where lusaka_date(cu.created_at) between p_from and p_to
+                        and exists (select 1 from orders o where o.customer_id = cu.id and o.status not in ('cancelled','fraud_review'))),
+    'spend', (select coalesce(sum(amount), 0) from marketing_spend where spent_on between p_from and p_to),
+    'visits', (select coalesce(sum(visits), 0) from campaigns),
+    'content', (select count(*) from content_posts where posted_on between p_from and p_to),
+    'channels', (select jsonb_agg(jsonb_build_object(
+        'channel', x,
+        'leads', (select count(*) from leads l where l.channel = x and lusaka_date(l.created_at) between p_from and p_to),
+        'engaged', (select count(*) from leads l where l.channel = x and l.stage in ('engaged','won') and lusaka_date(l.created_at) between p_from and p_to),
+        'won', (select count(*) from leads l where l.channel = x and l.stage = 'won' and lusaka_date(l.updated_at) between p_from and p_to),
+        'orders', case
+            when x = 'reseller' then (select count(*) from orders o where o.reseller_id is not null and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to)
+            when x = 'referral' then (select count(*) from orders o where o.invite_code is not null and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to)
+            else (select count(*) from orders o join campaigns c on c.id = o.campaign_id where campaign_channel(c) = x and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to) end,
+        'sales', case
+            when x = 'reseller' then (select coalesce(sum(o.subtotal), 0) from orders o where o.reseller_id is not null and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to)
+            when x = 'referral' then (select coalesce(sum(o.subtotal), 0) from orders o where o.invite_code is not null and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to)
+            else (select coalesce(sum(o.subtotal), 0) from orders o join campaigns c on c.id = o.campaign_id where campaign_channel(c) = x and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to) end,
+        'spend', (select coalesce(sum(m.amount), 0) from marketing_spend m left join campaigns c on c.id = m.campaign_id
+                  where m.spent_on between p_from and p_to and coalesce(campaign_channel(c), case when m.source in ('facebook_ad','instagram') then 'paid' else 'other' end) = x)
+      )) from unnest(ch) x),
+    'series', (select jsonb_agg(jsonb_build_object('day', d::date,
+        'leads', (select count(*) from leads l where lusaka_date(l.created_at) = d::date),
+        'won', (select count(*) from leads l where l.stage = 'won' and lusaka_date(l.updated_at) = d::date)) order by d)
+      from generate_series(p_from::timestamp, p_to::timestamp, '1 day') d),
+    'resellers', jsonb_build_object(
+        'applied', (select count(*) from resellers where lusaka_date(created_at) between p_from and p_to),
+        'approved', (select count(*) from resellers where status = 'approved' and lusaka_date(created_at) between p_from and p_to),
+        'first_sale', (select count(*) from resellers r where status = 'approved' and exists (select 1 from orders o where o.reseller_id = r.id and o.status not in ('cancelled','fraud_review'))),
+        'active', (select count(distinct reseller_id) from orders where reseller_id is not null and created_at > now() - interval '30 days' and status not in ('cancelled','fraud_review')),
+        'total_approved', (select count(*) from resellers where status = 'approved')),
+    'referrals', jsonb_build_object(
+        'invites', (select count(*) from referrals where code is not null and order_id is null),
+        'orders', (select count(*) from referrals where order_id is not null and status <> 'void'),
+        'owed', (select coalesce(sum(reward), 0) from referrals where status = 'eligible')),
+    'requests', (select count(*) from ad_requests where status = 'new'),
+    'magnets', (select coalesce(jsonb_agg(jsonb_build_object('id', m.id, 'name', m.name, 'slug', m.slug, 'views', m.views,
+        'leads', (select count(*) from leads l where l.magnet_id = m.id),
+        'won', (select count(*) from leads l where l.magnet_id = m.id and l.stage = 'won')) order by m.created_at desc), '[]')
+      from lead_magnets m where m.status = 'live')
+  );
+end $$;
+
+-- A marketer's day: the one-page checklist
+create or replace function marketing_today() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare g marketing_goals%rowtype; wk date := date_trunc('week', lusaka_date(now()))::date;
+begin
+  if not can_market() then raise exception 'Not allowed'; end if;
+  select * into g from marketing_goals where user_id = auth.uid();
+  return jsonb_build_object(
+    'goals', jsonb_build_object('outreach_daily', coalesce(g.outreach_daily, 20), 'content_weekly', coalesce(g.content_weekly, 5), 'engaged_weekly', coalesce(g.engaged_weekly, 10)),
+    'outreach_today', (select count(*) from lead_activities where user_id = auth.uid() and kind not in ('note','system') and lusaka_date(created_at) = lusaka_date(now())),
+    'responses_today', (select count(*) from lead_activities where user_id = auth.uid() and outcome in ('interested','follow_up','ordered') and lusaka_date(created_at) = lusaka_date(now())),
+    'content_week', (select count(*) from content_posts where (owner_id = auth.uid() or owner_id is null) and posted_on >= wk),
+    'engaged_week', (select count(distinct lead_id) from lead_activities where user_id = auth.uid() and outcome in ('interested','follow_up','ordered') and lusaka_date(created_at) >= wk),
+    'won_week', (select count(*) from leads where owner_id = auth.uid() and stage = 'won' and lusaka_date(updated_at) >= wk),
+    'due', (select coalesce(jsonb_agg(jsonb_build_object('id', id, 'name', name, 'phone', phone, 'interest', interest, 'stage', stage, 'next_follow_up', next_follow_up, 'channel', channel) order by next_follow_up nulls last, created_at), '[]')
+            from (select * from leads where stage in ('new','contacted','engaged')
+                    and (next_follow_up <= lusaka_date(now()) or (stage = 'new' and last_contact_at is null))
+                    and (owner_id = auth.uid() or owner_id is null or sees_all_leads())
+                  order by next_follow_up nulls last, created_at limit 30) x)
+  );
+end $$;
 
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
@@ -1236,6 +2250,10 @@ alter table settlements enable row level security;
 alter table reviews enable row level security;
 alter table referrals enable row level security;
 alter table leads enable row level security;
+alter table lead_activities enable row level security;
+alter table content_posts enable row level security;
+alter table lead_magnets enable row level security;
+alter table marketing_goals enable row level security;
 alter table expenses enable row level security;
 alter table marketing_spend enable row level security;
 alter table founder_contributions enable row level security;
@@ -1270,7 +2288,7 @@ select ensure_policy('founder_settings_insert', 'settings', 'insert', 'is_founde
 
 -- profiles
 select ensure_policy('own_profile', 'profiles', 'select', 'id = auth.uid() or is_staff()');
-select ensure_policy('own_profile_update', 'profiles', 'update', 'id = auth.uid()', 'id = auth.uid() and role = (select role from profiles where id = auth.uid())');
+select ensure_policy('own_profile_update', 'profiles', 'update', 'id = auth.uid()');
 select ensure_policy('founder_roles', 'profiles', 'update', 'is_founder()');
 
 -- products: public sees published; staff all; vendor own
@@ -1287,13 +2305,24 @@ select ensure_policy('staff_all', 'purchase_items', 'all', 'is_staff()');
 select ensure_policy('staff_all', 'inventory_movements', 'all', 'is_staff()');
 select ensure_policy('staff_all', 'stock_requests', 'all', 'is_staff()');
 select ensure_policy('public_insert', 'stock_requests', 'insert', 'true');
-select ensure_policy('staff_all', 'leads', 'all', 'is_staff()');
+select ensure_policy('staff_all', 'leads', 'all', 'sees_all_leads() or (can_market() and (owner_id = auth.uid() or owner_id is null))');
+select ensure_policy('staff_all', 'lead_activities', 'all', 'exists (select 1 from leads l where l.id = lead_activities.lead_id and (sees_all_leads() or (can_market() and (l.owner_id = auth.uid() or l.owner_id is null))))');
+select ensure_policy('market_all', 'content_posts', 'all', 'can_market()');
+select ensure_policy('market_all', 'lead_magnets', 'all', 'can_market()');
+select ensure_policy('own_goals', 'marketing_goals', 'select', 'user_id = auth.uid() or sees_all_leads()');
+select ensure_policy('set_goals', 'marketing_goals', 'all', 'sees_all_leads()');
 select ensure_policy('staff_all', 'expenses', 'all', 'is_staff()');
-select ensure_policy('staff_all', 'marketing_spend', 'all', 'is_staff()');
+select ensure_policy('staff_all', 'marketing_spend', 'all', 'can_market()');
+alter table campaigns enable row level security;
+alter table ad_requests enable row level security;
+select ensure_policy('staff_all', 'campaigns', 'all', 'can_market()');
+select ensure_policy('staff_all', 'ad_requests', 'all', 'can_market()');
+select ensure_policy('vendor_read_requests', 'ad_requests', 'select', 'vendor_id = my_vendor_id()');
+select ensure_policy('vendor_create_requests', 'ad_requests', 'insert', 'vendor_id = my_vendor_id() and status = ''new'' and reply is null and campaign_id is null');
 select ensure_policy('founder_all', 'founder_contributions', 'all', 'is_founder()');
 select ensure_policy('founder_all', 'founder_withdrawals', 'all', 'is_founder()');
 select ensure_policy('founder_read', 'audit_logs', 'select', 'is_founder()');
-select ensure_policy('staff_all', 'referrals', 'all', 'is_staff()');
+select ensure_policy('staff_all', 'referrals', 'all', 'is_staff() or can_market()');
 select ensure_policy('staff_all', 'payments', 'all', 'is_staff()');
 select ensure_policy('staff_all', 'deliveries', 'all', 'is_staff()');
 
@@ -1305,7 +2334,7 @@ select ensure_policy('staff_offers', 'offers', 'all', 'is_staff()');
 select ensure_policy('apply_vendor', 'vendors', 'insert', 'user_id = auth.uid()');
 select ensure_policy('read_vendor', 'vendors', 'select', 'user_id = auth.uid() or is_staff()');
 select ensure_policy('staff_vendor', 'vendors', 'update', 'is_staff()');
-select ensure_policy('own_vendor_update', 'vendors', 'update', 'user_id = auth.uid()', 'user_id = auth.uid() and status = (select status from vendors v2 where v2.id = vendors.id)');
+select ensure_policy('own_vendor_update', 'vendors', 'update', 'user_id = auth.uid()');
 select ensure_policy('apply_reseller', 'resellers', 'insert', 'user_id = auth.uid()');
 select ensure_policy('read_reseller', 'resellers', 'select', 'user_id = auth.uid() or is_staff()');
 select ensure_policy('staff_reseller', 'resellers', 'update', 'is_staff()');
@@ -1313,10 +2342,10 @@ select ensure_policy('staff_reseller', 'resellers', 'update', 'is_staff()');
 -- orders: staff all; reseller own; vendor when items belong to them
 select ensure_policy('staff_orders', 'orders', 'all', 'is_staff()');
 select ensure_policy('reseller_orders', 'orders', 'select', 'reseller_id = my_reseller_id()');
-select ensure_policy('vendor_orders', 'orders', 'select', 'exists (select 1 from order_items oi where oi.order_id = orders.id and oi.vendor_id = my_vendor_id())');
+drop policy if exists vendor_orders on orders;
 select ensure_policy('staff_items', 'order_items', 'all', 'is_staff()');
-select ensure_policy('reseller_items', 'order_items', 'select', 'exists (select 1 from orders o where o.id = order_items.order_id and o.reseller_id = my_reseller_id())');
-select ensure_policy('vendor_items', 'order_items', 'select', 'vendor_id = my_vendor_id()');
+select ensure_policy('reseller_items', 'order_items', 'select', 'my_reseller_id() is not null and order_reseller(order_id) = my_reseller_id()');
+drop policy if exists vendor_items on order_items;
 
 -- money
 select ensure_policy('staff_commissions', 'commissions', 'all', 'is_staff()');
@@ -1325,7 +2354,7 @@ select ensure_policy('staff_settlements', 'settlements', 'all', 'is_staff()');
 select ensure_policy('vendor_settlements', 'settlements', 'select', 'vendor_id = my_vendor_id()');
 
 -- reviews: public reads approved; staff manage; vendor reads own
-select ensure_policy('read_reviews', 'reviews', 'select', 'approved or is_staff() or vendor_id = my_vendor_id()');
+select ensure_policy('read_reviews', 'reviews', 'select', 'approved or is_staff()');
 select ensure_policy('staff_reviews', 'reviews', 'all', 'is_staff()');
 
 grant usage on schema public to anon, authenticated;
@@ -1341,8 +2370,17 @@ do $$ begin
 end $$;
 grant select on public_products to anon, authenticated;
 grant select on public_offers to anon, authenticated;
+grant select on public_vendors to anon, authenticated;
+grant select on public_magnets to anon, authenticated;
+grant execute on function capture_checkout_lead(text, text, text, text, text) to anon, authenticated;
+grant execute on function claim_magnet(text, text, text, text, text) to anon, authenticated;
+grant execute on function view_magnet(text) to anon, authenticated;
+grant execute on function get_invite(text, int) to anon, authenticated;
+grant execute on function invite_info(text) to anon, authenticated;
 grant select on settings to anon;
 grant execute on function place_order(jsonb) to anon, authenticated;
+grant execute on function booked_slots(uuid, date) to anon, authenticated;
+grant execute on function go_link(text) to anon, authenticated;
 grant execute on function submit_review(int, text, jsonb, text) to anon, authenticated;
 
 -- ---------- Seed: Zambia's provinces and districts ----------

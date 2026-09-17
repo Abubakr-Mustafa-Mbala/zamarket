@@ -7,6 +7,7 @@ import { money, datetime, title, n } from '../../lib/format'
 import { ORDER_NEXT, SOURCES, CHANNELS, PAYMENT_METHODS } from '../../lib/statuses'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Breakdown, Tabs } from '../../components/ui'
 import { useLocations } from '../public/Checkout'
+import { niceDate } from '../../lib/madeToOrder'
 
 const FILTERS = [['', 'All'], ['pending', 'New'], ['active', 'In progress'], ['completed', 'Completed'], ['problem', 'Problems']]
 const ACTIVE = ['confirmed', 'payment_pending', 'paid', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered']
@@ -41,8 +42,9 @@ export function OrdersList() {
           cols={[
             { key: 'order_number', label: '#', render: (r) => <span className="strong">#{r.order_number}</span> },
             { key: 'customer', label: 'Customer', render: (r) => <div><div>{r.customer?.full_name}</div><div className="tiny muted">{r.customer?.phone}</div></div> },
+            { key: 'needed_by', label: 'Needed', render: (r) => r.needed_by ? <span className="strong copper">{niceDate(r.needed_by)}</span> : <span className="muted">—</span> },
             { key: 'where', label: 'Where', render: (r) => <span>{r.district?.name || '—'}{!r.is_local && r.district && <span className="badge warn" style={{ marginLeft: 6 }}>Outside zone</span>}</span> },
-            { key: 'status', label: 'Status', render: (r) => <Badge status={r.status} /> },
+            { key: 'status', label: 'Status', render: (r) => <span className="row"><Badge status={r.status} />{r.risk_flags?.length > 0 && <span className="badge bad" title={r.risk_flags.join(', ')}>!</span>}</span> },
             { key: 'payment_status', label: 'Payment', render: (r) => <Badge status={r.payment_status === 'paid' ? 'paid' : 'pending'}>{title(r.payment_status)}</Badge> },
             { key: 'seller', label: 'Seller', render: (r) => r.reseller ? r.reseller.full_name : 'Founder' },
             { key: 'total', label: 'Total', num: true, render: (r) => money(r.total) },
@@ -79,6 +81,11 @@ export function OrderDetail() {
     setReason('')
     reload()
   }
+  const markCollected = async (item) => {
+    const { error } = await supabase.rpc('vendor_set_item_status', { p_item: item, p_status: 'collected' })
+    if (error) return toast(error.message, true)
+    toast('Marked collected from vendor'); reload()
+  }
   const saveFee = async () => {
     const f = n(fee)
     const { error } = await supabase.from('orders').update({ delivery_fee: f, delivery_fee_status: 'confirmed', total: n(o.subtotal) + f }).eq('id', id)
@@ -99,6 +106,7 @@ export function OrderDetail() {
         <div>
           <div className="row"><h1>Order #{o.order_number}</h1><Badge status={o.status} /><Badge status={o.payment_status === 'paid' ? 'paid' : 'pending'}>{title(o.payment_status)}</Badge></div>
           <p>{datetime(o.created_at)} · {title(o.channel)} · {o.is_manual ? 'Recorded manually' : 'Online checkout'}</p>
+          {o.needed_by && <p className="strong copper">Needed by {niceDate(o.needed_by)}</p>}
         </div>
         <div className="btn-row">
           <Link to={`/admin/orders/${id}/receipt`} className="btn">Print receipt</Link>
@@ -114,7 +122,8 @@ export function OrderDetail() {
           <div className="small">{[o.address, o.area, o.district?.name, o.province?.name].filter(Boolean).join(', ')}</div>
           {o.instructions && <div className="small muted">Note: {o.instructions}</div>}
           {!o.is_local && <span className="badge warn">Outside Lusaka District — confirm delivery by phone</span>}
-          {o.risk_flags?.length > 0 && <span className="badge bad">Flags: {o.risk_flags.join(', ')}</span>}
+          {o.risk_flags?.includes('self_purchase') && <span className="badge bad">Possible self-purchase: the customer's phone matches the reseller. No commission will be paid.</span>}
+          {o.risk_flags?.includes('not_enough_stock') && <span className="badge warn">Ordered more than was in stock. Check stock before confirming.</span>}
         </div>
         <div className="card stack-sm">
           <h3>Attribution</h3>
@@ -125,9 +134,19 @@ export function OrderDetail() {
       <div className="card">
         <h3 className="mb">Items</h3>
         {o.items.map((i) => (
-          <div key={i.id} className="between small" style={{ padding: '4px 0' }}>
-            <span>{i.quantity} × {i.product?.name}{i.offer && <span className="offer-tag" style={{ marginLeft: 6, display: 'inline-block', verticalAlign: 'middle' }}>{i.offer.name}</span>}{advanced && i.product?.owner_type === 'founder' && <span className="muted"> · cost {money(i.unit_cost_snapshot)}/unit</span>}</span>
-            <span className="money">{money(i.line_total)}</span>
+          <div key={i.id} className="stack-sm" style={{ padding: '6px 0', borderBottom: '1px solid var(--line)' }}>
+            <div className="between small">
+              <span>{i.quantity} × {i.product?.name}{i.offer && <span className="offer-tag" style={{ marginLeft: 6, display: 'inline-block', verticalAlign: 'middle' }}>{i.offer.name}</span>}{advanced && i.product?.owner_type === 'founder' && <span className="muted"> · cost {money(i.unit_cost_snapshot)}/unit</span>}</span>
+              <span className="money">{money(i.line_total)}</span>
+            </div>
+            {i.choices && Object.keys(i.choices).length > 0 && <div className="tiny">{Object.entries(i.choices).map(([k, v]) => `${k}: ${v}`).join(' · ')}</div>}
+            {i.note && <div className="tiny">Message: <span className="strong">“{i.note}”</span></div>}
+            {i.vendor_id && (
+              <div className="between tiny">
+                <span className="muted">Vendor: <Badge tone={{ new: 'warn', preparing: 'info', ready: 'ok', collected: 'ok' }[i.vendor_status]}>{{ new: 'Not started', preparing: 'Preparing', ready: 'Ready for collection', collected: 'Collected' }[i.vendor_status]}</Badge></span>
+                {i.vendor_status === 'ready' && <button className="btn sm" onClick={() => markCollected(i.id)}>Mark collected</button>}
+              </div>
+            )}
           </div>
         ))}
         <div className="between small mt"><span>Subtotal</span><span className="money">{money(o.subtotal)}</span></div>
@@ -221,10 +240,12 @@ function PayModal({ order, onClose, onDone }) {
 export function ManualSale({ onClose, onDone, resellerCode }) {
   const toast = useToast()
   const { provinces, districts } = useLocations()
-  const { data: products } = useData(() => q(supabase.from('products').select('id,name,price,stock_available,owner_type').in('status', ['published', 'out_of_stock']).order('name')), [])
+  const { data: products } = useData(() => q(supabase.from('products').select('id,name,price,stock_available,owner_type,fulfilment,lead_time_days').in('status', ['published', 'out_of_stock']).order('name')), [])
   const { data: offers } = useData(() => q(supabase.from('public_offers').select('id,name,type,product_id,units,deal_price').not('type', 'in', '(downsell)')), [])
   const [f, setF] = useState({ full_name: '', phone: '', province_id: '', district_id: '', area: '', address: '', channel: 'whatsapp', source: resellerCode ? `reseller:${resellerCode}` : 'whatsapp', notes: '' })
   const [items, setItems] = useState([{ product_id: '', offer_id: '', quantity: 1 }])
+  const [neededBy, setNeededBy] = useState('')
+  const hasMto = items.some((it) => (products || []).find((p) => p.id === it.product_id)?.fulfilment === 'made_to_order')
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v, ...(k === 'province_id' ? { district_id: '' } : {}) }))
   const dlist = districts.filter((d) => String(d.province_id) === String(f.province_id))
 
@@ -236,6 +257,7 @@ export function ManualSale({ onClose, onDone, resellerCode }) {
       payload: {
         customer: { full_name: f.full_name, phone: f.phone, province_id: f.province_id || null, district_id: f.district_id || null, area: f.area, address: f.address },
         items: clean.map((i) => (i.offer_id ? { product_id: i.product_id, offer_id: i.offer_id, deals: Number(i.quantity) || 1 } : { product_id: i.product_id, quantity: Number(i.quantity) || 1 })),
+        needed_by: hasMto ? neededBy || null : null,
         referral_code: resellerCode || null, source: f.source, channel: f.channel, is_manual: true, notes: f.notes,
       },
     })
@@ -287,7 +309,8 @@ export function ManualSale({ onClose, onDone, resellerCode }) {
           })}
           <button type="button" className="btn sm" onClick={() => setItems([...items, { product_id: '', offer_id: '', quantity: 1 }])}>Add another product</button>
         </div>
-        <Field label="Notes"><Textarea value={f.notes} onChange={set('notes')} rows={2} /></Field>
+        {hasMto && <Field label="Needed by" hint="Made-to-order items need a date"><Input type="date" value={neededBy} onChange={setNeededBy} required /></Field>}
+        <Field label="Notes" hint="Flavours, messages or other details for made-to-order items"><Textarea value={f.notes} onChange={set('notes')} rows={2} /></Field>
         <button className="btn primary block">Record sale</button>
       </form>
     </Modal>

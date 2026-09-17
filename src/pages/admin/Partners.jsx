@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
@@ -30,7 +31,7 @@ export function Vendors() {
     toast(`Vendor ${status}`); setOpen(null); reload()
   }
   const saveVendor = async (v) => {
-    const { error } = await supabase.from('vendors').update({ fee_pct_override: v.fee_pct_override === '' || v.fee_pct_override == null ? null : n(v.fee_pct_override), health: v.health, payout_info: v.payout_info }).eq('id', v.id)
+    const { error } = await supabase.from('vendors').update({ fee_pct_override: v.fee_pct_override === '' || v.fee_pct_override == null ? null : n(v.fee_pct_override), health: v.health, payout_info: v.payout_info, slug: v.slug }).eq('id', v.id)
     if (error) return toast(error.message, true)
     toast('Saved'); setOpen(null); reload()
   }
@@ -61,9 +62,16 @@ function VendorModal({ v: initial, onClose, onReview, onSave, canReview }) {
   return (
     <Modal title={v.business_name} onClose={onClose}>
       <div className="stack">
-        <div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div>
+        <div className="between"><div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div>{v.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/vendor/${v.id}`}>View earnings</Link>}</div>
         <Breakdown items={[['Owner', v.owner_name || '—'], ['Phone', v.phone], ['Email', v.email || '—'], ['Location', v.location || '—'], ['Category', v.category || '—'], ['Delivers?', v.delivery_capability || '—'], ['Returns policy', v.return_policy || '—'], ['Links', v.links || '—'], ['Licences', v.licenses || '—'], ['Payout details', v.payout_info || '—'], ['Agreed to terms', v.agreed_terms ? 'Yes' : 'No']]} />
         {v.description && <div className="small"><span className="strong">What they sell:</span> {v.description}</div>}
+        {v.slug && v.status === 'approved' && (
+          <div className="stack-sm">
+            <div className="tiny muted">Store link</div>
+            <CopyLine text={`${window.location.origin}/${v.slug}`} />
+            {canReview && <div className="row"><Input value={v.slug} onChange={set('slug')} style={{ maxWidth: 220 }} /><button className="btn sm" onClick={() => onSave(v)}>Change link</button></div>}
+          </div>
+        )}
         {v.status === 'approved' && (
           <div className="card flat form-grid">
             <Field label="Fee override (%)" hint="Empty = global fee"><Input type="number" value={v.fee_pct_override} onChange={set('fee_pct_override')} /></Field>
@@ -141,7 +149,7 @@ export function Resellers() {
       {open && (
         <Modal title={open.full_name} onClose={() => setOpen(null)}>
           <div className="stack">
-            <div className="row"><Badge status={open.status} /></div>
+            <div className="between"><Badge status={open.status} />{open.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/reseller/${open.id}`}>View earnings</Link>}</div>
             <Breakdown items={[['Phone', open.phone], ['Email', open.email || '—'], ['Location', open.location || '—'], ['Wants to sell', open.categories || '—'], ['Agreed to terms', open.agreed_terms ? 'Yes' : 'No'], ['Applied', date(open.created_at)]]} />
             {open.experience && <div className="small"><span className="strong">Experience:</span> {open.experience}</div>}
             {open.code && <div><div className="tiny muted mb">Referral link</div><CopyLine text={`${window.location.origin}/r/${open.code}`} /></div>}

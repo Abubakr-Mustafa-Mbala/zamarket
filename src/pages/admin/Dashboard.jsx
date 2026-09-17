@@ -48,7 +48,7 @@ export default function Dashboard() {
       </div>
 
       <div className="grid-4">
-        <Stat hero label={`Net profit · ${RANGES[days].toLowerCase()}`} value={money(netProfit)} sub={`${pct(marginPct)} of completed revenue`} />
+        <Stat hero label={<>Net profit · {RANGES[days].toLowerCase()} <Link to="/admin/earnings" style={{ color: '#9fd8bd' }}>chart ›</Link></>} value={money(netProfit)} sub={`${pct(marginPct)} of completed revenue`} />
         <Stat label="Revenue (completed orders)" value={money(s.revenue_completed)} sub={`${num(s.completed)} of ${num(s.orders)} orders completed`} />
         <Stat label="Orders" value={num(s.orders)} sub={`Average order ${money(aov)}`} />
         <Stat label="Stock on hand" value={money(s.inventory_value)} sub={`${num(s.low_stock)} low · ${num(s.waiting_demand)} waiting requests`} />

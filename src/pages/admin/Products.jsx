@@ -4,7 +4,7 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, pct, slugify, n, title } from '../../lib/format'
 import { margin, markup, priceFromMargin, priceFromMarkup, unitEconomics, light } from '../../lib/economics'
-import { CATEGORIES } from '../../lib/statuses'
+import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
 import { uploadPhoto } from '../../lib/photos'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
@@ -50,7 +50,7 @@ export default function Products() {
 export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const toast = useToast()
   const { settings, advanced, user, isStaff } = useAuth()
-  const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n') })
+  const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n'), fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days ?? 0, time_slots_text: (product.time_slots || []).join(', '), service_location: product.service_location || 'at_seller', slot_capacity: product.slot_capacity ?? 1, order_days: product.order_days || [], options_text: (product.options || []).map((o) => `${o.name}: ${(o.choices || []).join(', ')}`).join('\n') })
   const [calc, setCalc] = useState({ mode: 'markup', value: settings.target_markup_pct ?? 50 })
   const [uploading, setUploading] = useState(false)
   const set = (k) => (v) => setP((c) => ({ ...c, [k]: v }))
@@ -76,7 +76,17 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       cost_override: p.cost_override === '' || p.cost_override == null ? null : n(p.cost_override),
       packaging_cost: p.packaging_cost === '' || p.packaging_cost == null ? null : n(p.packaging_cost),
       commission_type: p.commission_type || null, commission_value: p.commission_type ? n(p.commission_value) : null,
-      status: status || p.status, rejection_reason: p.rejection_reason || null,
+      fulfilment: p.fulfilment || 'in_stock',
+      lead_time_days: p.fulfilment !== 'in_stock' ? Math.max(0, parseInt(p.lead_time_days) || 0) : 0,
+      order_days: p.fulfilment !== 'in_stock' && p.order_days?.length && p.order_days.length < 7 ? p.order_days : null,
+      daily_limit: p.fulfilment !== 'in_stock' && p.daily_limit ? Math.max(1, parseInt(p.daily_limit)) : null,
+      time_slots: p.fulfilment === 'service' ? (p.time_slots_text || '').split(',').map((t) => t.trim()).filter(Boolean) : null,
+      slot_capacity: p.fulfilment === 'service' ? Math.max(1, parseInt(p.slot_capacity) || 1) : 1,
+      service_location: p.fulfilment === 'service' ? p.service_location || 'at_seller' : null,
+      duration_text: p.fulfilment === 'service' ? (p.duration_text || '').trim() || null : null,
+      options: p.options_text.split('\n').filter((l) => l.includes(':')).map((l) => { const [name, rest] = l.split(':'); return { name: name.trim(), choices: rest.split(',').map((c) => c.trim()).filter(Boolean) } }).filter((o) => o.name && o.choices.length),
+      note_label: (p.note_label || '').trim() || null,
+      status: status || (vendorMode && !['draft', 'submitted'].includes(p.status) ? 'draft' : p.status), rejection_reason: p.rejection_reason || null,
     }
     if (isNew) { row.owner_type = vendorMode ? 'vendor' : 'founder'; row.created_by = user.id; if (vendorMode) row.vendor_id = vendorMode }
     const res = isNew ? await supabase.from('products').insert(row) : await supabase.from('products').update(row).eq('id', p.id)
@@ -116,6 +126,44 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
             </div>
           </Field>
           <Field label="FAQs (one per line: question | answer)" span><Textarea value={p.faqs_text} onChange={set('faqs_text')} rows={2} /></Field>
+          <div className="span card flat stack-sm">
+            <div className="between">
+              <h3>How is it sold?</h3>
+              <Segmented options={[['in_stock', 'Ready in stock'], ['made_to_order', 'Made to order'], ['service', 'Service / booking']]} value={p.fulfilment} onChange={set('fulfilment')} />
+            </div>
+            {p.fulfilment !== 'in_stock' ? (
+              <div className="form-grid">
+                {p.fulfilment === 'service' && <>
+                  <Field label="Where does it happen?"><Select value={p.service_location} onChange={set('service_location')} options={[['at_seller', "At the seller's place"], ['at_customer', "At the customer's place"], ['online', 'Online / by phone']]} /></Field>
+                  <Field label="How long does it take? (optional)"><Input value={p.duration_text} onChange={set('duration_text')} placeholder="e.g. About 2 hours" /></Field>
+                  <Field label="Times customers can book (optional)" hint="Separate with commas, e.g. 09:00, 11:00, 14:00. Leave empty for any time that day." span><Input value={p.time_slots_text} onChange={set('time_slots_text')} /></Field>
+                  <Field label="Bookings per time"><Input type="number" min="1" value={p.slot_capacity} onChange={set('slot_capacity')} /></Field>
+                </>}
+                <Field label={p.fulfilment === 'service' ? 'Book how many days ahead?' : 'Order how many days ahead?'} hint="0 = the same day is fine"><Input type="number" min="0" value={p.lead_time_days} onChange={set('lead_time_days')} /></Field>
+                <Field label={p.fulfilment === 'service' ? 'Most bookings per day (optional)' : 'Most you can make per day (optional)'}><Input type="number" min="1" value={p.daily_limit} onChange={set('daily_limit')} placeholder="No limit" /></Field>
+                <Field label={p.fulfilment === 'service' ? 'Days you work' : 'Days you make it'} span>
+                  <div className="chips wrap">
+                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d, i) => {
+                      const on = !p.order_days?.length || p.order_days.includes(i)
+                      const toggle = () => {
+                        const cur = p.order_days?.length ? p.order_days : [0, 1, 2, 3, 4, 5, 6]
+                        const next = cur.includes(i) ? cur.filter((x) => x !== i) : [...cur, i].sort()
+                        set('order_days')(next.length === 7 ? [] : next)
+                      }
+                      return <button key={d} type="button" className={`chip ${on ? 'on' : ''}`} onClick={toggle}>{d}</button>
+                    })}
+                  </div>
+                </Field>
+                <Field label="Choices customers pick (one per line)" hint="e.g. Flavour: Vanilla, Chocolate, Red velvet" span><Textarea value={p.options_text} onChange={set('options_text')} rows={2} /></Field>
+                <Field label="Question for the customer (optional)" hint={p.fulfilment === 'service' ? 'e.g. Anything we should know? Leave empty for none.' : 'e.g. Message on the cake. Leave empty for none.'} span><Input value={p.note_label} onChange={set('note_label')} /></Field>
+              </div>
+            ) : (
+              <>
+                <p className="small muted">Customers can order it while it's in stock.</p>
+                <Field label="Choices customers pick (optional, one per line)" hint="e.g. Colour: Black, Blue"><Textarea value={p.options_text} onChange={set('options_text')} rows={2} /></Field>
+              </>
+            )}
+          </div>
         </div>
 
         {!vendorMode && (

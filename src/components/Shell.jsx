@@ -30,6 +30,7 @@ const STAFF_NAV = [
   { to: '/admin/marketing', label: 'Marketing' },
   { to: '/admin/reviews', label: 'Reviews' },
   { group: 'Money' },
+  { to: '/admin/earnings', label: 'Earnings' },
   { to: '/admin/finance', label: 'Finance' },
   { to: '/admin/reports', label: 'Reports' },
   { group: 'Setup', founder: true },
@@ -42,6 +43,7 @@ const RESELLER_NAV = [
   { to: '/sell', label: 'My sales', end: true },
   { to: '/sell/products', label: 'Products to sell' },
   { to: '/sell/new-sale', label: 'Record a sale' },
+  { to: '/sell/earnings', label: 'My earnings' },
   { to: '/sell/commissions', label: 'Commissions' },
 ]
 
@@ -49,37 +51,60 @@ const VENDOR_NAV = [
   { to: '/vendor', label: 'Overview', end: true },
   { to: '/vendor/products', label: 'My products' },
   { to: '/vendor/orders', label: 'Orders' },
+  { to: '/vendor/earnings', label: 'My earnings' },
   { to: '/vendor/payouts', label: 'Payouts' },
+  { to: '/vendor/marketing', label: 'Share and advertise' },
+]
+
+const MARKETING_NAV = [
+  { group: 'Marketing' },
+  { to: '/admin/marketing', label: 'Overview', end: true },
+  { to: '/admin/marketing/today', label: 'Today' },
+  { to: '/admin/marketing/leads', label: 'Leads' },
+  { to: '/admin/marketing/campaigns', label: 'Campaigns' },
+  { to: '/admin/marketing/content', label: 'Content' },
+  { to: '/admin/marketing/magnets', label: 'Lead magnets' },
+  { to: '/admin/marketing/referrals', label: 'Referrals' },
+  { to: '/admin/marketing/requests', label: 'Vendor requests' },
+  { to: '/admin/marketing/spend', label: 'Ad spend' },
 ]
 
 const MOBILE_TABS = {
+  marketing: [
+    { to: '/admin/marketing', label: 'Overview', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>, end: true },
+    { to: '/admin/marketing/today', label: 'Today', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9" /><path d="m8 12 3 3 5-6" /></svg> },
+    { to: '/admin/marketing/leads', label: 'Leads', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.7.8 2.7 2.6 3 5.2" /></svg> },
+    { to: '/admin/marketing/campaigns', label: 'Campaigns', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 11v3l12 5V6L3 11ZM15 9c2 0 4 1.3 4 3.5S17 16 15 16M6 15l1.5 5h3L9 16" /></svg> },
+  ],
   staff: [
     { to: '/admin', label: 'Home', icon: I.home, end: true },
     { to: '/admin/orders', label: 'Orders', icon: I.cart },
     { to: '/admin/products', label: 'Products', icon: I.box },
-    { to: '/admin/finance', label: 'Money', icon: I.coins },
+    { to: '/admin/earnings', label: 'Earnings', icon: I.coins },
   ],
   reseller: [
     { to: '/sell', label: 'Sales', icon: I.home, end: true },
     { to: '/sell/products', label: 'Products', icon: I.box },
     { to: '/sell/new-sale', label: 'New sale', icon: I.cart },
-    { to: '/sell/commissions', label: 'Earnings', icon: I.coins },
+    { to: '/sell/earnings', label: 'Earnings', icon: I.coins },
   ],
   vendor: [
     { to: '/vendor', label: 'Home', icon: I.home, end: true },
     { to: '/vendor/products', label: 'Products', icon: I.box },
     { to: '/vendor/orders', label: 'Orders', icon: I.cart },
-    { to: '/vendor/payouts', label: 'Payouts', icon: I.coins },
+    { to: '/vendor/earnings', label: 'Earnings', icon: I.coins },
   ],
 }
 
 export default function Shell({ kind }) {
   const { profile, isFounder, advanced, setAdvanced, signOut } = useAuth()
   const [more, setMore] = useState(false)
-  const nav = (kind === 'staff' ? STAFF_NAV : kind === 'reseller' ? RESELLER_NAV : VENDOR_NAV).filter(
+  const { role } = useAuth()
+  const marketer = kind === 'staff' && role === 'marketing'
+  const nav = (marketer ? MARKETING_NAV : kind === 'staff' ? STAFF_NAV : kind === 'reseller' ? RESELLER_NAV : VENDOR_NAV).filter(
     (n) => (!n.founder || isFounder) && (!n.advanced || advanced)
-  )
-  const tabs = MOBILE_TABS[kind]
+  ).filter((n, i, arr) => !n.group || (arr[i + 1] && arr[i + 1].to))
+  const tabs = marketer ? MOBILE_TABS.marketing : MOBILE_TABS[kind]
   const links = nav.filter((n) => n.to)
 
   return (
@@ -101,7 +126,7 @@ export default function Shell({ kind }) {
             <span className="strong">{profile?.full_name || profile?.email}</span>
             <span className="badge">{profile?.role}</span>
           </div>
-          {kind === 'staff' && (
+          {kind === 'staff' && !marketer && (
             <div className="segmented">
               <button className={!advanced ? 'on' : ''} onClick={() => setAdvanced(false)}>Simple</button>
               <button className={advanced ? 'on' : ''} onClick={() => setAdvanced(true)}>Advanced</button>

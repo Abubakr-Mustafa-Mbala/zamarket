@@ -58,7 +58,7 @@ export function Deliveries() {
   const [tab, setTab] = useState('todo')
   const [edit, setEdit] = useState(null)
   const { data, loading, reload } = useData(() => q(
-    supabase.from('deliveries').select('*,assignee:profiles(full_name),order:orders!inner(id,order_number,status,total,delivery_fee,delivery_fee_status,is_local,area,address,customer:customers(full_name,phone),district:districts(name))').order('created_at', { ascending: false }).limit(300)
+    supabase.from('deliveries').select('*,assignee:profiles(full_name),order:orders!inner(id,order_number,needed_by,status,total,delivery_fee,delivery_fee_status,is_local,area,address,customer:customers(full_name,phone),district:districts(name))').order('created_at', { ascending: false }).limit(300)
   ), [])
   const rows = (data || []).filter((d) => {
     const s = d.order.status
@@ -76,6 +76,7 @@ export function Deliveries() {
           { key: 'order', label: 'Order', render: (d) => <span className="strong">#{d.order.order_number}</span> },
           { key: 'customer', label: 'Customer', render: (d) => <div>{d.order.customer?.full_name}<div className="tiny muted">{d.order.customer?.phone}</div></div> },
           { key: 'where', label: 'Where', render: (d) => <div>{[d.order.area, d.order.district?.name].filter(Boolean).join(', ')}{!d.order.is_local && <div><span className="badge warn">Outside zone</span></div>}</div> },
+          { key: 'needed', label: 'Needed', render: (d) => d.order.needed_by ? <span className="strong copper">{new Date(d.order.needed_by + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span> : '—' },
           { key: 'status', label: 'Order status', render: (d) => <Badge status={d.order.status} /> },
           { key: 'fee', label: 'Fee', num: true, render: (d) => <span className={d.order.delivery_fee_status !== 'confirmed' ? 'warn' : ''}>{money(d.order.delivery_fee)}{d.order.delivery_fee_status !== 'confirmed' ? ' ?' : ''}</span> },
           { key: 'who', label: 'By', render: (d) => d.courier || d.assignee?.full_name || '—' },

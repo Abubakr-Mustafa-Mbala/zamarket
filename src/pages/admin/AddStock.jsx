@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, n } from '../../lib/format'
 import { pricing } from '../../lib/economics'
 import { uploadPhoto } from '../../lib/photos'
-import { CATEGORIES } from '../../lib/statuses'
+import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
 import { useToast } from '../../components/ui'
 
 const STEPS = ['What', 'How many', 'Costs', 'Price', 'Done']

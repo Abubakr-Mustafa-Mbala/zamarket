@@ -79,6 +79,40 @@ Build offers in **Offers**. Each shows profit per deal and a preview of what cus
 - **Prices are set by the database, not the browser.** Offer dates and unit limits are enforced at checkout, units are given back if an order is cancelled, and offers below the price floor can't go live without a founder override and a reason.
 - Manual sales (WhatsApp, phone) can apply an offer too.
 
+## Three ways to sell
+
+Every product is one of: **Ready in stock** (stock is counted and delivered), **Made to order** (customer picks a date; days ahead, working days and a daily limit are enforced), or **Service / booking** (customer picks a date and time; taken times are greyed out; at the customer's place, the seller's place, or online; no delivery fee). Choices (flavour, colour, size) and a question for the customer work with all three.
+
+## Made-to-order sellers (bakers, cooks, custom work)
+
+In the product editor choose **Made to order**, then set how many days ahead customers must order, which days you make it, an optional daily limit, choices (e.g. `Flavour: Vanilla, Chocolate`) and an optional message box (e.g. "Message on the cake"). Customers pick choices, write the message and choose a date at checkout; the database refuses dates that are too soon, on days off, or fully booked. Every vendor gets a store page at `/store/<id>` showing their products grouped by category, like a menu.
+
+## What vendors can see
+
+Customers pay ZaMarket for ZaMarket orders. Vendors work from an **Order desk**:
+
+- **As soon as an order comes in:** the customer's name, their area, what they ordered (with choices and messages), the date needed or booked, and how many times this customer has ordered from them before.
+- **Once ZaMarket confirms the order:** the customer's phone number and address, so the vendor can prepare, deliver or serve them and build a relationship.
+- **Never:** direct access to the customers or orders tables, other vendors' orders, or any customer before confirmation.
+
+Vendors mark items *Preparing* → *Ready*; your team marks them *Collected*. The vendor agreement says ZaMarket orders are paid through ZaMarket.
+
+## Earnings tracker
+
+Everyone has an **Earnings** page with a chart, a date picker (today, 7 days, 30 days, this month, last month, this year, or any dates), daily/weekly/monthly views, "▲ up / ▼ down vs the previous period", and the full records underneath with a **Download** button (opens in Excel or Google Sheets).
+
+- **Founders** (`/admin/earnings`): profit, sales, orders, cash received, unpaid orders, expenses & ads. The **Resellers & vendors** tab shows how every partner is doing; tap one to see exactly the tracker they see.
+- **Resellers** (`/sell/earnings`): commission earned, paid, waiting, sales.
+- **Vendors** (`/vendor/earnings`): earnings, paid, waiting, sales, marketplace fees.
+
+Everyone only sees their own numbers; the database enforces this. Dates follow Zambian time.
+
+## Updating an existing deployment
+
+1. Upload the new `zamarket.zip` to the repo, then in Codespaces ask the AI: *"Unzip zamarket.zip, copy everything inside the extracted zamarket folder over the repository root replacing existing files, delete the zip and the extracted folder, commit and push to main."*
+2. In Supabase SQL Editor, run the new `supabase/schema.sql` again. It's safe to re-run and keeps your data.
+3. Netlify redeploys by itself after the push.
+
 ## Receipts
 
 Open any order → **Print receipt** (also **Delivery note** in Deliveries). Choose 58mm, 80mm or A4 and press Print. It shows items, offers, delivery, payments, balance due for cash-on-delivery, and signature lines.

@@ -13,17 +13,35 @@ function load() {
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState(load)
-  const [ref, setRefState] = useState(() => localStorage.getItem('zm-ref') || '')
+  // Who gets credit: the last link the customer arrived through (reseller /r/..., store /store-name, campaign /go/...), kept 30 days.
+  const readTouch = () => {
+    try {
+      const t = JSON.parse(localStorage.getItem('zm-touch') || 'null')
+      if (t && Date.now() - t.at < 30 * 864e5) return t
+    } catch { /* ignore */ }
+    const legacy = localStorage.getItem('zm-ref')
+    return legacy ? { type: 'reseller', code: legacy, at: Date.now() } : null
+  }
+  const [touch, setTouchState] = useState(readTouch)
+  const setTouch = (t) => { const v = { ...t, at: Date.now() }; localStorage.setItem('zm-touch', JSON.stringify(v)); localStorage.removeItem('zm-ref'); setTouchState(v) }
+  const ref = touch?.type === 'reseller' ? touch.code : ''
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(items)) }, [items])
 
-  // offer: a public_offers row (optional)
-  const add = (product, qty = 1, offer = null) => setItems((cur) => {
-    const key = offer ? `${product.id}:${offer.id}` : product.id
+  // offer: a public_offers row (optional); extra: { choices: {Flavour: 'Vanilla'}, note: 'Happy birthday' }
+  const add = (product, qty = 1, offer = null, extra = {}) => setItems((cur) => {
+    const choices = extra.choices || {}
+    const note = (extra.note || '').trim()
+    const detail = Object.keys(choices).length || note ? `:${JSON.stringify(choices)}:${note}` : ''
+    const key = (offer ? `${product.id}:${offer.id}` : product.id) + detail
     const i = cur.findIndex((x) => x.key === key)
     if (i >= 0) return cur.map((x, k) => (k === i ? { ...x, qty: x.qty + qty } : x))
     const line = {
       key, id: product.id, name: product.name, image: product.images?.[0] || null, qty,
       price: Number(product.price), units: 1, normalValue: Number(product.normal_price || product.price),
+      choices, note,
+      fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days || 0, order_days: product.order_days || null,
+      time_slots: product.time_slots || null, service_location: product.service_location || null, duration_text: product.duration_text || null,
+      vendor_name: product.vendor_name || null,
     }
     if (offer) {
       Object.assign(line, {
@@ -35,14 +53,32 @@ export function CartProvider({ children }) {
     }
     return [...cur, line]
   })
+  const setChoice = (key, name, value) => setItems((cur) => cur.map((x) => (x.key === key ? { ...x, choices: { ...(x.choices || {}), [name]: value } } : x)))
   const setQty = (key, qty) => setItems((cur) => (qty <= 0 ? cur.filter((x) => x.key !== key) : cur.map((x) => (x.key === key ? { ...x, qty } : x))))
   const clear = () => setItems([])
-  const setRef = (code) => { localStorage.setItem('zm-ref', code); setRefState(code) }
+  const setRef = (code) => setTouch({ type: 'reseller', code })
+  const setStoreRef = (slug) => { if (!(touch?.type === 'campaign' && touch.store === slug)) setTouch({ type: 'store', code: slug }) }
+  const setCampaign = (code, store) => setTouch({ type: 'campaign', code, store: store || null })
+  const setInvite = (code) => setTouch({ type: 'invite', code })
+  const attribution = () => ({
+    referral_code: touch?.type === 'reseller' ? touch.code : null,
+    store_ref: touch?.type === 'store' ? touch.code : null,
+    campaign_code: touch?.type === 'campaign' ? touch.code : null,
+    invite_code: touch?.type === 'invite' ? touch.code : null,
+    source: touch?.type === 'reseller' ? `reseller:${touch.code}` : touch?.type === 'store' ? `vendor:${touch.code}` : touch?.type === 'campaign' ? `campaign:${touch.code}` : touch?.type === 'invite' ? `referral:${touch.code}` : 'organic',
+  })
   const count = items.reduce((s, x) => s + x.qty * (x.units || 1), 0)
   const subtotal = items.reduce((s, x) => s + x.qty * x.price, 0)
   const savings = items.reduce((s, x) => s + x.qty * Math.max(0, (x.normalValue || x.price) - x.price), 0)
-  const payload = () => items.map((x) => (x.offer_id ? { product_id: x.id, offer_id: x.offer_id, deals: x.qty } : { product_id: x.id, quantity: x.qty }))
-  return <Ctx.Provider value={{ items, add, setQty, clear, count, subtotal, savings, payload, ref, setRef }}>{children}</Ctx.Provider>
+  const payload = () => items.map((x) => ({
+    ...(x.offer_id ? { product_id: x.id, offer_id: x.offer_id, deals: x.qty } : { product_id: x.id, quantity: x.qty }),
+    ...(x.choices && Object.keys(x.choices).length ? { choices: x.choices } : {}),
+    ...(x.note ? { note: x.note } : {}),
+  }))
+  const madeToOrder = items.filter((x) => x.fulfilment === 'made_to_order' || x.fulfilment === 'service')
+  const needsAddress = items.some((x) => x.fulfilment !== 'service' || x.service_location === 'at_customer')
+  const needsDelivery = items.some((x) => x.fulfilment !== 'service')
+  return <Ctx.Provider value={{ items, add, setQty, clear, count, subtotal, savings, payload, madeToOrder, needsAddress, needsDelivery, setChoice, ref, setRef, touch, setStoreRef, setCampaign, setInvite, attribution }}>{children}</Ctx.Provider>
 }
 
 export const useCart = () => useContext(Ctx)

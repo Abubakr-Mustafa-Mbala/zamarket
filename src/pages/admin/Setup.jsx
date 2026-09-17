@@ -65,7 +65,7 @@ export function Reports() {
 }
 
 // ---------------- Team ----------------
-const ROLES = ['founder', 'ops', 'finance', 'delivery', 'vendor', 'reseller', 'customer']
+const ROLES = ['founder', 'ops', 'finance', 'delivery', 'marketing', 'vendor', 'reseller', 'customer']
 export function Team() {
   const toast = useToast()
   const { user } = useAuth()
@@ -80,7 +80,7 @@ export function Team() {
   }
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Team</h1><p>Who can do what. Founder: everything. Ops: orders, products, stock. Finance: money. Delivery: deliveries. Vendor and reseller roles are granted by approving applications.</p></div><Input value={search} onChange={setSearch} placeholder="Search" style={{ maxWidth: 220 }} /></div>
+      <div className="page-head"><div><h1>Team</h1><p>Who can do what. Founder: everything. Ops: orders, products, stock. Finance: money. Delivery: deliveries. Marketing: campaigns, offers, resellers and vendors. Vendor and reseller roles are granted by approving applications.</p></div><Input value={search} onChange={setSearch} placeholder="Search" style={{ maxWidth: 220 }} /></div>
       {loading ? <Loading /> : (
         <Table rows={rows} cols={[
           { key: 'full_name', label: 'Person', render: (p) => <div><div className="strong">{p.full_name || '—'}</div><div className="tiny muted">{p.email}{p.phone ? ` · ${p.phone}` : ''}</div></div> },
@@ -94,10 +94,12 @@ export function Team() {
 
 // ---------------- Settings ----------------
 const FIELDS = [
+  { key: 'referral_reward', label: 'Reward for a customer when a friend they invited completes a first order (K)', type: 'number' },
   { key: 'business_name', label: 'Business name (on receipts)', type: 'text' },
   { key: 'business_phone', label: 'Business phone (on receipts)', type: 'text' },
   { key: 'receipt_footer', label: 'Receipt footer message', type: 'text' },
   { key: 'marketplace_fee_pct', label: 'Marketplace fee charged to vendors (%)', type: 'number' },
+  { key: 'own_audience_fee_pct', label: 'Lower fee when a vendor brings the customer through their own link (%)', type: 'number' },
   { key: 'default_commission_pct', label: 'Default reseller commission (%)', type: 'number' },
   { key: 'commission_source', label: 'Where the reseller commission comes from', type: 'select', options: [['from_fee', 'Out of the marketplace fee (vendor still pays the full fee)'], ['on_top', 'On top of the fee (vendor pays fee + commission)']] },
   { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number' },
