@@ -31,8 +31,9 @@ export function CartProvider({ children }) {
   const add = (product, qty = 1, offer = null, extra = {}) => setItems((cur) => {
     const choices = extra.choices || {}
     const note = (extra.note || '').trim()
+    const pkg = extra.package || null
     const detail = Object.keys(choices).length || note ? `:${JSON.stringify(choices)}:${note}` : ''
-    const key = (offer ? `${product.id}:${offer.id}` : product.id) + detail
+    const key = (offer ? `${product.id}:${offer.id}` : product.id) + (pkg ? `:pkg:${pkg.id}` : '') + detail
     const i = cur.findIndex((x) => x.key === key)
     if (i >= 0) return cur.map((x, k) => (k === i ? { ...x, qty: x.qty + qty } : x))
     const line = {
@@ -43,6 +44,7 @@ export function CartProvider({ children }) {
       time_slots: product.time_slots || null, service_location: product.service_location || null, duration_text: product.duration_text || null,
       vendor_name: product.vendor_name || null,
     }
+    if (pkg) Object.assign(line, { package_id: pkg.id, package_name: pkg.name, name: `${product.name} — ${pkg.name}`, price: Number(pkg.price), normalValue: Number(pkg.normal_price || pkg.price) })
     if (offer) {
       Object.assign(line, {
         offer_id: offer.id, offer_name: offer.name, offer_type: offer.type,
@@ -72,6 +74,7 @@ export function CartProvider({ children }) {
   const savings = items.reduce((s, x) => s + x.qty * Math.max(0, (x.normalValue || x.price) - x.price), 0)
   const payload = () => items.map((x) => ({
     ...(x.offer_id ? { product_id: x.id, offer_id: x.offer_id, deals: x.qty } : { product_id: x.id, quantity: x.qty }),
+    ...(x.package_id ? { package_id: x.package_id } : {}),
     ...(x.choices && Object.keys(x.choices).length ? { choices: x.choices } : {}),
     ...(x.note ? { note: x.note } : {}),
   }))

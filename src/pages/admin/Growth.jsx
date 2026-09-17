@@ -171,7 +171,7 @@ export function CampaignEditor({ campaign, onClose, onDone }) {
   const set = (k) => (v) => setC((x) => ({ ...x, [k]: v }))
   const { data: refs } = useData(async () => ({
     vendors: await q(supabase.from('public_vendors').select('id,business_name,slug').order('business_name')),
-    products: await q(supabase.from('products').select('id,name,slug,vendor_id').in('status', ['published', 'out_of_stock']).order('name')),
+    products: await q(supabase.from('public_products').select('id,name,slug,vendor_id').order('name')),
   }), [])
   const vendor = (refs?.vendors || []).find((v) => v.id === c.vendor_id)
   const destinations = [

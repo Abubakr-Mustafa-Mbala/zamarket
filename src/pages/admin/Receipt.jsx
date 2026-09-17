@@ -4,12 +4,15 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, n, title } from '../../lib/format'
-import { Loading, Segmented } from '../../components/ui'
+import { Loading, Segmented, useToast } from '../../components/ui'
+import { btSupported, receiptBytes, printBytes } from '../../lib/thermal'
 
 export default function Receipt() {
   const { id } = useParams()
   const { settings } = useAuth()
   const [size, setSize] = useState(() => localStorage.getItem('zm-receipt-size') || '80')
+  const [printing, setPrinting] = useState(false)
+  const toast = useToast()
   const { data: o, loading } = useData(() => q(
     supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,choices,note,product:products(name,normal_price,price),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
   ), [id])
@@ -20,15 +23,36 @@ export default function Receipt() {
   const savings = o.items.reduce((t, i) => t + Math.max(0, n(i.product?.normal_price || i.product?.price) * i.quantity - n(i.line_total)), 0)
   const biz = settings.business_name || 'ZaMarket'
   const pick = (v) => { setSize(v); localStorage.setItem('zm-receipt-size', v) }
+  const bluetooth = async () => {
+    setPrinting(true)
+    try {
+      const data = receiptBytes(o, {
+        width: size === '58' ? 32 : 48,
+        business: settings.business_name || 'ZaMarket',
+        phone: settings.business_phone,
+        footer: settings.receipt_footer || 'Thank you!',
+        reviewLink: `${window.location.host}/review`,
+      })
+      const id = await printBytes(data, localStorage.getItem('zm-printer'))
+      localStorage.setItem('zm-printer', id)
+      toast('Sent to the printer')
+    } catch (e) {
+      if (e.name !== 'NotFoundError') toast(e.message, true)
+    } finally { setPrinting(false) }
+  }
+  const forget = () => { localStorage.removeItem('zm-printer'); toast('Printer forgotten. You will pick it again next time.') }
 
   return (
     <div className={`receipt-page size-${size}`}>
       <div className="receipt-tools no-print">
         <Link to={`/admin/orders/${id}`} className="btn ghost sm">Back</Link>
         <Segmented options={[['58', '58mm'], ['80', '80mm'], ['a4', 'A4']]} value={size} onChange={pick} />
+        {btSupported() && <button className="btn buy sm" onClick={bluetooth} disabled={printing}>{printing ? 'Printing…' : 'Bluetooth printer'}</button>}
         <button className="btn primary sm" onClick={() => window.print()}>Print</button>
       </div>
 
+      {btSupported() && localStorage.getItem('zm-printer') && <div className="no-print tiny muted" style={{ textAlign: 'center', marginBottom: 8 }}>Using your saved printer. <button className="btn ghost sm" onClick={forget}>Use a different one</button></div>}
+      {!btSupported() && <div className="no-print tiny muted" style={{ textAlign: 'center', marginBottom: 8 }}>For your Bluetooth receipt printer, open this page in Chrome on Android or on a PC.</div>}
       <div className="receipt">
         <div className="r-center">
           <div className="r-biz">{biz}</div>

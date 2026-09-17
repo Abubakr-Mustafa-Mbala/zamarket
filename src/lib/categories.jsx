@@ -11,6 +11,9 @@ export const DEPARTMENTS = [
   { name: 'Kids & baby', icon: <svg viewBox="0 0 32 32" {...S}><circle cx="16" cy="17" r="9" /><circle cx="12.5" cy="15.5" r=".6" fill="currentColor" /><circle cx="19.5" cy="15.5" r=".6" fill="currentColor" /><path d="M13 20.5c1.8 1.4 4.2 1.4 6 0M16 8c0-2 2-3 3-2" /></svg> },
   { name: 'Health', icon: <svg viewBox="0 0 32 32" {...S}><path d="M16 27s-10-6-10-13a5.5 5.5 0 0 1 10-3 5.5 5.5 0 0 1 10 3c0 7-10 13-10 13Z" /><path d="M16 13v6M13 16h6" /></svg> },
   { name: 'Tools & hardware', icon: <svg viewBox="0 0 32 32" {...S}><path d="M19.5 6.5a5 5 0 0 0-6.2 6.4L5.5 20.7a2.1 2.1 0 0 0 3 3l7.8-7.8a5 5 0 0 0 6.4-6.2l-3 3-3-.9-.9-3 3.7-2.3Z" /></svg> },
+  { name: 'Courses & training', icon: <svg viewBox="0 0 32 32" {...S}><path d="M3 12 16 6l13 6-13 6-13-6Z" /><path d="M8 14.5V21c0 2 3.6 4 8 4s8-2 8-4v-6.5M29 12v8" /></svg> },
+  { name: 'Vehicles', icon: <svg viewBox="0 0 32 32" {...S}><path d="M5 20v-4l2.5-6h17L27 16v4" /><path d="M4 20h24v4H4z" /><circle cx="9.5" cy="24" r="2" /><circle cx="22.5" cy="24" r="2" /><path d="M8 16h16" /></svg> },
+  { name: 'Events & venues', icon: <svg viewBox="0 0 32 32" {...S}><path d="M6 27V11l10-6 10 6v16" /><path d="M11 27v-8h10v8M6 27h20" /><path d="M16 9v4" /></svg> },
   { name: 'Other', icon: <svg viewBox="0 0 32 32" {...S}><rect x="6" y="6" width="8.5" height="8.5" rx="2" /><rect x="17.5" y="6" width="8.5" height="8.5" rx="2" /><rect x="6" y="17.5" width="8.5" height="8.5" rx="2" /><rect x="17.5" y="17.5" width="8.5" height="8.5" rx="2" /></svg> },
 ]
 

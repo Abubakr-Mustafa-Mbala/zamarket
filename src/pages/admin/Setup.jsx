@@ -3,7 +3,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, pct, date, datetime, n, title } from '../../lib/format'
-import { Badge, Table, Loading, Field, Input, Select, useToast, Stat, Tabs } from '../../components/ui'
+import { Badge, Table, Loading, Field, Input, Select, useToast, Stat, Tabs, CopyLine } from '../../components/ui'
 
 // ---------------- Reports ----------------
 export function Reports() {
@@ -68,25 +68,116 @@ export function Reports() {
 const ROLES = ['founder', 'ops', 'finance', 'delivery', 'marketing', 'vendor', 'reseller', 'customer']
 export function Team() {
   const toast = useToast()
-  const { user } = useAuth()
+  const { user, settings, refresh, isFounder } = useAuth()
   const [search, setSearch] = useState('')
-  const { data, loading, reload } = useData(() => q(supabase.from('profiles').select('*').order('created_at', { ascending: false })), [])
-  const rows = (data || []).filter((p) => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase()) || (p.email || '').includes(search))
+  const [invite, setInvite] = useState({ email: '', role: 'ops' })
+  const { data, loading, reload } = useData(async () => ({
+    people: await q(supabase.from('profiles').select('*').order('created_at', { ascending: false })),
+    invites: isFounder ? await q(supabase.from('staff_invites').select('*').is('used_at', null).order('created_at', { ascending: false })) : [],
+  }), [])
+  const founders = settings.founder_emails || []
+  const rows = (data?.people || []).filter((p) => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase()) || (p.email || '').includes(search))
+  const staff = rows.filter((p) => p.role !== 'customer')
+
   const setRole = async (p, role) => {
-    if (p.id === user.id && role !== 'founder' && !window.confirm('Remove your own founder role?')) return
+    if (p.id === user.id && role !== 'founder' && !window.confirm('Remove your own founder role? You will lose access to founder-only pages.')) return
     const { error } = await supabase.from('profiles').update({ role }).eq('id', p.id)
     if (error) return toast(error.message, true)
-    toast(`${p.full_name || p.email} is now ${role}`); reload()
+    toast(`${p.full_name || p.email} is now ${title(role)}`); reload()
   }
+  const sendInvite = async (e) => {
+    e.preventDefault()
+    const email = invite.email.trim().toLowerCase()
+    if (!email.includes('@')) return toast('Enter their email address', true)
+    if (invite.role === 'founder' && !founders.includes(email)) return toast('Add them to the founders list below first', true)
+    const { error } = await supabase.from('staff_invites').upsert({ email, role: invite.role, invited_by: user.id, used_at: null })
+    if (error) return toast(error.message, true)
+    toast('Invite ready'); setInvite({ email: '', role: 'ops' }); reload()
+  }
+  const cancelInvite = async (email) => {
+    const { error } = await supabase.from('staff_invites').delete().eq('email', email)
+    if (error) return toast(error.message, true)
+    reload()
+  }
+  const saveFounders = async (list) => {
+    const { error } = await supabase.from('settings').update({ value: list }).eq('key', 'founder_emails')
+    if (error) return toast(error.message, true)
+    await refresh(); toast('Founders list updated')
+  }
+
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Team</h1><p>Who can do what. Founder: everything. Ops: orders, products, stock. Finance: money. Delivery: deliveries. Marketing: campaigns, offers, resellers and vendors. Vendor and reseller roles are granted by approving applications.</p></div><Input value={search} onChange={setSearch} placeholder="Search" style={{ maxWidth: 220 }} /></div>
-      {loading ? <Loading /> : (
-        <Table rows={rows} cols={[
-          { key: 'full_name', label: 'Person', render: (p) => <div><div className="strong">{p.full_name || '—'}</div><div className="tiny muted">{p.email}{p.phone ? ` · ${p.phone}` : ''}</div></div> },
-          { key: 'created_at', label: 'Joined', render: (p) => date(p.created_at) },
-          { key: 'role', label: 'Role', render: (p) => <select className="status-select" value={p.role} onChange={(e) => setRole(p, e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{title(r)}</option>)}</select> },
-        ]} />
+      <div className="page-head">
+        <div>
+          <h1>Team</h1>
+          <p>Only people you invite get access. Everyone else who signs up is a customer.</p>
+        </div>
+        <Input value={search} onChange={setSearch} placeholder="Search" style={{ maxWidth: 220 }} />
+      </div>
+
+      {isFounder && (
+        <div className="grid-2 tight">
+          <section className="card stack-sm">
+            <h3>Invite someone</h3>
+            <p className="small muted">Send them the sign-up link. When they create an account with this email, they get this role automatically.</p>
+            <form onSubmit={sendInvite} className="row">
+              <Input type="email" value={invite.email} onChange={(v) => setInvite({ ...invite, email: v })} placeholder="their@email.com" style={{ flex: 1, minWidth: 160 }} />
+              <Select value={invite.role} onChange={(v) => setInvite({ ...invite, role: v })} options={ROLES.filter((r) => r !== 'customer').map((r) => [r, title(r)])} />
+              <button className="btn primary">Add invite</button>
+            </form>
+            {(data?.invites || []).length > 0 && (
+              <div className="mini-table">
+                {data.invites.map((i) => (
+                  <div key={i.email} className="mini-row">
+                    <span className="grow"><strong>{i.email}</strong><span className="tiny muted">Will join as {title(i.role)}</span></span>
+                    <CopyLine text={`${window.location.origin}/login`} />
+                    <button className="btn sm ghost" onClick={() => cancelInvite(i.email)}>Cancel</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="card stack-sm">
+            <h3>Founders</h3>
+            <p className="small muted">Only these email addresses can hold the founder role. This is what stops anyone else signing up as a founder.</p>
+            <div className="chips wrap">
+              {founders.map((f) => (
+                <span key={f} className="chip on">{f}
+                  {founders.length > 1 && <button type="button" aria-label={`Remove ${f}`} className="chip-x" onClick={() => { if (window.confirm(`Remove ${f} from the founders list?`)) saveFounders(founders.filter((x) => x !== f)) }}>✕</button>}
+                </span>
+              ))}
+            </div>
+            <form className="row" onSubmit={(e) => { e.preventDefault(); const v = e.target.email.value.trim().toLowerCase(); if (v.includes('@')) { saveFounders([...founders, v]); e.target.reset() } }}>
+              <input className="input" name="email" type="email" placeholder="partner@email.com" style={{ flex: 1, minWidth: 160 }} />
+              <button className="btn">Add founder email</button>
+            </form>
+          </section>
+        </div>
+      )}
+
+      <section className="card">
+        <h3 className="mb">Your team</h3>
+        {loading ? <Loading /> : (
+          <Table rows={staff} empty="No staff yet" cols={[
+            { key: 'full_name', label: 'Person', render: (p) => <div><div className="strong">{p.full_name || '—'}</div><div className="tiny muted">{p.email}{p.phone ? ` · ${p.phone}` : ''}</div></div> },
+            { key: 'created_at', label: 'Joined', render: (p) => date(p.created_at) },
+            { key: 'role', label: 'Role', render: (p) => isFounder
+              ? <select className="status-select" value={p.role} onChange={(e) => setRole(p, e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{title(r)}</option>)}</select>
+              : <Badge>{title(p.role)}</Badge> },
+          ]} />
+        )}
+        <p className="tiny muted mt">Founder: everything. Ops: orders, products, stock. Finance: money. Delivery: deliveries. Marketing: campaigns, leads and content, no finance. Vendor and reseller roles come from approved applications.</p>
+      </section>
+
+      {search && rows.length !== staff.length && (
+        <section className="card">
+          <h3 className="mb">Customers matching “{search}”</h3>
+          <Table rows={rows.filter((p) => p.role === 'customer')} empty="None" cols={[
+            { key: 'full_name', label: 'Person', render: (p) => <div><div className="strong">{p.full_name || '—'}</div><div className="tiny muted">{p.email}</div></div> },
+            { key: 'role', label: 'Make staff', render: (p) => isFounder ? <select className="status-select" value={p.role} onChange={(e) => setRole(p, e.target.value)}>{ROLES.map((r) => <option key={r} value={r}>{title(r)}</option>)}</select> : '—' },
+          ]} />
+        </section>
       )}
     </div>
   )

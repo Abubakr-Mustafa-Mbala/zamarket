@@ -92,6 +92,7 @@ insert into settings (key, value, description) values
   ('default_packaging_cost', '5', 'Default packaging cost per unit'),
   ('capital_allocation', '{"inventory":200,"packaging":50,"delivery":50,"advertising":100,"reserve":100}', 'Starting capital plan (USD)'),
   ('simple_mode_default', 'true', 'New staff start in Simple mode'),
+  ('founder_emails', '[]', 'Only these email addresses can hold the founder role'),
   ('referral_reward', '20', 'Reward paid to a customer when a friend they invited completes a first order (K)'),
   ('own_audience_fee_pct', '5', 'Marketplace fee when a vendor brings the customer through their own store link (%)'),
   ('business_name', '"ZaMarket"', 'Name printed on receipts'),
@@ -110,19 +111,42 @@ create table if not exists profiles (
 );
 
 -- First account ever created becomes the founder. Every later account is a customer until promoted.
+create table if not exists staff_invites (
+  email text primary key,
+  role user_role not null,
+  invited_by uuid references profiles(id),
+  created_at timestamptz not null default now(),
+  used_at timestamptz
+);
+
 create or replace function handle_new_user() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare founder_exists boolean;
+declare
+  founder_exists boolean;
+  allowed jsonb;
+  mail text := lower(coalesce(new.email, ''));
+  invite staff_invites%rowtype;
+  new_role user_role := 'customer';
 begin
   select exists(select 1 from profiles where role = 'founder') into founder_exists;
+  select value into allowed from settings where key = 'founder_emails';
+  select * into invite from staff_invites where lower(email) = mail and used_at is null;
+
+  if allowed ? mail then
+    new_role := 'founder';                       -- on the founders list
+  elsif not founder_exists and coalesce(jsonb_array_length(allowed), 0) = 0 then
+    new_role := 'founder';                       -- very first account sets the business up
+    update settings set value = jsonb_build_array(mail) where key = 'founder_emails';
+  elsif invite.email is not null then
+    new_role := invite.role;                     -- invited by the team
+    update staff_invites set used_at = now() where email = invite.email;
+  end if;
+
   insert into profiles (id, email, full_name, phone, role)
-  values (
-    new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data->>'full_name', ''),
-    coalesce(new.raw_user_meta_data->>'phone', ''),
-    case when founder_exists then 'customer'::user_role else 'founder'::user_role end
-  );
+  values (new.id, new.email, coalesce(new.raw_user_meta_data->>'full_name', ''), coalesce(new.raw_user_meta_data->>'phone', ''), new_role);
+  if new_role <> 'customer' then
+    perform log_audit('team.joined', 'profiles', new.id, null, jsonb_build_object('email', mail, 'role', new_role));
+  end if;
   return new;
 end $$;
 
@@ -248,6 +272,15 @@ alter table products add column if not exists daily_limit int;
 alter table products add column if not exists options jsonb not null default '[]';
 alter table products add column if not exists note_label text;
 alter table products add column if not exists service_location text;
+alter table products add column if not exists offering_type text not null default 'product';
+alter table products add column if not exists sales_model text not null default 'buy';
+alter table products add column if not exists page jsonb not null default '{}';
+alter table products add column if not exists deal_fee_pct numeric;
+alter table products add column if not exists featured_for_resellers boolean not null default false;
+alter table products drop constraint if exists products_offering_type_check;
+alter table products add constraint products_offering_type_check check (offering_type in ('product','service','course','class','vehicle','event','deal','other'));
+alter table products drop constraint if exists products_sales_model_check;
+alter table products add constraint products_sales_model_check check (sales_model in ('buy','book','enquire','negotiate'));
 alter table products add column if not exists duration_text text;
 alter table products add column if not exists time_slots text[];
 alter table products add column if not exists slot_capacity int not null default 1;
@@ -255,6 +288,20 @@ alter table products drop constraint if exists products_fulfilment_check;
 alter table products add constraint products_fulfilment_check check (fulfilment in ('in_stock', 'made_to_order', 'service'));
 alter table products drop constraint if exists products_service_location_check;
 alter table products add constraint products_service_location_check check (service_location is null or service_location in ('at_customer', 'at_seller', 'online'));
+
+create table if not exists product_packages (
+  id uuid primary key default gen_random_uuid(),
+  product_id uuid not null references products(id) on delete cascade,
+  name text not null,
+  subtitle text,
+  price numeric not null default 0,
+  normal_price numeric,
+  items text[] not null default '{}',
+  featured boolean not null default false,
+  sort int not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now()
+);
 
 -- ---------- Procurement ----------
 create table if not exists purchases (
@@ -379,6 +426,8 @@ create table if not exists order_items (
 );
 alter table order_items add column if not exists reserved_qty int not null default 0;
 alter table order_items add column if not exists choices jsonb not null default '{}';
+alter table order_items add column if not exists package_id uuid references product_packages(id);
+alter table order_items add column if not exists package_name text;
 alter table order_items add column if not exists note text;
 alter table order_items add column if not exists vendor_status text not null default 'new';
 alter table orders add column if not exists needed_by date;
@@ -438,6 +487,51 @@ create table if not exists settlements (
 
 alter table settlements add column if not exists order_number int;
 update settlements st set order_number = o.order_number from orders o where o.id = st.order_id and st.order_number is null;
+
+-- Negotiated deals (vehicles and other high-value offerings): enquiry → negotiation → agreed → verified close
+create sequence if not exists deal_number_seq start 5001;
+create table if not exists deals (
+  id uuid primary key default gen_random_uuid(),
+  deal_number int not null default nextval('deal_number_seq') unique,
+  product_id uuid not null references products(id),
+  package_id uuid references product_packages(id),
+  vendor_id uuid references vendors(id),
+  customer_id uuid references customers(id),
+  customer_name text not null,
+  customer_phone text not null,
+  message text,
+  advertised_price numeric not null default 0,
+  status text not null default 'enquiry' check (status in ('enquiry','negotiating','agreed','closed','lost')),
+  final_price numeric,
+  commission_type text,
+  commission_value numeric,
+  fee_pct numeric not null default 0,
+  reseller_id uuid references resellers(id),
+  invite_code text,
+  campaign_id uuid,
+  source text,
+  reseller_amount numeric,
+  marketplace_amount numeric,
+  fee_status text not null default 'pending' check (fee_status in ('pending','received','waived')),
+  evidence text,
+  lost_reason text,
+  verified_by uuid references profiles(id),
+  closed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create table if not exists deal_events (
+  id uuid primary key default gen_random_uuid(),
+  deal_id uuid not null references deals(id) on delete cascade,
+  kind text not null check (kind in ('enquiry','note','offer','counter','agreed','closed','lost','reopened')),
+  amount numeric,
+  party text check (party in ('customer','seller','marketplace')),
+  note text,
+  user_id uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+alter table commissions alter column order_id drop not null;
+alter table commissions add column if not exists deal_id uuid references deals(id);
 
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
@@ -888,7 +982,13 @@ language plpgsql security definer set search_path = public as $$
 begin
   if auth.uid() is null then return new; end if;
   if tg_table_name = 'profiles' then
-    if new.role is distinct from old.role and not is_founder() then raise exception 'Only a founder can change roles'; end if;
+    if new.role is distinct from old.role then
+      if not is_founder() then raise exception 'Only a founder can change roles'; end if;
+      if new.role::text = 'founder' and not ((select value from settings where key = 'founder_emails') ? lower(coalesce(new.email, ''))) then
+        raise exception 'Add % to the founders list in Settings before making them a founder', coalesce(new.email, 'that address');
+      end if;
+      perform log_audit('team.role', 'profiles', new.id, jsonb_build_object('role', old.role), jsonb_build_object('role', new.role, 'email', new.email));
+    end if;
     return new;
   end if;
   if is_staff() then return new; end if;
@@ -904,6 +1004,7 @@ begin
     if new.vendor_id is distinct from old.vendor_id or new.owner_type is distinct from old.owner_type
        or new.commission_type is distinct from old.commission_type or new.commission_value is distinct from old.commission_value
        or new.cost_override is distinct from old.cost_override
+       or new.deal_fee_pct is distinct from old.deal_fee_pct or new.featured_for_resellers is distinct from old.featured_for_resellers
        or new.landed_cost_total is distinct from old.landed_cost_total or new.landed_units is distinct from old.landed_units
        or new.stock_available is distinct from old.stock_available or new.stock_reserved is distinct from old.stock_reserved
        or new.stock_sold is distinct from old.stock_sold then
@@ -1185,6 +1286,7 @@ declare
   v_seller text := 'founder';
   v_manual boolean := coalesce((payload->>'is_manual')::boolean, false);
   off offers%rowtype;
+  pkg product_packages%rowtype;
   v_needed date := nullif(payload->>'needed_by', '')::date;
   v_today date := lusaka_date(now());
   booked int;
@@ -1272,6 +1374,9 @@ begin
         raise exception '% is not available on %s. Please pick another date.', prod.name, to_char(v_needed, 'FMDay');
       end if;
     end if;
+    if prod.sales_model in ('enquire', 'negotiate') and not v_manual then
+      raise exception '% is sold by enquiry. Please use the Enquire button.', prod.name;
+    end if;
     v_choices := coalesce(item->'choices', '{}'::jsonb);
     if prod.fulfilment = 'service' and prod.time_slots is not null and array_length(prod.time_slots, 1) > 0 then
       if coalesce(v_choices->>'Time', '') = '' or not ((v_choices->>'Time') = any(prod.time_slots)) then
@@ -1290,6 +1395,11 @@ begin
         raise exception 'Only % left on the offer "%"', off.inventory_limit - off.units_used, off.name;
       end if;
       update offers set units_used = units_used + qty where id = off.id;
+    elsif coalesce(item->>'package_id', '') <> '' then
+      select * into pkg from product_packages where id = (item->>'package_id')::uuid and product_id = prod.id and active;
+      if not found then raise exception 'That package is no longer available for %', prod.name; end if;
+      qty := greatest(1, coalesce((item->>'quantity')::int, 1));
+      v_line := pkg.price * qty;
     else
       qty := greatest(1, coalesce((item->>'quantity')::int, 1));
       unit := coalesce((item->>'unit_price')::numeric, prod.price);
@@ -1311,10 +1421,11 @@ begin
         raise exception '% is fully booked for %. Only % left that day.', prod.name, to_char(v_needed, 'Dy DD Mon'), greatest(prod.daily_limit - booked, 0);
       end if;
     end if;
-    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note)
+    if coalesce(item->>'package_id', '') = '' then pkg := null; end if;
+    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note, package_id, package_name)
     values (o.id, prod.id, off.id, prod.vendor_id, qty, v_line / qty, product_effective_cost(prod), v_line,
             case when prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then least(qty, greatest(prod.stock_available, 0)) else 0 end,
-            v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''));
+            v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''), pkg.id, pkg.name);
     sub := sub + v_line;
     if prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then
       if prod.stock_available > 0 then
@@ -1603,7 +1714,9 @@ select p.id, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.im
        (select round(avg(product_rating),1) from reviews r where r.product_id = p.id and r.approved) as rating,
        (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
        p.vendor_id, p.fulfilment, p.lead_time_days, p.order_days, p.daily_limit, p.options, p.note_label, p.created_at,
-       p.service_location, p.duration_text, p.time_slots, p.slot_capacity, v.slug as vendor_slug
+       p.service_location, p.duration_text, p.time_slots, p.slot_capacity, v.slug as vendor_slug,
+       p.offering_type, p.sales_model, p.page, p.commission_type, p.commission_value, p.featured_for_resellers,
+       (select count(*) from product_packages pk where pk.product_id = p.id and pk.active) as package_count
 from products p left join vendors v on v.id = p.vendor_id
 where p.status in ('published','out_of_stock') and (p.vendor_id is null or v.status = 'approved');
 
@@ -2229,8 +2342,133 @@ begin
   );
 end $$;
 
+
+-- =====================================================================
+-- Enquiries and negotiated deals
+-- =====================================================================
+-- Public: "Enquire" / "Make an offer" on an offering. Creates a lead, and a deal for negotiated offerings.
+create or replace function submit_enquiry(payload jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  prod products%rowtype; pkg product_packages%rowtype; rs resellers%rowtype; c campaigns%rowtype;
+  v_phone text := norm_phone(payload->>'phone'); v_name text := left(trim(coalesce(payload->>'name', '')), 80);
+  v_lead uuid; d deals%rowtype; v_amount numeric := nullif(payload->>'offer_amount', '')::numeric; v_channel text := 'organic';
+begin
+  select * into prod from products where (id::text = payload->>'product_id' or slug = payload->>'product_slug') and status = 'published' limit 1;
+  if not found then raise exception 'This listing is no longer available'; end if;
+  if v_name = '' then raise exception 'Please enter your name'; end if;
+  if length(v_phone) < 10 then raise exception 'Please enter a full phone number, e.g. 0977 123 456'; end if;
+  if coalesce(payload->>'package_id', '') <> '' then
+    select * into pkg from product_packages where id = (payload->>'package_id')::uuid and product_id = prod.id;
+  end if;
+  if coalesce(payload->>'referral_code', '') <> '' then
+    select * into rs from resellers where code = lower(payload->>'referral_code') and status = 'approved';
+    if found then v_channel := 'reseller'; end if;
+  end if;
+  if coalesce(payload->>'campaign_code', '') <> '' then
+    select * into c from campaigns where code = lower(payload->>'campaign_code');
+    if found and v_channel = 'organic' then v_channel := campaign_channel(c); end if;
+  end if;
+  if coalesce(payload->>'invite_code', '') <> '' and v_channel = 'organic' then v_channel := 'referral'; end if;
+
+  v_lead := upsert_lead(v_name, v_phone, v_channel,
+    left('Enquiry: ' || prod.name || coalesce(' — ' || pkg.name, '') || case when v_amount is not null then ' (offered K' || v_amount || ')' else '' end
+         || coalesce('. ' || nullif(payload->>'message', ''), ''), 240),
+    c.id, null, prod.vendor_id, prod.id, null, 'enquiry');
+
+  if prod.sales_model = 'negotiate' then
+    insert into deals (product_id, package_id, vendor_id, customer_name, customer_phone, message, advertised_price, commission_type, commission_value, fee_pct,
+                       reseller_id, invite_code, campaign_id, source, status)
+    values (prod.id, pkg.id, prod.vendor_id, v_name, v_phone, left(payload->>'message', 1000), coalesce(pkg.price, prod.price),
+            coalesce(prod.commission_type, 'pct'), coalesce(prod.commission_value, setting_num('default_commission_pct')),
+            coalesce(prod.deal_fee_pct, setting_num('marketplace_fee_pct')),
+            case when rs.phone is distinct from v_phone then rs.id end, nullif(lower(payload->>'invite_code'), ''), c.id,
+            case when rs.id is not null then 'reseller:' || rs.code when c.id is not null then 'campaign:' || c.code else 'organic' end, 'enquiry')
+    returning * into d;
+    insert into deal_events (deal_id, kind, amount, party, note) values (d.id, 'enquiry', v_amount, 'customer', nullif(left(payload->>'message', 500), ''));
+    update leads set interest = interest || ' [Deal #' || d.deal_number || ']' where id = v_lead;
+    return jsonb_build_object('reference', 'D' || d.deal_number, 'type', 'deal');
+  end if;
+  return jsonb_build_object('reference', 'E' || right(replace(v_lead::text, '-', ''), 6), 'type', 'enquiry');
+end $$;
+
+-- Staff and the listing's vendor move a deal along. Only staff can verify the close.
+create or replace function deal_action(p_deal uuid, p_action text, p_amount numeric default null, p_note text default null, p_evidence text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare d deals%rowtype; v_res numeric; v_fee numeric; v_rate numeric;
+begin
+  select * into d from deals where id = p_deal for update;
+  if not found then raise exception 'Deal not found'; end if;
+  if not (is_staff() or (d.vendor_id is not null and d.vendor_id = my_vendor_id())) then raise exception 'Not allowed'; end if;
+  if d.status in ('closed') and p_action <> 'note' then raise exception 'This deal is closed'; end if;
+
+  if p_action in ('offer', 'counter') then
+    if p_amount is null or p_amount <= 0 then raise exception 'Enter the amount'; end if;
+    insert into deal_events (deal_id, kind, amount, party, note, user_id) values (p_deal, p_action, p_amount, case when p_action = 'offer' then 'customer' else 'seller' end, p_note, auth.uid());
+    update deals set status = 'negotiating', updated_at = now() where id = p_deal;
+  elsif p_action = 'agree' then
+    if p_amount is null or p_amount <= 0 then raise exception 'Enter the agreed price'; end if;
+    insert into deal_events (deal_id, kind, amount, party, note, user_id) values (p_deal, 'agreed', p_amount, 'marketplace', p_note, auth.uid());
+    update deals set status = 'agreed', final_price = p_amount, updated_at = now() where id = p_deal;
+  elsif p_action = 'close' then
+    if not is_staff() then raise exception 'The ZaMarket team verifies and closes deals'; end if;
+    if p_amount is null or p_amount <= 0 then raise exception 'Enter the final sale price'; end if;
+    if coalesce(p_evidence, '') = '' then raise exception 'Record how the sale was verified (e.g. receipt number, handover, bank reference)'; end if;
+    v_rate := coalesce(d.commission_value, 0);
+    v_res := case when d.reseller_id is null then 0 when d.commission_type = 'flat' then v_rate else round(p_amount * v_rate / 100, 2) end;
+    v_fee := round(p_amount * coalesce(d.fee_pct, 0) / 100, 2);
+    update deals set status = 'closed', final_price = p_amount, reseller_amount = v_res, marketplace_amount = v_fee, evidence = p_evidence,
+                     verified_by = auth.uid(), closed_at = now(), updated_at = now() where id = p_deal;
+    insert into deal_events (deal_id, kind, amount, party, note, user_id) values (p_deal, 'closed', p_amount, 'marketplace', coalesce(p_note, p_evidence), auth.uid());
+    if d.reseller_id is not null and v_res > 0 then
+      insert into commissions (deal_id, reseller_id, base_amount, rate_type, rate_value, amount, status, eligible_at, notes)
+      values (p_deal, d.reseller_id, p_amount, coalesce(d.commission_type, 'pct'), v_rate, v_res, 'pending',
+              now() + (setting_num('commission_grace_hours') || ' hours')::interval, 'Deal D' || d.deal_number || ' closed at K' || p_amount);
+    end if;
+    if d.invite_code is not null then
+      insert into referrals (referrer_name, referrer_phone, referrer_customer_id, referred_phone, reward, status)
+      select r.referrer_name, r.referrer_phone, r.referrer_customer_id, d.customer_phone, setting_num('referral_reward'), 'eligible'
+      from referrals r where r.code = d.invite_code and r.order_id is null limit 1;
+    end if;
+    update leads set stage = 'won', next_follow_up = null, updated_at = now() where phone = d.customer_phone and stage in ('new','contacted','engaged');
+    perform log_audit('deal.closed', 'deals', p_deal, jsonb_build_object('advertised', d.advertised_price), jsonb_build_object('final', p_amount, 'reseller', v_res, 'fee', v_fee), p_evidence);
+  elsif p_action = 'lost' then
+    insert into deal_events (deal_id, kind, note, user_id) values (p_deal, 'lost', p_note, auth.uid());
+    update deals set status = 'lost', lost_reason = p_note, updated_at = now() where id = p_deal;
+  elsif p_action = 'reopen' then
+    if not is_staff() then raise exception 'Not allowed'; end if;
+    insert into deal_events (deal_id, kind, note, user_id) values (p_deal, 'reopened', p_note, auth.uid());
+    update deals set status = 'negotiating', lost_reason = null, updated_at = now() where id = p_deal;
+  elsif p_action = 'note' then
+    insert into deal_events (deal_id, kind, note, user_id) values (p_deal, 'note', p_note, auth.uid());
+    update deals set updated_at = now() where id = p_deal;
+  elsif p_action = 'fee_received' then
+    if not is_staff() then raise exception 'Not allowed'; end if;
+    update deals set fee_status = 'received', updated_at = now() where id = p_deal;
+    perform log_audit('deal.fee_received', 'deals', p_deal, null, jsonb_build_object('amount', d.marketplace_amount), p_note);
+  else
+    raise exception 'Unknown action';
+  end if;
+end $$;
+
+-- Resellers: deals they brought in (no customer phone)
+create or replace function reseller_deals() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('deal_number', d.deal_number, 'product', p.name, 'status', d.status, 'advertised_price', d.advertised_price,
+    'final_price', d.final_price, 'commission_type', d.commission_type, 'commission_value', d.commission_value, 'reseller_amount', d.reseller_amount,
+    'customer', split_part(d.customer_name, ' ', 1), 'created_at', d.created_at) order by d.created_at desc), '[]')
+  from deals d join products p on p.id = d.product_id where d.reseller_id = my_reseller_id() and my_reseller_id() is not null;
+$$;
+
+-- Public packages for published offerings
+create or replace view public_packages as
+select pk.id, pk.product_id, pk.name, pk.subtitle, pk.price, pk.normal_price, pk.items, pk.featured, pk.sort
+from product_packages pk join products p on p.id = pk.product_id
+where pk.active and p.status in ('published', 'out_of_stock');
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
+alter table staff_invites enable row level security;
 alter table customers enable row level security;
 alter table suppliers enable row level security;
 alter table vendors enable row level security;
@@ -2250,6 +2488,9 @@ alter table settlements enable row level security;
 alter table reviews enable row level security;
 alter table referrals enable row level security;
 alter table leads enable row level security;
+alter table product_packages enable row level security;
+alter table deals enable row level security;
+alter table deal_events enable row level security;
 alter table lead_activities enable row level security;
 alter table content_posts enable row level security;
 alter table lead_magnets enable row level security;
@@ -2282,7 +2523,7 @@ end $$;
 select ensure_policy('public_read', 'provinces', 'select', 'true');
 select ensure_policy('public_read', 'districts', 'select', 'true');
 select ensure_policy('public_read', 'quotes', 'select', 'true');
-select ensure_policy('read_settings', 'settings', 'select', 'auth.uid() is not null or key in (''local_delivery_fee'',''currency'')');
+select ensure_policy('read_settings', 'settings', 'select', 'key in (''local_delivery_fee'',''currency'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
 select ensure_policy('founder_settings', 'settings', 'update', 'is_founder()');
 select ensure_policy('founder_settings_insert', 'settings', 'insert', 'is_founder()');
 
@@ -2290,11 +2531,20 @@ select ensure_policy('founder_settings_insert', 'settings', 'insert', 'is_founde
 select ensure_policy('own_profile', 'profiles', 'select', 'id = auth.uid() or is_staff()');
 select ensure_policy('own_profile_update', 'profiles', 'update', 'id = auth.uid()');
 select ensure_policy('founder_roles', 'profiles', 'update', 'is_founder()');
+select ensure_policy('founder_invites', 'staff_invites', 'all', 'is_founder()');
 
 -- products: public sees published; staff all; vendor own
-select ensure_policy('public_products', 'products', 'select', 'status in (''published'',''out_of_stock'') or is_staff() or vendor_id = my_vendor_id() or (my_reseller_id() is not null and status = ''published'')');
+-- Full product rows (with costs) only for staff and the owning vendor. Everyone else reads public_products.
+select ensure_policy('public_products', 'products', 'select', 'is_staff() or vendor_id = my_vendor_id()');
+select ensure_policy('staff_packages', 'product_packages', 'all', 'is_staff()');
+select ensure_policy('vendor_packages', 'product_packages', 'all', 'exists (select 1 from products p where p.id = product_packages.product_id and p.vendor_id = my_vendor_id() and p.status in (''draft'',''submitted'',''rejected''))');
+select ensure_policy('vendor_packages_read', 'product_packages', 'select', 'exists (select 1 from products p where p.id = product_packages.product_id and p.vendor_id = my_vendor_id())');
+select ensure_policy('staff_deals', 'deals', 'all', 'is_staff()');
+select ensure_policy('vendor_deals', 'deals', 'select', 'vendor_id is not null and vendor_id = my_vendor_id()');
+select ensure_policy('staff_deal_events', 'deal_events', 'all', 'is_staff()');
+select ensure_policy('vendor_deal_events', 'deal_events', 'select', 'exists (select 1 from deals d where d.id = deal_events.deal_id and d.vendor_id is not null and d.vendor_id = my_vendor_id())');
 select ensure_policy('staff_products', 'products', 'all', 'is_staff()');
-select ensure_policy('vendor_products_insert', 'products', 'insert', 'vendor_id = my_vendor_id() and owner_type = ''vendor'' and status in (''draft'',''submitted'')');
+select ensure_policy('vendor_products_insert', 'products', 'insert', 'vendor_id = my_vendor_id() and owner_type = ''vendor'' and status in (''draft'',''submitted'') and deal_fee_pct is null and not featured_for_resellers and commission_type is null and cost_override is null');
 select ensure_policy('vendor_products_update', 'products', 'update', 'vendor_id = my_vendor_id()', 'vendor_id = my_vendor_id() and status in (''draft'',''submitted'',''out_of_stock'') ');
 
 -- staff-only operational tables
@@ -2372,6 +2622,8 @@ grant select on public_products to anon, authenticated;
 grant select on public_offers to anon, authenticated;
 grant select on public_vendors to anon, authenticated;
 grant select on public_magnets to anon, authenticated;
+grant select on public_packages to anon, authenticated;
+grant execute on function submit_enquiry(jsonb) to anon, authenticated;
 grant execute on function capture_checkout_lead(text, text, text, text, text) to anon, authenticated;
 grant execute on function claim_magnet(text, text, text, text, text) to anon, authenticated;
 grant execute on function view_magnet(text) to anon, authenticated;

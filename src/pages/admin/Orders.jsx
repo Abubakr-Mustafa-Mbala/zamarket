@@ -240,7 +240,7 @@ function PayModal({ order, onClose, onDone }) {
 export function ManualSale({ onClose, onDone, resellerCode }) {
   const toast = useToast()
   const { provinces, districts } = useLocations()
-  const { data: products } = useData(() => q(supabase.from('products').select('id,name,price,stock_available,owner_type,fulfilment,lead_time_days').in('status', ['published', 'out_of_stock']).order('name')), [])
+  const { data: products } = useData(() => q(supabase.from('public_products').select('id,name,price,stock_available,owner_type,fulfilment,lead_time_days,sales_model').neq('sales_model', 'negotiate').order('name')), [])
   const { data: offers } = useData(() => q(supabase.from('public_offers').select('id,name,type,product_id,units,deal_price').not('type', 'in', '(downsell)')), [])
   const [f, setF] = useState({ full_name: '', phone: '', province_id: '', district_id: '', area: '', address: '', channel: 'whatsapp', source: resellerCode ? `reseller:${resellerCode}` : 'whatsapp', notes: '' })
   const [items, setItems] = useState([{ product_id: '', offer_id: '', quantity: 1 }])

@@ -37,6 +37,7 @@ const InvitePage = named(growthPages, 'InvitePage')
 const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
+const OfferingBuilder = lazy(() => import('./pages/admin/OfferingBuilder'))
 const earningsPages = () => import('./pages/shared/EarningsPages')
 const AdminEarnings = named(earningsPages, 'AdminEarnings')
 const PartnerEarnings = named(earningsPages, 'PartnerEarnings')
@@ -128,6 +129,7 @@ export default function App() {
         <Route path="orders" element={<OrdersList />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="products" element={<Products />} />
+        <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />
         <Route path="inventory" element={<Inventory />} />

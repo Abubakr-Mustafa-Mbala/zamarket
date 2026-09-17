@@ -1,3 +1,4 @@
+import { OfferingPage } from './Offering'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -179,7 +180,7 @@ function ProductCard({ p, deal, inStore }) {
         {p.rating ? <div className="pc-rating"><Stars n={p.rating} /><span>{p.review_count}</span></div> : null}
         <div className="pc-price"><Price value={p.price} />{save > 0 && <s>{money(p.normal_price)}</s>}</div>
         <div className={`pc-avail ${out ? 'out' : ''}`}>
-          {out ? 'Out of stock' : p.fulfilment === 'service' ? `Booking${p.duration_text ? `, ${p.duration_text.toLowerCase()}` : ''}` : p.fulfilment === 'made_to_order' ? `Made to order${p.lead_time_days ? `, ${p.lead_time_days} day${p.lead_time_days > 1 ? 's' : ''} ahead` : ''}` : 'In stock'}
+          {p.sales_model === 'negotiate' ? 'Open to offers' : p.sales_model === 'enquire' ? 'Enquire for details' : Number(p.package_count) > 1 ? `${p.package_count} packages` : out ? 'Out of stock' : p.fulfilment === 'service' ? `Booking${p.duration_text ? `, ${p.duration_text.toLowerCase()}` : ''}` : p.fulfilment === 'made_to_order' ? `Made to order${p.lead_time_days ? `, ${p.lead_time_days} day${p.lead_time_days > 1 ? 's' : ''} ahead` : ''}` : 'In stock'}
         </div>
         {p.vendor_name && <div className="pc-seller">by {p.vendor_name}</div>}
       </div>
@@ -449,6 +450,7 @@ export function ProductPage() {
 
   if (p === null) return <Loading />
   if (!p) return <div className="empty-shop"><h2>This product isn't available</h2><p>It may have been removed or sold out.</p><Link to="/search" className="btn">Browse products</Link></div>
+  if ((p.offering_type && p.offering_type !== 'product') || Number(p.package_count) > 0 || (p.sales_model && p.sales_model !== 'buy')) return <OfferingPage p={p} reviews={reviews} />
 
   const scheduled = p.fulfilment !== 'in_stock'
   const out = isOut(p)

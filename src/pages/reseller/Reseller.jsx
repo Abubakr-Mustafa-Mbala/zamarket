@@ -66,7 +66,7 @@ export function ResellerProducts() {
   const { settings } = useAuth()
   const [kit, setKit] = useState(null)
   const { data, loading } = useData(async () => ({
-    products: await q(supabase.from('products').select('id,slug,name,description,benefits,faqs,images,price,normal_price,commission_type,commission_value,stock_available,owner_type').eq('status', 'published').order('name')),
+    products: await q(supabase.from('public_products').select('id,slug,name,description,benefits,faqs,images,price,normal_price,commission_type,commission_value,stock_available,owner_type,vendor_slug,offering_type,sales_model,page,package_count,fulfilment,category,featured_for_resellers,created_at,rating,review_count,vendor_name').eq('status', 'published').order('name')),
     offers: await q(supabase.from('public_offers').select('*')),
   }), [])
   if (loading || !data) return <Loading />

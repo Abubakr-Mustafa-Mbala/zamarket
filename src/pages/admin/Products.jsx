@@ -233,6 +233,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
 
         <div className="btn-row">
           <button className="btn primary">{isNew ? 'Create' : 'Save changes'}</button>
+          {!isNew && !vendorMode && <a className="btn" href={`/admin/products/${p.id}/page`}>Design the page</a>}
           {vendorMode && p.status !== 'published' && <button type="button" className="btn" onClick={() => save('submitted')}>Save and send for review</button>}
           {!vendorMode && p.status !== 'published' && p.status !== 'submitted' && <button type="button" className="btn copper" onClick={() => save('published')}>Save and publish</button>}
         </div>
