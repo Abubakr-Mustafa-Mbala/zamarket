@@ -14,6 +14,7 @@ const STAFF_NAV = [
   { group: 'Daily' },
   { to: '/admin', label: 'Dashboard', end: true },
   { to: '/admin/orders', label: 'Orders' },
+  { to: '/admin/deals', label: 'Enquiries' },
   { to: '/admin/products', label: 'Products' },
   { to: '/admin/customers', label: 'Customers' },
   { to: '/admin/deliveries', label: 'Deliveries' },
@@ -41,6 +42,8 @@ const STAFF_NAV = [
 
 const RESELLER_NAV = [
   { to: '/sell', label: 'My sales', end: true },
+  { to: '/sell/find-customers', label: 'Find customers' },
+  { to: '/sell/training', label: 'Training' },
   { to: '/sell/products', label: 'Products to sell' },
   { to: '/sell/new-sale', label: 'Record a sale' },
   { to: '/sell/earnings', label: 'My earnings' },
@@ -84,7 +87,7 @@ const MOBILE_TABS = {
   ],
   reseller: [
     { to: '/sell', label: 'Sales', icon: I.home, end: true },
-    { to: '/sell/products', label: 'Products', icon: I.box },
+    { to: '/sell/find-customers', label: 'Sell', icon: I.box },
     { to: '/sell/new-sale', label: 'New sale', icon: I.cart },
     { to: '/sell/earnings', label: 'Earnings', icon: I.coins },
   ],

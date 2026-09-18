@@ -4,14 +4,15 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, pct, slugify, n, title } from '../../lib/format'
 import { margin, markup, priceFromMargin, priceFromMarkup, unitEconomics, light } from '../../lib/economics'
-import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
+import { useDepartments } from '../../lib/departments'
 import { uploadPhoto } from '../../lib/photos'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
 export const effectiveCost = (p) => (p.cost_override != null ? n(p.cost_override) : p.landed_units > 0 ? n(p.landed_cost_total) / p.landed_units : 0)
 
 export default function Products() {
-  const { advanced, settings, isStaff } = useAuth()
+  const DEPARTMENTS = useDepartments()
+  const { advanced, settings, isStaff, isFounder } = useAuth()
   const [edit, setEdit] = useState(null)
   const [tab, setTab] = useState('founder')
   const { data, loading, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })), [])
@@ -22,7 +23,10 @@ export default function Products() {
     <div className="stack">
       <div className="page-head">
         <div><h1>Products</h1><p>What we sell, what it really costs, and what's left.</p></div>
-        <button className="btn primary" onClick={() => setEdit({ owner_type: 'founder', status: 'draft', benefits: [], images: [], faqs: [] })}>Add product</button>
+        <div className="btn-row">
+          {isFounder && <SampleButton onDone={reload} />}
+          <button className="btn primary" onClick={() => setEdit({ owner_type: 'founder', status: 'draft', benefits: [], images: [], faqs: [] })}>Add product</button>
+        </div>
       </div>
       <Tabs tabs={[['founder', 'Our products'], ['vendor', 'Vendor products'], ['review', `To review${submitted ? ` (${submitted})` : ''}`]]} value={tab} onChange={setTab} />
       {loading ? <Loading /> : (
@@ -47,7 +51,29 @@ export default function Products() {
   )
 }
 
+function SampleButton({ onDone }) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const run = async (fn) => {
+    setBusy(true)
+    const { data, error } = await supabase.rpc(fn)
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast(fn === 'create_samples'
+      ? (data.created ? `${data.created} example offerings added` : 'The examples are already there')
+      : `${data.removed} examples removed`)
+    onDone()
+  }
+  return (
+    <div className="btn-row">
+      <button className="btn" disabled={busy} onClick={() => run('create_samples')}>Add 5 examples</button>
+      <button className="btn ghost sm" disabled={busy} onClick={() => { if (window.confirm('Remove the example offerings? Any with real orders are kept.')) run('remove_samples') }}>Remove</button>
+    </div>
+  )
+}
+
 export function ProductEditor({ product, onClose, onDone, vendorMode }) {
+  const DEPARTMENTS = useDepartments()
   const toast = useToast()
   const { settings, advanced, user, isStaff } = useAuth()
   const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n'), fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days ?? 0, time_slots_text: (product.time_slots || []).join(', '), service_location: product.service_location || 'at_seller', slot_capacity: product.slot_capacity ?? 1, order_days: product.order_days || [], options_text: (product.options || []).map((o) => `${o.name}: ${(o.choices || []).join(', ')}`).join('\n') })
@@ -100,7 +126,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       <form onSubmit={(e) => { e.preventDefault(); save() }} className="stack">
         <div className="form-grid">
           <Field label="Name" span><Input value={p.name} onChange={set('name')} required /></Field>
-          <Field label="Category"><Select value={p.category} onChange={set('category')} options={CATEGORIES} placeholder="Choose" /></Field>
+          <Field label="Category"><Select value={p.category} onChange={set('category')} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" /></Field>
           <Field label="Status">{vendorMode ? <Badge status={p.status} /> : <Select value={p.status} onChange={set('status')} options={['draft', 'submitted', 'approved', 'published', 'rejected', 'out_of_stock', 'suspended']} />}</Field>
           <Field label="Selling price"><Input money value={p.price} onChange={set('price')} required /></Field>
           <Field label="Normal price (to show savings)"><Input money value={p.normal_price} onChange={set('normal_price')} /></Field>

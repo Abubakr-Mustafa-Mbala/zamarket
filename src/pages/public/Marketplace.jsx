@@ -8,7 +8,8 @@ import { money } from '../../lib/format'
 import { Stars, Modal, Field, Input, useToast, Loading } from '../../components/ui'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
-import { DEPARTMENTS, iconFor } from '../../lib/categories'
+import { iconFor } from '../../lib/categories'
+import { useDepartments, useShopInfo } from '../../lib/departments'
 
 // ---------- shared catalogue loader (small catalogue: one fetch, cached for the session) ----------
 let cache = null
@@ -45,6 +46,7 @@ function Price({ value, size }) {
 
 // ---------- shell ----------
 export function PublicShell() {
+  const DEPARTMENTS = useDepartments()
   const { count, subtotal } = useCart()
   const { user, role, profile } = useAuth()
   const { pathname } = useLocation()
@@ -167,12 +169,13 @@ const isEntryPage = () => (window.history.state?.idx ?? 0) === 0
 
 // ---------- product card ----------
 function ProductCard({ p, deal, inStore }) {
+  const DEPARTMENTS = useDepartments()
   const out = isOut(p)
   const save = p.normal_price && Number(p.normal_price) > Number(p.price) ? Number(p.normal_price) - Number(p.price) : 0
   return (
     <Link to={inStore && p.vendor_slug ? `/${p.vendor_slug}/${p.slug}` : `/p/${p.slug || p.id}`} className="pc">
       <div className="pc-img">
-        {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="pc-ph" aria-hidden>{iconFor(p.category)}</span>}
+        {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="pc-ph" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}
         {deal && <span className="pc-deal">{deal.name}</span>}
       </div>
       <div className="pc-body">
@@ -199,6 +202,7 @@ function Row({ title, link, children }) {
 
 // ---------- home ----------
 export function Storefront() {
+  const DEPARTMENTS = useDepartments()
   const data = useCatalogue()
   const { ref } = useCart()
   const counts = useMemo(() => {
@@ -305,6 +309,7 @@ export function SellersPage() {
 const SORTS = [['featured', 'Featured'], ['price_asc', 'Price: low to high'], ['price_desc', 'Price: high to low'], ['new', 'Newest'], ['rating', 'Top rated']]
 
 export function SearchPage() {
+  const DEPARTMENTS = useDepartments()
   const data = useCatalogue()
   const [sp, setSp] = useSearchParams()
   const [sheet, setSheet] = useState(false)
@@ -417,6 +422,8 @@ export function SearchPage() {
 
 // ---------- product page ----------
 export function ProductPage() {
+  const DEPARTMENTS = useDepartments()
+  const shop = useShopInfo()
   const { id: idParam, store: storeParam, product: productParam } = useParams()
   const id = productParam || idParam
   const { setStoreRef } = useCart()
@@ -466,13 +473,14 @@ export function ProductPage() {
   const buyNow = guard(() => { add(p, qty, condition, { choices, note }); nav('/cart') })
   const more = (catalogue?.products || []).filter((x) => x.id !== p.id && (p.vendor_id ? x.vendor_id === p.vendor_id : x.category === p.category)).slice(0, 10)
   const availability = out ? 'Out of stock' : scheduled ? howText(p) : p.owner_type === 'founder' && p.stock_available <= 5 ? `Only ${p.stock_available} left in stock` : 'In stock'
+  const deliveryLine = shop.deliveryIncluded ? 'Free delivery in Lusaka District. Other areas confirmed by phone.' : `Delivery in Lusaka District from ${money(shop.localFee)}. Other areas confirmed by phone.`
 
   const buyBox = (
     <div className="buybox">
       <Price value={p.price} size="lg" />
       {save > 0 && <div className="bb-save">Was <s>{money(p.normal_price)}</s>. You save {money(save)}</div>}
       <div className={`bb-avail ${out ? 'out' : ''}`}>{availability}</div>
-      {!scheduled && !out && <div className="bb-line">Delivery in Lusaka District from K30. Other areas confirmed by phone.</div>}
+      {!scheduled && !out && <div className={`bb-line ${shop.deliveryIncluded ? 'ok strong' : ''}`}>{deliveryLine}</div>}
       {p.fulfilment === 'service' && <div className="bb-line">Pick your date{p.time_slots?.length ? ' and time' : ''} at checkout.</div>}
       {p.fulfilment === 'made_to_order' && <div className="bb-line">Choose the date you need it at checkout.</div>}
       {out ? (
@@ -515,7 +523,7 @@ export function ProductPage() {
               {p.images.map((src, i) => <button key={i} type="button" className={i === img ? 'on' : ''} onClick={() => setImg(i)} aria-label={`Photo ${i + 1}`}><img src={src} alt="" /></button>)}
             </div>
           )}
-          <div className="main-img">{p.images?.[img] ? <img src={p.images[img]} alt={p.name} /> : <span className="pc-ph big" aria-hidden>{iconFor(p.category)}</span>}</div>
+          <div className="main-img">{p.images?.[img] ? <img src={p.images[img]} alt={p.name} /> : <span className="pc-ph big" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}</div>
         </div>
 
         <div className="pdp-info">

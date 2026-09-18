@@ -8,7 +8,9 @@ export function offerCopy(o, productName) {
   const name = productName || 'this product'
   const plural = units > 1 ? `${units} × ${name}` : name
   switch (o.type) {
-    case 'buy_x_get_y': return { get: `${plural} — you pay for ${c.buyQty}`, bonus: `${c.freeQty} free` }
+    case 'buy_x_get_y': return o.gift_name
+      ? { get: `${c.buyQty} × ${name}`, bonus: `${c.freeQty > 1 ? `${c.freeQty} × ` : ''}${o.gift_name} free` }
+      : { get: `${plural} — you pay for ${c.buyQty}`, bonus: `${c.freeQty} free` }
     case 'bundle': return { get: plural }
     case 'percent_off': case 'flash': return { get: `${name} at ${c.discountPct}% off` }
     case 'fixed_off': return { get: `${name} with ${money(c.discountAmount)} off` }

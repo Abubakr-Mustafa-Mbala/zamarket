@@ -5,6 +5,7 @@ import { useCart } from '../../lib/cart'
 import { money } from '../../lib/format'
 import { Modal, Stars, useToast } from '../../components/ui'
 import { iconFor } from '../../lib/categories'
+import { useDepartments } from '../../lib/departments'
 
 // Icons a seller can pick for "What you get" blocks (original line drawings)
 const G = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
@@ -27,6 +28,7 @@ export const defaultCta = (model, type) => ({ buy: 'Buy now', book: type === 'co
 
 // Pure renderer — used by the live page and by the builder preview.
 export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSecondary, onPackage, preview = false }) {
+  const DEPARTMENTS = useDepartments()
   const pg = p.page || {}
   const model = p.sales_model || 'buy'
   const primary = pg.cta_primary || defaultCta(model, p.offering_type)
@@ -58,7 +60,7 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
           </div>
         </div>
         <div className="of-hero-media">
-          {heroImg ? <img src={heroImg} alt={p.name} /> : <span className="of-ph" aria-hidden>{iconFor(p.category)}</span>}
+          {heroImg ? <img src={heroImg} alt={p.name} /> : <span className="of-ph" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}
           {p.images?.length > 1 && <div className="of-thumbs">{p.images.slice(1, 4).map((src, i) => <img key={i} src={src} alt="" />)}</div>}
         </div>
       </section>

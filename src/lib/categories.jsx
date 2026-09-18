@@ -1,7 +1,7 @@
 // Store departments. Products store the `name`; icons are simple original line drawings.
 const S = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' }
 
-export const DEPARTMENTS = [
+const BUILT_IN = [
   { name: 'Phones & electronics', icon: <svg viewBox="0 0 32 32" {...S}><rect x="10" y="4" width="12" height="24" rx="2.5" /><path d="M14.5 24.5h3" /></svg> },
   { name: 'Home & kitchen', icon: <svg viewBox="0 0 32 32" {...S}><path d="M5 15 16 6l11 9" /><path d="M8 13v13h16V13" /><path d="M13 26v-7h6v7" /></svg> },
   { name: 'Fashion', icon: <svg viewBox="0 0 32 32" {...S}><path d="M12 5 6 8l-2 6 4 1.5V27h16V15.5L28 14l-2-6-6-3c0 2.2-1.8 4-4 4s-4-1.8-4-4Z" /></svg> },
@@ -17,5 +17,18 @@ export const DEPARTMENTS = [
   { name: 'Other', icon: <svg viewBox="0 0 32 32" {...S}><rect x="6" y="6" width="8.5" height="8.5" rx="2" /><rect x="17.5" y="6" width="8.5" height="8.5" rx="2" /><rect x="6" y="17.5" width="8.5" height="8.5" rx="2" /><rect x="17.5" y="17.5" width="8.5" height="8.5" rx="2" /></svg> },
 ]
 
-export const CATEGORY_NAMES = DEPARTMENTS.map((d) => d.name)
-export const iconFor = (name) => (DEPARTMENTS.find((d) => d.name === name) || DEPARTMENTS[DEPARTMENTS.length - 1]).icon
+// Icons sellers can choose from, keyed by a short name kept in Settings.
+export const ICON_KEYS = ['phone', 'home', 'fashion', 'beauty', 'food', 'services', 'kids', 'health', 'tools', 'other']
+const BY_KEY = Object.fromEntries(BUILT_IN.map((d, i) => [ICON_KEYS[i], d.icon]))
+
+// The shop's departments are editable in Settings. These are only the fallback.
+export const DEFAULT_DEPARTMENTS = BUILT_IN.map((d, i) => ({ name: d.name, icon: ICON_KEYS[i] }))
+
+export function departmentsFrom(settings) {
+  const list = settings?.departments
+  const clean = Array.isArray(list) ? list.filter((d) => d?.name) : null
+  return (clean?.length ? clean : DEFAULT_DEPARTMENTS).map((d) => ({ name: d.name, iconKey: d.icon || 'other', icon: BY_KEY[d.icon] || BY_KEY.other }))
+}
+
+export const iconByKey = (key) => BY_KEY[key] || BY_KEY.other
+export const iconFor = (name, departments) => (departments || DEFAULT_DEPARTMENTS).map((d) => ({ ...d, icon: BY_KEY[d.icon || d.iconKey] || BY_KEY.other })).find((d) => d.name === name)?.icon || BY_KEY.other

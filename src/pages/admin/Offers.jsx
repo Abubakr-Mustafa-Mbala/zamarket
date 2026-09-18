@@ -3,14 +3,15 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, pct, date, n, title } from '../../lib/format'
-import { OFFER_TYPES, OFFER_CATEGORIES, FIELD_LABELS, TEXT_FIELDS, offerEconomics } from '../../lib/economics'
+import { OFFER_TYPES, OFFER_CATEGORIES, FIELD_LABELS, TEXT_FIELDS, offerEconomics, safeOfferIdeas, offerLimits } from '../../lib/economics'
 import { effectiveCost } from './Products'
 import { offerCopy } from '../../lib/offers'
-import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Breakdown, Light, useToast } from '../../components/ui'
+import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Breakdown, Light, useToast, Empty } from '../../components/ui'
 
 export default function Offers() {
   const { settings, isFounder } = useAuth()
   const [edit, setEdit] = useState(null)
+  const [suggest, setSuggest] = useState(false)
   const { data, loading, reload } = useData(async () => ({
     offers: await q(supabase.from('offers').select('*,product:products(name)').order('created_at', { ascending: false })),
     products: await q(supabase.from('products').select('*').in('status', ['published', 'out_of_stock', 'approved']).order('name')),
@@ -20,7 +21,7 @@ export default function Offers() {
     <div className="stack">
       <div className="page-head">
         <div><h1>Offers</h1><p>Attraction, upsell, downsell and continuity offers — each one checked for profit before it goes live.</p></div>
-        <button className="btn primary" onClick={() => setEdit({ category: 'attraction', type: 'buy_x_get_y', config: {}, status: 'draft' })}>Build an offer</button>
+        <button className="btn primary" onClick={() => setSuggest(true)}>Create an offer</button>
       </div>
       {loading ? <Loading /> : (
         <Table rows={data.offers} onRow={setEdit} empty="No offers yet — build your first one" cols={[
@@ -33,6 +34,7 @@ export default function Offers() {
           { key: 'end_at', label: 'Ends', render: (o) => o.end_at ? date(o.end_at) : '—' },
         ]} />
       )}
+      {suggest && <SuggestOffers products={data?.products || []} settings={settings} onClose={() => setSuggest(false)} onPick={(draft) => { setSuggest(false); setEdit(draft) }} />}
       {edit && <OfferBuilder offer={edit} products={data?.products || []} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
     </div>
   )
@@ -51,6 +53,60 @@ const toStart = (d) => (d ? `${d.slice(0, 10)}T00:00:00+02:00` : null)
 const toEnd = (d) => (d ? `${d.slice(0, 10)}T23:59:59+02:00` : null)
 const dateOnly = (ts) => (ts ? new Date(new Date(ts).getTime() + 2 * 36e5).toISOString().slice(0, 10) : '')
 
+// Ready-made offers with the maths already done. Pick one, tweak it, publish.
+function SuggestOffers({ products, settings, onClose, onPick }) {
+  const [productId, setProductId] = useState(products[0]?.id || '')
+  const product = products.find((x) => x.id === productId)
+  const withCost = product ? { ...product, effective_cost: effectiveCost(product) } : null
+  const price = n(product?.price)
+
+  const { ideas, limits } = useMemo(() => (withCost ? safeOfferIdeas(withCost, settings) : { ideas: [], limits: null }), [withCost, settings])
+
+  return (
+    <Modal title="Create an offer" onClose={onClose} wide>
+      <div className="stack">
+        <Field label="Which product?">
+          <Select value={productId} onChange={setProductId} options={products.map((p) => [p.id, `${p.name} — ${money(p.price)}`])} placeholder="Choose a product" />
+        </Field>
+        {!product ? <Empty title="Choose a product">The suggestions work out your profit for each offer before you publish.</Empty> : (
+          <>
+            <div className="card flat small">
+              <p><strong>What this product can afford.</strong> Cost to you {money(withCost.effective_cost)}, selling at {money(price)}. You can go as low as <strong>{money(limits.floorPrice)}</strong> — that's up to <strong>{limits.maxDiscountPct}% off</strong> — and still clear your floor.</p>
+            </div>
+            {ideas.length === 0 ? (
+              <Empty title="This product can't carry an offer yet">
+                At {money(price)} with a cost of {money(withCost.effective_cost)}, any discount would drop below your floor. Raise the price to about {money(Math.ceil((withCost.effective_cost + n(settings.default_packaging_cost)) * 1.5))}, or buy it cheaper, then come back.
+              </Empty>
+            ) : (
+            <p className="small muted">Every offer below is already worked out to stay profitable on this product. Tap one to open it filled in — you can still change any number, and nothing goes live until you publish.</p>
+            )}
+            {ideas.length > 0 && <div className="idea-grid">
+              {ideas.map((idea) => {
+                const econ = offerEconomics(idea.type, idea.config, withCost, settings)
+                return (
+                  <button key={idea.type} type="button" className="idea" onClick={() => onPick({ ...idea, product_id: productId, status: 'draft' })}>
+                    <span className="idea-top">
+                      <span className="idea-name">{idea.name}</span>
+                      <Light tone={econ.light.tone} label={econ.light.label} />
+                    </span>
+                    <span className="idea-why">{idea.why}</span>
+                    <span className="idea-nums">
+                      <span>Customer pays <b>{money(econ.price)}</b></span>
+                      <span>You keep <b className={econ.netProfit > 0 ? 'ok' : 'bad'}>{money(econ.netProfit)}</b></span>
+                      {econ.savings > 0 && <span className="save">They save {money(econ.savings)}</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>}
+            <button type="button" className="btn ghost" onClick={() => onPick({ category: 'attraction', type: 'buy_x_get_y', config: {}, product_id: productId, status: 'draft' })}>Start from scratch instead</button>
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function OfferBuilder({ offer, products, onClose, onDone }) {
   const toast = useToast()
   const { settings, isFounder, user } = useAuth()
@@ -60,7 +116,11 @@ function OfferBuilder({ offer, products, onClose, onDone }) {
   const setCfg = (k) => (v) => setO((c) => ({ ...c, config: { ...c.config, [k]: v } }))
   const type = OFFER_TYPES.find((t) => t.key === o.type) || OFFER_TYPES[0]
   const product = products.find((p) => p.id === o.product_id)
-  const econ = useMemo(() => product ? offerEconomics(o.type, o.config, { ...product, effective_cost: effectiveCost(product) }, settings) : null, [o.type, o.config, product, settings])
+  const giftProduct = o.type === 'buy_x_get_y' && o.config.giftProductId ? products.find((x) => x.id === o.config.giftProductId) : null
+  const econ = useMemo(() => product
+    ? offerEconomics(o.type, o.config, { ...product, effective_cost: effectiveCost(product) }, settings,
+        giftProduct ? { ...giftProduct, effective_cost: effectiveCost(giftProduct) } : null)
+    : null, [o.type, o.config, product, settings, giftProduct])
 
   const save = async (status) => {
     if (!product) return toast('Choose a product', true)
@@ -94,6 +154,12 @@ function OfferBuilder({ offer, products, onClose, onDone }) {
             </select>
           </Field>
           <div className="span tiny muted">{type.help}</div>
+          {o.type === 'buy_x_get_y' && (
+            <Field label="What do they get free?" hint="The same product, or something else — e.g. buy 2 shoes, get a T-shirt" span>
+              <Select value={o.config.giftProductId || ''} onChange={setCfg('giftProductId')}
+                options={[['', `More of the same (${product?.name || 'this product'})`], ...products.filter((x) => x.id !== o.product_id).map((x) => [x.id, `${x.name} — normally ${money(x.price)}`])]} />
+            </Field>
+          )}
           {type.fields.map((f) => (
             <Field key={f} label={FIELD_LABELS[f]}>
               {TEXT_FIELDS.includes(f)
@@ -128,6 +194,7 @@ function OfferBuilder({ offer, products, onClose, onDone }) {
                 <div className="between"><span className="muted">Customer saves</span><span className="money copper strong">{money(econ.savings)}</span></div>
                 <div className="between"><span className="muted">Net margin</span><span className={econ.netMargin >= n(settings.target_margin_pct) ? 'ok' : 'warn'}>{pct(econ.netMargin)}</span></div>
                 <div className="between"><span className="muted">Price floor</span><span>{pct(econ.floor)} margin</span></div>
+                {product && <div className="between"><span className="muted">Lowest you can go</span><span>{money(offerLimits({ ...product, effective_cost: effectiveCost(product) }, settings).floorPrice)} each</span></div>}
                 {econ.belowFloor && (
                   <div className="card" style={{ borderColor: 'var(--bad)', padding: 10 }}>
                     <div className="bad strong small">Below the price floor</div>

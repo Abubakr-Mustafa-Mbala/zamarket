@@ -34,10 +34,12 @@ const MarketingHub = lazy(() => import('./pages/marketing/MarketingHub'))
 const growthPages = () => import('./pages/public/GrowthPages')
 const MagnetPage = named(growthPages, 'MagnetPage')
 const InvitePage = named(growthPages, 'InvitePage')
+const RatePage = named(growthPages, 'RatePage')
 const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
 const OfferingBuilder = lazy(() => import('./pages/admin/OfferingBuilder'))
+const Deals = lazy(() => import('./pages/admin/Deals'))
 const earningsPages = () => import('./pages/shared/EarningsPages')
 const AdminEarnings = named(earningsPages, 'AdminEarnings')
 const PartnerEarnings = named(earningsPages, 'PartnerEarnings')
@@ -48,6 +50,8 @@ const Reports = named(adminSetup, 'Reports')
 const Team = named(adminSetup, 'Team')
 const Settings = named(adminSetup, 'Settings')
 const Audit = named(adminSetup, 'Audit')
+const FindCustomers = lazy(() => import('./pages/reseller/FindCustomers'))
+const Training = lazy(() => import('./pages/reseller/Training'))
 const ResellerHome = named(resellerPages, 'ResellerHome')
 const ResellerProducts = named(resellerPages, 'ResellerProducts')
 const ResellerNewSale = named(resellerPages, 'ResellerNewSale')
@@ -116,6 +120,7 @@ export default function App() {
         <Route path="/apply/:kind" element={<Apply />} />
         <Route path="/free/:slug" element={<MagnetPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
+        <Route path="/rate/:link" element={<RatePage />} />
       </Route>
       <Route path="/r/:code" element={<ReferralCapture />} />
       <Route path="/r/:code/:product" element={<ReferralCapture />} />
@@ -127,6 +132,7 @@ export default function App() {
         <Route index element={<StaffHome />} />
         <Route path="add-stock" element={<AddStock />} />
         <Route path="orders" element={<OrdersList />} />
+        <Route path="deals" element={<Deals />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="products" element={<Products />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />
@@ -154,6 +160,8 @@ export default function App() {
       <Route path="/sell" element={<Guard roles={['reseller']}><Shell kind="reseller" /></Guard>}>
         <Route index element={<ResellerHome />} />
         <Route path="products" element={<ResellerProducts />} />
+        <Route path="find-customers" element={<FindCustomers />} />
+        <Route path="training" element={<Training />} />
         <Route path="new-sale" element={<ResellerNewSale />} />
         <Route path="commissions" element={<ResellerCommissions />} />
         <Route path="earnings" element={<ResellerEarnings />} />
@@ -164,6 +172,7 @@ export default function App() {
         <Route path="products" element={<VendorProducts />} />
         <Route path="orders" element={<VendorOrders />} />
         <Route path="payouts" element={<VendorPayouts />} />
+        <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="earnings" element={<VendorEarnings />} />
         <Route path="marketing" element={<VendorMarketing />} />
       </Route>

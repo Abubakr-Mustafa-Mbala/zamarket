@@ -8,17 +8,19 @@ import { Loading, Modal, Field, Input, Select, Textarea, useToast, Empty, Badge,
 import BarChart from '../../components/BarChart'
 import { DateBar, useRange } from '../shared/Earnings'
 import Leads, { CHANNELS, LeadDrawer, StageChip, FollowUp } from './Leads'
+import StartHere from './StartHere'
+import Funnels from './Funnels'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['funnels', 'Funnels'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, funnels: Funnels, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -27,6 +29,8 @@ export default function MarketingHub() {
           <h1>{section ? heading : 'Marketing'}</h1>
           <p>{{
             '': 'What marketing brought in, and where it came from.',
+            start: 'New to this? Start here: what to do, in order, and what every number means.',
+            funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
             today: 'Your checklist for today. Do the work, watch the numbers move.',
             leads: 'Everyone who showed interest. Call, message, follow up, win.',
             campaigns: 'Every ad, post and message gets a short link so results are counted.',

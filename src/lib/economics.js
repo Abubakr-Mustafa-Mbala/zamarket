@@ -183,34 +183,40 @@ export const TEXT_FIELDS = ['giftName']
 
 // One "deal" = what a customer gets for taking the offer once.
 // MUST match offer_deal() in schema.sql — the database is what actually charges.
-export function dealTerms(type, cfg = {}, product = {}) {
+export function dealTerms(type, cfg = {}, product = {}, gift = null) {
   const base = n(product.price)
   const normal = n(product.normal_price) || base
   let units = 1
   let price = base
   switch (type) {
-    case 'buy_x_get_y': units = (parseInt(cfg.buyQty) || 1) + (parseInt(cfg.freeQty) || 0); price = (parseInt(cfg.buyQty) || 1) * base; break
+    case 'buy_x_get_y': {
+      const freeQty = parseInt(cfg.freeQty) || 0
+      units = (parseInt(cfg.buyQty) || 1) + (gift ? 0 : freeQty)   // a different free product is its own line
+      price = (parseInt(cfg.buyQty) || 1) * base
+      break
+    }
     case 'bundle': units = Math.max(1, parseInt(cfg.buyQty) || 1); price = cfg.bundlePrice !== undefined && cfg.bundlePrice !== '' ? n(cfg.bundlePrice) : base * units; break
     case 'fixed_off': price = Math.max(0, base - n(cfg.discountAmount)); break
     case 'order_bump': case 'upsell': price = cfg.bumpPrice !== undefined && cfg.bumpPrice !== '' ? n(cfg.bumpPrice) : base; break
     case 'percent_off': case 'flash': case 'downsell': case 'continuity': price = r2(base * (1 - n(cfg.discountPct) / 100)); break
     default: break
   }
-  const normalValue = units * normal
-  return { units, price: r2(price), normalValue: r2(normalValue), savings: r2(Math.max(0, normalValue - price)) }
+  const giftValue = gift ? (n(gift.normal_price) || n(gift.price)) * (parseInt(cfg.freeQty) || 1) : 0
+  const normalValue = units * normal + giftValue
+  return { units, price: r2(price), normalValue: r2(normalValue), savings: r2(Math.max(0, normalValue - price)), giftQty: gift ? (parseInt(cfg.freeQty) || 1) : 0 }
 }
 
 // Economics of one deal, for the builder. Mirrors enforce_offer_floor() in schema.sql.
-export function offerEconomics(type, cfg, product, settings) {
-  const d = dealTerms(type, cfg, product)
+export function offerEconomics(type, cfg, product, settings, gift = null) {
+  const d = dealTerms(type, cfg, product, gift)
   const cost = n(product?.effective_cost)
   const packaging = n(product?.packaging_cost ?? settings?.default_packaging_cost)
   const commissionPct = product?.commission_type === 'pct' ? n(product.commission_value) : product?.commission_type === 'flat' ? 0 : n(settings?.default_commission_pct)
   const commissionFlat = product?.commission_type === 'flat' ? n(product.commission_value) * d.units : null
   const u = unitEconomics({
     price: d.price,
-    productCost: cost * d.units + (type === 'free_gift' ? n(cfg.giftCost) : 0),
-    packaging: packaging * d.units,
+    productCost: cost * d.units + (type === 'free_gift' ? n(cfg.giftCost) : 0) + (gift ? n(gift.effective_cost) * d.giftQty : 0),
+    packaging: packaging * (d.units + (d.giftQty || 0)),
     delivery: type === 'free_delivery' ? n(settings?.local_delivery_fee) : 0,
     paymentFeePct: settings?.payment_fee_pct,
     commissionPct, commissionFlat,
@@ -219,6 +225,83 @@ export function offerEconomics(type, cfg, product, settings) {
   })
   const floor = n(settings?.price_floor_margin_pct ?? 10)
   return { ...u, units: d.units, normalValue: d.normalValue, savings: d.savings, belowFloor: u.netMargin < floor, floor, light: light(u.netMargin, u.netProfit, settings) }
+}
+
+// How far you can go on an offer before it stops being worth doing.
+// Everything an offer can give away is measured against the same floor.
+export function offerLimits(product, settings) {
+  const price = n(product?.price)
+  const floor = n(settings?.price_floor_margin_pct ?? 10)
+  const minProfit = n(settings?.min_profit_per_unit ?? 0)
+  if (price <= 0) return { maxDiscountPct: 0, maxDiscountAmount: 0, safeFreeQty: 0, floorPrice: price, price }
+
+  // Lowest price for one unit that still clears the floor and the minimum profit.
+  const at = (p) => offerEconomics('percent_off', { discountPct: price > 0 ? ((price - p) / price) * 100 : 0 }, product, settings)
+  let lo = 0, hi = price
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2
+    const e = at(mid)
+    if (e.netMargin >= floor && e.netProfit >= minProfit) hi = mid; else lo = mid
+  }
+  const floorPrice = r2(hi)
+  const maxDiscountPct = Math.max(0, Math.floor(((price - floorPrice) / price) * 100))
+  // Buy X get Y: the free units must still leave the deal above the floor.
+  let safeFreeQty = 0
+  for (let buy = 2; buy <= 6 && safeFreeQty === 0; buy++) {
+    for (let free = 3; free >= 1; free--) {
+      const e = offerEconomics('buy_x_get_y', { buyQty: buy, freeQty: free }, product, settings)
+      if (e.netMargin >= floor && e.netProfit >= minProfit) { safeFreeQty = free; return { maxDiscountPct, maxDiscountAmount: r2(price - floorPrice), floorPrice, price, safeBuyQty: buy, safeFreeQty: free } }
+    }
+  }
+  return { maxDiscountPct, maxDiscountAmount: r2(price - floorPrice), floorPrice, price, safeBuyQty: 0, safeFreeQty: 0 }
+}
+
+// Build offers that are profitable by construction, trimmed to what this product can carry.
+export function safeOfferIdeas(product, settings) {
+  const price = n(product?.price)
+  const lim = offerLimits(product, settings)
+  const round5 = (v) => Math.max(5, Math.round(v / 5) * 5)
+  const ideas = []
+  const ok = (type, config) => {
+    const e = offerEconomics(type, config, product, settings)
+    return e.netProfit > 0 && !e.belowFloor
+  }
+
+  if (lim.safeFreeQty > 0) {
+    ideas.push({ type: 'buy_x_get_y', category: 'attraction', config: { buyQty: lim.safeBuyQty, freeQty: lim.safeFreeQty },
+      name: `Buy ${lim.safeBuyQty}, get ${lim.safeFreeQty} free`, why: `The most you can give free here. Sells ${lim.safeBuyQty + lim.safeFreeQty} at once.` })
+  }
+  if (lim.maxDiscountPct >= 5) {
+    const pct = Math.min(20, Math.max(5, Math.floor(lim.maxDiscountPct / 5) * 5))
+    ideas.push({ type: 'percent_off', category: 'attraction', config: { discountPct: pct }, name: `${pct}% off`, why: `You can afford up to ${lim.maxDiscountPct}% on this one.` })
+    const amount = round5(Math.min(lim.maxDiscountAmount, price * 0.15))
+    if (amount >= 5 && ok('fixed_off', { discountAmount: amount })) {
+      ideas.push({ type: 'fixed_off', category: 'attraction', config: { discountAmount: amount }, name: `${amount} kwacha off`, why: 'A kwacha amount often feels bigger than a percentage.' })
+    }
+  }
+  const bundleQty = 3
+  const bundlePrice = Math.max(lim.floorPrice * bundleQty, Math.round(price * 2.7))
+  if (ok('bundle', { buyQty: bundleQty, bundlePrice })) {
+    ideas.push({ type: 'bundle', category: 'attraction', config: { buyQty: bundleQty, bundlePrice: Math.round(bundlePrice) }, name: `3 for one price`, why: 'Raises how much each customer spends in one go.' })
+  }
+  const minSpend = Math.max(100, Math.round((price * 2) / 50) * 50)
+  if (ok('free_delivery', { minSpend })) {
+    ideas.push({ type: 'free_delivery', category: 'attraction', config: { minSpend }, name: `Free delivery over ${minSpend}`, why: 'Pushes people to add another item instead of cutting your price.' })
+  }
+  const giftCost = round5(Math.min(lim.maxDiscountAmount, price * 0.05))
+  if (giftCost >= 5 && ok('free_gift', { giftName: 'a small gift', giftCost })) {
+    ideas.push({ type: 'free_gift', category: 'attraction', config: { giftName: 'a small gift', giftCost }, name: 'Free gift with every order', why: 'Adds value without lowering the price they see.' })
+  }
+  const bump = Math.max(lim.floorPrice, Math.round(price * 0.85))
+  if (ok('order_bump', { bumpPrice: bump })) {
+    ideas.push({ type: 'order_bump', category: 'upsell', config: { bumpPrice: Math.round(bump) }, name: `Add another at ${Math.round(bump)}`, why: 'Offered at checkout, once they have already decided.' })
+  }
+  if (lim.maxDiscountPct >= 10) {
+    const d = Math.min(15, lim.maxDiscountPct)
+    ideas.push({ type: 'downsell', category: 'downsell', config: { discountPct: d }, name: `Wait — ${d}% off`, why: 'Shown only when someone removes it from their cart.' })
+    ideas.push({ type: 'continuity', category: 'continuity', config: { discountPct: Math.min(10, lim.maxDiscountPct), cycleDays: 30 }, name: 'Monthly repeat order', why: 'For things people buy again and again.' })
+  }
+  return { ideas, limits: lim }
 }
 
 // Vendor sale split (spec §20)

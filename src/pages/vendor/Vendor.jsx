@@ -71,9 +71,10 @@ export function VendorProducts() {
           { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
           { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
           { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },
+          { key: 'page', label: '', render: (p) => ['draft', 'submitted', 'rejected'].includes(p.status) ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a> : null },
         ]} />
       )}
-      <p className="tiny muted">Published products can only be changed by the marketplace team, so prices customers see stay consistent. Message us to update one.</p>
+      <p className="tiny muted">Use "Design the page" to add packages, photos, schedule and everything customers see. Published products can only be changed by the marketplace team, so prices customers see stay consistent. Message us to update one.</p>
       {edit && <ProductEditor product={edit} vendorMode={v.id} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
     </div>
   )

@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
+import { DEFAULT_DEPARTMENTS, ICON_KEYS, iconByKey } from '../../lib/categories'
 import { money, pct, date, datetime, n, title } from '../../lib/format'
-import { Badge, Table, Loading, Field, Input, Select, useToast, Stat, Tabs, CopyLine } from '../../components/ui'
+import { Badge, Table, Loading, Field, Input, Select, Textarea, Segmented, useToast, Stat, Tabs, CopyLine } from '../../components/ui'
 
 // ---------------- Reports ----------------
 export function Reports() {
@@ -184,59 +185,148 @@ export function Team() {
 }
 
 // ---------------- Settings ----------------
-const FIELDS = [
-  { key: 'referral_reward', label: 'Reward for a customer when a friend they invited completes a first order (K)', type: 'number' },
-  { key: 'business_name', label: 'Business name (on receipts)', type: 'text' },
-  { key: 'business_phone', label: 'Business phone (on receipts)', type: 'text' },
-  { key: 'receipt_footer', label: 'Receipt footer message', type: 'text' },
-  { key: 'marketplace_fee_pct', label: 'Marketplace fee charged to vendors (%)', type: 'number' },
-  { key: 'own_audience_fee_pct', label: 'Lower fee when a vendor brings the customer through their own link (%)', type: 'number' },
-  { key: 'default_commission_pct', label: 'Default reseller commission (%)', type: 'number' },
-  { key: 'commission_source', label: 'Where the reseller commission comes from', type: 'select', options: [['from_fee', 'Out of the marketplace fee (vendor still pays the full fee)'], ['on_top', 'On top of the fee (vendor pays fee + commission)']] },
-  { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number' },
-  { key: 'target_markup_pct', label: 'Profit target on top of cost (%) — suggests your selling prices. 50% on K1,100 = K1,650', type: 'number' },
-  { key: 'target_margin_pct', label: 'Healthy margin for the green/yellow/red lights (% of selling price)', type: 'number' },
-  { key: 'price_floor_margin_pct', label: 'Price floor — offers below this margin need a founder override (%)', type: 'number' },
-  { key: 'min_profit_per_unit', label: 'Minimum acceptable profit per unit (K)', type: 'number' },
-  { key: 'commission_grace_hours', label: 'Hours after completion before commissions can be verified', type: 'number' },
-  { key: 'payment_fee_pct', label: 'Payment processing fee (%)', type: 'number' },
-  { key: 'default_packaging_cost', label: 'Default packaging cost per unit (K)', type: 'number' },
+const GROUPS = [
+  {
+    title: 'Your business',
+    note: 'Used on receipts and messages to customers.',
+    fields: [
+      { key: 'business_name', label: 'Business name', type: 'text', help: 'Printed at the top of every receipt.' },
+      { key: 'business_phone', label: 'Business phone', type: 'text', help: 'So customers can reach you from the receipt.' },
+      { key: 'receipt_footer', label: 'Thank-you line on receipts', type: 'text', help: 'e.g. Thank you for shopping with us!' },
+    ],
+  },
+  {
+    title: 'Pricing',
+    note: 'These only suggest prices. You can always type your own.',
+    fields: [
+      { key: 'target_markup_pct', label: 'Profit you want on top of cost (%)', type: 'number', help: 'If something costs you K100 and this is 50, the suggested price is K150.' },
+      { key: 'default_packaging_cost', label: 'Packaging cost per item (K)', type: 'number', help: 'What a bag or box costs you, so profit is honest.' },
+      { key: 'min_profit_per_unit', label: 'Least profit you will accept per item (K)', type: 'number', help: 'Below this, the system warns you.' },
+      { key: 'target_margin_pct', label: 'Healthy profit share of the price (%)', type: 'number', help: 'Used for the green, yellow and red lights. 30 means about a third of the price is profit.' },
+      { key: 'price_floor_margin_pct', label: 'Lowest profit share allowed on an offer (%)', type: 'number', help: 'Stops anyone publishing an offer that barely makes money. A founder can still approve it with a reason.' },
+      { key: 'payment_fee_pct', label: 'Payment charge (%)', type: 'number', help: 'What a payment service like Airtel or MTN will take later. Leave at 0 while customers pay you directly.' },
+    ],
+  },
+  {
+    title: 'Delivery',
+    note: 'Many shops build delivery into the price so customers see "Free delivery". If you do that, add the delivery cost per sale when you price a product in "I bought goods".',
+    fields: [
+      { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
+      { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number', help: 'Added automatically. Anywhere else, you set the fee after calling the customer.' },
+    ],
+  },
+  {
+    title: 'Vendors and resellers',
+    note: 'The vendor pays the marketplace fee, and the reseller\'s commission comes out of that fee.',
+    fields: [
+      { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
+      { key: 'own_audience_fee_pct', label: 'Lower fee when the vendor brought the customer (%)', type: 'number', help: 'When someone buys through the vendor\'s own store link, you take this smaller fee instead.' },
+      { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead.' },
+      { key: 'commission_grace_hours', label: 'Hours to wait before paying a commission', type: 'number', help: 'Time for the customer to report a problem. 24 is normal.' },
+      { key: 'referral_reward', label: 'Reward when a customer brings a friend (K)', type: 'number', help: 'Paid after the friend\'s first order is completed.' },
+    ],
+  },
 ]
 
 export function Settings() {
   const toast = useToast()
   const { settings, refresh } = useAuth()
   const [f, setF] = useState({ ...settings })
-  const [alloc, setAlloc] = useState(JSON.stringify(settings.capital_allocation || {}, null, 0))
+  const [saving, setSaving] = useState(false)
+  const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }))
+  const capital = { inventory: 200, packaging: 50, delivery: 50, advertising: 100, reserve: 100, ...(f.capital_allocation || {}) }
+  const setCapital = (k, v) => setF((x) => ({ ...x, capital_allocation: { ...capital, [k]: Number(v) || 0 } }))
+  const depts = Array.isArray(f.departments) && f.departments.length ? f.departments : DEFAULT_DEPARTMENTS
+  const setDepts = (list) => setF((x) => ({ ...x, departments: list }))
+
   const save = async () => {
-    for (const fld of FIELDS) {
-      const val = fld.type === 'number' ? n(f[fld.key]) : f[fld.key]
-      const { error } = await supabase.from('settings').upsert({ key: fld.key, value: val ?? '' })
-      if (error) return toast(`${fld.label}: ${error.message}`, true)
-    }
+    setSaving(true)
     try {
-      const { error } = await supabase.from('settings').update({ value: JSON.parse(alloc || '{}') }).eq('key', 'capital_allocation')
-      if (error) throw new Error(error.message)
-    } catch (e) { return toast(`Capital plan: ${e.message}`, true) }
-    await refresh()
-    toast('Settings saved')
+      const rows = []
+      for (const g of GROUPS) for (const fld of g.fields) rows.push({ key: fld.key, value: fld.type === 'number' ? n(f[fld.key]) : fld.type === 'switch' ? (f[fld.key] === true || f[fld.key] === 'true') : (f[fld.key] ?? '') })
+      rows.push({ key: 'capital_allocation', value: capital })
+      rows.push({ key: 'departments', value: depts.filter((d) => d.name?.trim()) })
+      rows.push({ key: 'reseller_terms', value: f.reseller_terms || '' })
+      rows.push({ key: 'vendor_terms', value: f.vendor_terms || '' })
+      for (const row of rows) {
+        const { error } = await supabase.from('settings').upsert(row)
+        if (error) throw new Error(`${row.key}: ${error.message}`)
+      }
+      await refresh()
+      toast('Settings saved')
+    } catch (e) { toast(e.message, true) } finally { setSaving(false) }
   }
+
+  const totalCapital = Object.values(capital).reduce((t, v) => t + Number(v || 0), 0)
+
   return (
-    <div className="stack" style={{ maxWidth: 720 }}>
-      <div className="page-head"><div><h1>Settings</h1><p>Every rate and rule in one place. Changes are logged.</p></div></div>
-      <div className="card stack">
-        {FIELDS.map((fld) => (
-          <Field key={fld.key} label={fld.label}>
-            {fld.type === 'select' ? <Select value={f[fld.key]} onChange={(v) => setF({ ...f, [fld.key]: v })} options={fld.options} /> : <Input type={fld.type === 'text' ? 'text' : 'number'} value={f[fld.key]} onChange={(v) => setF({ ...f, [fld.key]: v })} />}
-          </Field>
+    <div className="stack" style={{ maxWidth: 820 }}>
+      <div className="page-head">
+        <div><h1>Settings</h1><p>Every rule the system follows. Each one explains what it does.</p></div>
+        <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
+      </div>
+
+      {GROUPS.map((g) => (
+        <section key={g.title} className="card stack-sm">
+          <h3>{g.title}</h3>
+          {g.note && <p className="small muted">{g.note}</p>}
+          <div className="settings-grid">
+            {g.fields.map((fld) => (
+              <Field key={fld.key} label={fld.label} hint={fld.help}>
+                {fld.type === 'switch'
+                  ? <Segmented options={[['no', 'No, charge delivery'], ['yes', 'Yes, it is included']]} value={(f[fld.key] === true || f[fld.key] === 'true') ? 'yes' : 'no'} onChange={(v) => set(fld.key)(v === 'yes')} />
+                  : <Input type={fld.type === 'number' ? 'number' : 'text'} value={f[fld.key] ?? ''} onChange={set(fld.key)} />}
+              </Field>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <section className="card stack-sm">
+        <h3>Shop departments</h3>
+        <p className="small muted">What customers see at the top of the shop and when choosing a category. Use only what you actually sell.</p>
+        {depts.map((d, i) => (
+          <div key={i} className="ob-row">
+            <Input value={d.name} onChange={(v) => setDepts(depts.map((x, k) => (k === i ? { ...x, name: v } : x)))} placeholder="Department name" />
+            <select className="input" style={{ maxWidth: 130 }} value={d.icon || 'other'} onChange={(e) => setDepts(depts.map((x, k) => (k === i ? { ...x, icon: e.target.value } : x)))} aria-label="Icon">
+              {ICON_KEYS.map((k) => <option key={k} value={k}>{title(k)}</option>)}
+            </select>
+            <span className="ob-icon-preview">{iconByKey(d.icon)}</span>
+            <button type="button" className="btn sm ghost" onClick={() => setDepts(depts.filter((_, k) => k !== i))} aria-label="Remove">✕</button>
+            <button type="button" className="btn sm ghost" onClick={() => { if (i === 0) return; const c = [...depts]; [c[i - 1], c[i]] = [c[i], c[i - 1]]; setDepts(c) }} aria-label="Move up">↑</button>
+          </div>
         ))}
-        <Field label="Starting capital plan (JSON)" hint='e.g. {"inventory":200,"packaging":50,"delivery":50,"advertising":100,"reserve":100}'><Input value={alloc} onChange={setAlloc} /></Field>
-        <button className="btn primary" onClick={save}>Save settings</button>
-      </div>
-      <div className="card small muted">
-        <p className="strong" style={{ color: 'var(--ink)' }}>How the vendor split works</p>
-        <p className="mt">On a K500 vendor sale with a 10% fee and a 5% reseller commission: the vendor receives K450. With "out of the fee", the reseller gets K25 and the marketplace keeps K25. With "on top", the vendor receives K425, the reseller K25, and the marketplace keeps K50.</p>
-      </div>
+        <button type="button" className="btn sm" onClick={() => setDepts([...depts, { name: '', icon: 'other' }])}>Add a department</button>
+        <p className="tiny muted">Renaming a department doesn't change products already saved under the old name — edit those products to the new name.</p>
+      </section>
+
+      <section className="card stack-sm">
+        <h3>Starting money plan</h3>
+        <p className="small muted">How you plan to split your starting capital. It's a reminder, not a limit.</p>
+        <div className="settings-grid">
+          {[['inventory', 'Stock to sell'], ['packaging', 'Packaging'], ['delivery', 'Delivery and fuel'], ['advertising', 'Advertising'], ['reserve', 'Kept in reserve']].map(([k, label]) => (
+            <Field key={k} label={label}><Input type="number" value={capital[k]} onChange={(v) => setCapital(k, v)} /></Field>
+          ))}
+        </div>
+        <p className="small"><span className="muted">Total planned:</span> <strong>{totalCapital.toLocaleString()}</strong></p>
+      </section>
+
+      <section className="card stack-sm">
+        <h3>The rules people agree to</h3>
+        <p className="small muted">Shown on the application forms. Write them in your own words — keep them fair and true.</p>
+        <Field label="Reseller rules"><Textarea value={f.reseller_terms ?? ''} onChange={set('reseller_terms')} rows={5} /></Field>
+        <Field label="Vendor rules"><Textarea value={f.vendor_terms ?? ''} onChange={set('vendor_terms')} rows={5} /></Field>
+        <p className="tiny muted">Have someone check these against Zambian law before you rely on them in a dispute.</p>
+      </section>
+
+      <section className="card small">
+        <p className="strong" style={{ color: 'var(--ink)' }}>How a vendor sale is split</p>
+        <p className="mt">On a K500 vendor sale with a {f.marketplace_fee_pct ?? 10}% fee and a {f.default_commission_pct ?? 5}% reseller commission:
+          the vendor receives {money(500 - (500 * n(f.marketplace_fee_pct ?? 10)) / 100)}, you keep {money((500 * n(f.marketplace_fee_pct ?? 10)) / 100 - (500 * n(f.default_commission_pct ?? 5)) / 100)},
+          and the reseller earns {money((500 * n(f.default_commission_pct ?? 5)) / 100)} out of your fee. If no reseller was involved, you keep the whole fee.</p>
+      </section>
+
+      <div className="btn-row"><button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button></div>
     </div>
   )
 }

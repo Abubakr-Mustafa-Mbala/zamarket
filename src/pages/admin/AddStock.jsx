@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, n } from '../../lib/format'
 import { pricing } from '../../lib/economics'
 import { uploadPhoto } from '../../lib/photos'
-import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
+import { useDepartments } from '../../lib/departments'
 import { useToast } from '../../components/ui'
 
 const STEPS = ['What', 'How many', 'Costs', 'Price', 'Done']
@@ -31,6 +31,7 @@ function MoneyBox({ value, onChange, placeholder = '0', autoFocus }) {
 }
 
 export default function AddStock() {
+  const DEPARTMENTS = useDepartments()
   const { settings } = useAuth()
   const toast = useToast()
   const nav = useNavigate()
@@ -146,7 +147,7 @@ export default function AddStock() {
               </div>
               <div className="stack-sm">
                 <span className="big-label">Type of product (optional)</span>
-                <div className="chips">{CATEGORIES.map((c) => <button type="button" key={c} className={`chip ${f.category === c ? 'on' : ''}`} onClick={() => set('category')(f.category === c ? '' : c)}>{c}</button>)}</div>
+                <div className="chips">{DEPARTMENTS.map((d) => d.name).map((c) => <button type="button" key={c} className={`chip ${f.category === c ? 'on' : ''}`} onClick={() => set('category')(f.category === c ? '' : c)}>{c}</button>)}</div>
               </div>
             </>
           )}

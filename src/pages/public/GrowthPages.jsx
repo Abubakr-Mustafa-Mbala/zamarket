@@ -93,3 +93,66 @@ export function InvitePage() {
     </div>
   )
 }
+
+
+// /rate/1042-abcd — one tap from a WhatsApp message. Nothing to type.
+export function RatePage() {
+  const { link } = useParams()
+  const toast = useToast()
+  const [info, setInfo] = useState(null)
+  const [r, setR] = useState({ product: 5, vendor: 5, delivery: 5, marketplace: 5 })
+  const [comment, setComment] = useState('')
+  const [done, setDone] = useState(false)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { supabase.rpc('review_open', { p_link: link }).then(({ data }) => setInfo(data || false)) }, [link])
+
+  if (info === null) return <Loading />
+  if (!info) return <div className="empty-shop"><h2>This rating link isn't valid</h2><p>It may have been mistyped.</p><Link to="/" className="btn primary">Go to ZaMarket</Link></div>
+  if (done || info.already) return (
+    <div className="rate-done">
+      <div className="rate-tick" aria-hidden>★</div>
+      <h1>Thank you{info.first_name ? `, ${info.first_name}` : ''}</h1>
+      <p>{info.already && !done ? 'You have already rated this order.' : 'Your rating helps other shoppers and the sellers on ZaMarket.'}</p>
+      <Link to="/" className="btn primary">Shop again</Link>
+    </div>
+  )
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    const { error } = await supabase.rpc('review_submit', { p_link: link, p_ratings: r, p_comment: comment })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    setDone(true)
+  }
+  const vendor = info.items?.find((i) => i.vendor)?.vendor
+
+  return (
+    <form onSubmit={submit} className="rate">
+      <h1>How did we do{info.first_name ? `, ${info.first_name}` : ''}?</h1>
+      <p className="muted">Order #{info.order_number} · {info.items?.map((i) => i.name).join(', ')}</p>
+      <Stars5 label={info.items?.length === 1 ? info.items[0].name : 'The products'} value={r.product} onChange={(v) => setR({ ...r, product: v })} />
+      <Stars5 label={vendor ? `${vendor} as a seller` : 'ZaMarket as a seller'} value={r.vendor} onChange={(v) => setR({ ...r, vendor: v })} />
+      <Stars5 label="Delivery" value={r.delivery} onChange={(v) => setR({ ...r, delivery: v })} />
+      <Stars5 label="Ordering with us overall" value={r.marketplace} onChange={(v) => setR({ ...r, marketplace: v })} />
+      <label className="field"><span>Anything you'd like to say? <span className="muted">(optional)</span></span>
+        <textarea className="input" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="What you liked, or what we should do better" /></label>
+      <button className="btn buy block" disabled={busy}>{busy ? 'Sending…' : 'Send my rating'}</button>
+      <p className="tiny muted">Only your first name is shown with your rating.</p>
+    </form>
+  )
+}
+
+function Stars5({ label, value, onChange }) {
+  return (
+    <div className="rate-row">
+      <span className="rate-label">{label}</span>
+      <div className="rate-stars" role="radiogroup" aria-label={label}>
+        {[1, 2, 3, 4, 5].map((k) => (
+          <button type="button" key={k} role="radio" aria-checked={value === k} aria-label={`${k} star${k > 1 ? 's' : ''}`}
+            className={k <= value ? 'on' : ''} onClick={() => onChange(k)}>★</button>
+        ))}
+      </div>
+    </div>
+  )
+}

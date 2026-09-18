@@ -6,6 +6,7 @@ import { money } from '../../lib/format'
 import { Field, Input, Select, Textarea, useToast } from '../../components/ui'
 import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
 import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
+import { useShopInfo } from '../../lib/departments'
 
 export function useLocations() {
   const [provinces, setProvinces] = useState([])
@@ -178,7 +179,8 @@ export function Checkout() {
   const dlist = districts.filter((d) => String(d.province_id) === String(f.province_id))
   const district = districts.find((d) => String(d.id) === String(f.district_id))
   const local = district?.is_local_zone
-  const fee = needsDelivery && local ? (freeDelivery ? 0 : localFee) : 0
+  const shop = useShopInfo()
+  const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : localFee) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
   if (!items.length) return <div className="card empty"><h3>Your cart is empty</h3><Link to="/">Browse products</Link></div>
@@ -258,13 +260,13 @@ export function Checkout() {
         {savings > 0 && <div className="between small mt"><span>Offer savings</span><span className="save money">−{money(savings)}</span></div>}
         <div className="between small mt">
           <span>Delivery</span>
-          <span>{!needsDelivery ? 'Not needed' : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : money(localFee)) : 'Confirmed by phone'}</span>
+          <span>{!needsDelivery ? 'Not needed' : shop.deliveryIncluded ? <span className="save">Free</span> : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : money(localFee)) : 'Confirmed by phone'}</span>
         </div>
         {fdNext != null && (!f.district_id || local) && <div className="tiny save">Add {money(fdNext - subtotal)} more for free delivery in Lusaka</div>}
         <div className="between strong mt"><span>Total</span><span className="money">{money(subtotal + fee)}{f.district_id && !local ? ' + delivery' : ''}</span></div>
         {deposit && <div className="tiny muted mt">Deposit plan: you'll pay a deposit when we confirm, the rest on delivery.</div>}
       </div>
-      {needsDelivery && f.district_id && !local && (
+      {needsDelivery && !shop.deliveryIncluded && f.district_id && !local && (
         <div className="card flat small">You're outside our standard Lusaka delivery area. Place the order anyway — we'll call to confirm whether we can deliver and what it will cost before you pay anything.</div>
       )}
       <p className="small muted">No payment is taken now. We'll contact you to confirm the order and arrange payment and delivery. Offer prices are confirmed when you place the order.</p>

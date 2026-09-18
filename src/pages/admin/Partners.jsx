@@ -101,10 +101,12 @@ export function Resellers() {
   const [open, setOpen] = useState(null)
   const { data, loading, reload } = useData(async () => {
     const rs = await q(supabase.from('resellers').select('*,orders(id,status,subtotal,risk_flags),commissions(amount,status)').order('created_at', { ascending: false }))
+    const training = await q(supabase.from('training_progress').select('user_id'))
     return rs.map((r) => {
       const good = r.orders.filter((o) => !['cancelled', 'refunded', 'returned', 'fraud_review'].includes(o.status))
       return {
-        ...r, sales: good.length, revenue: good.reduce((t, o) => t + n(o.subtotal), 0),
+        ...r, trained: training.filter((t) => t.user_id === r.user_id).length,
+        sales: good.length, revenue: good.reduce((t, o) => t + n(o.subtotal), 0),
         flagged: r.orders.filter((o) => o.risk_flags?.length).length,
         earned: r.commissions.filter((c) => c.status === 'paid').reduce((t, c) => t + n(c.amount), 0),
         owed: r.commissions.filter((c) => ['verified', 'approved'].includes(c.status)).reduce((t, c) => t + n(c.amount), 0),
@@ -140,6 +142,7 @@ export function Resellers() {
         <Table rows={rows} onRow={setOpen} empty={tab === 'pending' ? 'No applications waiting' : 'No resellers here'} cols={[
           { key: 'full_name', label: 'Reseller', render: (r) => <div><div className="strong">{r.full_name}</div><div className="tiny muted">{r.code ? `Code ${r.code}` : r.location}</div></div> },
           { key: 'status', label: 'Status', render: (r) => <span className="row"><Badge status={r.status} />{r.flagged > 0 && <span className="badge bad">{r.flagged} flagged</span>}</span> },
+          { key: 'trained', label: 'Training', num: true, render: (r) => <span className={r.trained >= 9 ? 'ok' : r.trained ? '' : 'muted'}>{r.trained >= 9 ? 'Done' : `${r.trained}/9`}</span> },
           { key: 'sales', label: 'Sales', num: true },
           { key: 'revenue', label: 'Revenue', num: true, render: (r) => money(r.revenue) },
           { key: 'earned', label: 'Paid out', num: true, render: (r) => money(r.earned) },

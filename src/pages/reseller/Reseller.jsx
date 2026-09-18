@@ -41,6 +41,7 @@ export function ResellerHome() {
           <div className="progress"><div style={{ width: `${progress}%` }} /></div>
         </div>
       )}
+      <Link to="/sell/training" className="card between" style={{ color: 'inherit', borderColor: 'var(--charcoal)' }}><span><span className="strong">Start the training</span><br /><span className="small muted">Nine short lessons on finding customers and selling honestly</span></span><span aria-hidden>›</span></Link>
       <Link to="/sell/earnings" className="card between" style={{ color: 'inherit' }}><span><span className="strong">See your earnings chart</span><br /><span className="small muted">Day by day, pick any dates, all your records</span></span><span aria-hidden>›</span></Link>
       <div className="card stack-sm">
         <h3>Your link</h3>

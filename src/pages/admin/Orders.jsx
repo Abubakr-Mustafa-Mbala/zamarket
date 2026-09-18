@@ -1,11 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, title, n } from '../../lib/format'
 import { ORDER_NEXT, SOURCES, CHANNELS, PAYMENT_METHODS } from '../../lib/statuses'
-import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Breakdown, Tabs } from '../../components/ui'
+import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Breakdown, Tabs, CopyLine } from '../../components/ui'
 import { useLocations } from '../public/Checkout'
 import { niceDate } from '../../lib/madeToOrder'
 
@@ -62,6 +62,7 @@ export function OrderDetail() {
   const { advanced, settings } = useAuth()
   const toast = useToast()
   const [pay, setPay] = useState(false)
+  const [review, setReview] = useState(false)
   const [fee, setFee] = useState(null)
   const [reason, setReason] = useState('')
   const { data: o, loading, reload } = useData(() => q(
@@ -161,19 +162,7 @@ export function OrderDetail() {
         <div className="between strong mt"><span>Total</span><span className="money">{money(o.total)}</span></div>
       </div>
 
-      <div className="card">
-        <h3 className="mb">Move this order forward</h3>
-        {next.length === 0 ? <p className="muted small">This order is closed.</p> : (
-          <div className="stack-sm">
-            <div className="btn-row">
-              {next.map((s) => <button key={s} className={`btn ${['completed', 'delivered', 'confirmed', 'paid'].includes(s) ? 'primary' : PROBLEM.includes(s) ? 'danger' : ''}`} onClick={() => move(s)}>{title(s)}</button>)}
-              {o.payment_status !== 'paid' && !['cancelled', 'refunded'].includes(o.status) && <button className="btn copper" onClick={() => setPay(true)}>Record payment</button>}
-            </div>
-            <Input value={reason} onChange={setReason} placeholder="Optional note for the audit log" />
-            {o.status === 'delivered' && <p className="tiny muted">Marking completed releases stock as sold and creates commissions and vendor payouts. Commissions become payable {settings.commission_grace_hours ?? 24} hours later if there are no issues.</p>}
-          </div>
-        )}
-      </div>
+      <NextStep o={o} next={next} advanced={advanced} onMove={move} onPay={() => setPay(true)} onReview={() => setReview(true)} reason={reason} setReason={setReason} settings={settings} />
 
       <div className="grid-2 tight">
         <div className="card">
@@ -211,7 +200,108 @@ export function OrderDetail() {
       )}
 
       {pay && <PayModal order={o} onClose={() => setPay(false)} onDone={() => { setPay(false); reload() }} />}
+      {review && <ReviewRequest order={o} onClose={() => setReview(false)} />}
     </div>
+  )
+}
+
+// One obvious next step. Everything unusual sits behind "Something went wrong".
+function NextStep({ o, next, advanced, onMove, onPay, onReview, reason, setReason, settings }) {
+  const [problem, setProblem] = useState(false)
+  const paid = o.payment_status === 'paid'
+  const closed = ['cancelled', 'refunded', 'returned'].includes(o.status)
+  const steps = [
+    { key: 'confirmed', label: 'Confirm order', note: 'You called the customer and they want it' },
+    { key: 'paid', label: 'Payment received', note: 'Record how they paid' },
+    { key: 'out_for_delivery', label: 'Out for delivery', note: 'On the way to the customer' },
+    { key: 'delivered', label: 'Delivered, done', note: 'Stock, commissions and payouts are updated' },
+  ]
+  const doneUpTo = { pending: -1, customer_unreachable: -1, fraud_review: -1, confirmed: 0, payment_pending: 0, paid: 1, processing: 1, ready_for_dispatch: 1, out_for_delivery: 2, failed_delivery: 2, delivered: 3, completed: 4, cancelled: 4, refunded: 4, returned: 4 }[o.status] ?? -1
+
+  let action = null
+  if (o.status === 'pending' || o.status === 'customer_unreachable' || o.status === 'fraud_review') action = { label: 'Confirm order', run: () => onMove('confirmed'), note: 'Call the customer first, then confirm' }
+  else if (!paid && ['confirmed', 'payment_pending'].includes(o.status)) action = { label: 'Payment received', run: onPay, note: 'Records the payment and marks the order paid' }
+  else if (['confirmed', 'payment_pending', 'paid', 'processing', 'ready_for_dispatch'].includes(o.status)) action = { label: 'Out for delivery', run: () => onMove('out_for_delivery'), note: paid ? 'On the way to the customer' : 'Not paid yet — collect on delivery' }
+  else if (o.status === 'out_for_delivery' || o.status === 'failed_delivery') action = { label: 'Delivered, done', run: async () => { await onMove('delivered'); await onMove('completed') }, note: 'Marks it delivered and finishes the order' }
+  else if (o.status === 'delivered') action = { label: 'Finish this order', run: () => onMove('completed'), note: 'Updates stock, commissions and vendor payouts' }
+
+  return (
+    <div className="card next-step">
+      <div className="steps" aria-label="Order progress">
+        {steps.map((st, i) => <span key={st.key} className={`step ${i <= doneUpTo ? 'done' : ''} ${i === doneUpTo + 1 ? 'now' : ''}`}><b>{i <= doneUpTo ? '✓' : i + 1}</b>{st.label}</span>)}
+      </div>
+
+      {closed ? <p className="muted small">This order was {title(o.status).toLowerCase()}. The money side has been reversed.</p>
+        : o.status === 'completed' ? (
+          <div className="stack-sm">
+            <p className="ok strong">This order is finished.</p>
+            <div className="btn-row">
+              <button className="btn buy" onClick={onReview}>Ask for a review</button>
+              <a className="btn" href={`/admin/orders/${o.id}/receipt`}>Print receipt</a>
+            </div>
+          </div>
+        ) : action ? (
+          <div className="stack-sm">
+            <button className="btn primary big-action" onClick={action.run}>{action.label}</button>
+            <p className="small muted">{action.note}</p>
+            {!paid && ['paid', 'processing', 'ready_for_dispatch', 'out_for_delivery'].includes(o.status) === false && o.status !== 'pending' && (
+              <button className="btn sm ghost" onClick={onPay}>Record a payment now</button>
+            )}
+          </div>
+        ) : null}
+
+      <button type="button" className="btn sm ghost problem-toggle" onClick={() => setProblem(!problem)}>
+        {problem ? 'Hide' : 'Something went wrong?'}
+      </button>
+      {problem && (
+        <div className="stack-sm problem-box">
+          <Input value={reason} onChange={setReason} placeholder="What happened? (saved to the order history)" />
+          <div className="btn-row">
+            {next.filter((x) => PROBLEM.includes(x)).map((st) => (
+              <button key={st} className="btn danger sm" onClick={() => onMove(st)}>{{
+                cancelled: 'Cancel order', refunded: 'Refund customer', returned: 'Customer returned it',
+                failed_delivery: 'Delivery failed', customer_unreachable: "Can't reach customer", fraud_review: 'Looks suspicious',
+              }[st] || title(st)}</button>
+            ))}
+          </div>
+          <p className="tiny muted">Cancelling, refunding or a return puts stock back and reverses commissions and vendor payouts automatically.</p>
+          {advanced && (
+            <div className="btn-row" style={{ borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+              <span className="tiny muted" style={{ alignSelf: 'center' }}>All steps:</span>
+              {next.filter((x) => !PROBLEM.includes(x)).map((st) => <button key={st} className="btn sm" onClick={() => onMove(st)}>{title(st)}</button>)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ReviewRequest({ order, onClose }) {
+  const toast = useToast()
+  const [link, setLink] = useState(null)
+  useEffect(() => {
+    supabase.rpc('review_link', { p_order: order.id }).then(({ data, error }) => (error ? toast(error.message, true) : setLink(data)))
+  }, [order.id])
+  const url = link ? `${window.location.origin}/rate/${link}` : ''
+  const name = (order.customer?.full_name || '').split(' ')[0]
+  const message = `Hi ${name}, thank you for your order from ZaMarket. If you have a moment, how did we do? ${url}`
+  const wa = `https://wa.me/${String(order.customer?.phone || '').replace(/\D/g, '').replace(/^0/, '260')}?text=${encodeURIComponent(message)}`
+  return (
+    <Modal title="Ask for a review" onClose={onClose}>
+      <div className="stack">
+        <p className="small muted">One tap for the customer. No order number to type, and they can ignore it if they prefer.</p>
+        {!link ? <Loading /> : (
+          <>
+            <div className="share-box">{message}</div>
+            <CopyLine text={url} />
+            <div className="btn-row">
+              {order.customer?.phone && <a className="btn buy block" href={wa} target="_blank" rel="noreferrer" onClick={onClose}>Send on WhatsApp</a>}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 
@@ -268,14 +358,14 @@ export function ManualSale({ onClose, onDone, resellerCode }) {
   return (
     <Modal title="Record a sale" onClose={onClose}>
       <form onSubmit={submit} className="stack">
-        <p className="small muted">For sales made on WhatsApp, by phone or in person. It enters the same order flow as online orders.</p>
+        <p className="small muted">For sales made on WhatsApp, by phone or in person. Only the name is required — fill in the rest if you have it.</p>
         <div className="form-grid">
-          <Field label="Customer name"><Input value={f.full_name} onChange={set('full_name')} required /></Field>
-          <Field label="Phone"><Input value={f.phone} onChange={set('phone')} type="tel" required /></Field>
-          <Field label="Province"><Select value={f.province_id} onChange={set('province_id')} options={provinces.map((p) => [p.id, p.name])} placeholder="Choose" /></Field>
-          <Field label="District"><Select value={f.district_id} onChange={set('district_id')} options={dlist.map((d) => [d.id, d.name])} placeholder="Choose" /></Field>
-          <Field label="Area"><Input value={f.area} onChange={set('area')} /></Field>
-          <Field label="Address"><Input value={f.address} onChange={set('address')} /></Field>
+          <Field label="Customer name" hint="Enough to recognise them, e.g. 'Lady in blue, Soweto'"><Input value={f.full_name} onChange={set('full_name')} required /></Field>
+          <Field label="Phone" hint="Leave empty for a walk-in customer"><Input value={f.phone} onChange={set('phone')} type="tel" /></Field>
+          <Field label="Province (optional)"><Select value={f.province_id} onChange={set('province_id')} options={provinces.map((p) => [p.id, p.name])} placeholder="Choose" /></Field>
+          <Field label="District (optional)"><Select value={f.district_id} onChange={set('district_id')} options={dlist.map((d) => [d.id, d.name])} placeholder="Choose" /></Field>
+          <Field label="Area (optional)"><Input value={f.area} onChange={set('area')} /></Field>
+          <Field label="Address (optional)"><Input value={f.address} onChange={set('address')} /></Field>
           <Field label="Where did the sale happen?"><Select value={f.channel} onChange={set('channel')} options={CHANNELS} /></Field>
           {!resellerCode && <Field label="Where did the customer come from?"><Select value={f.source} onChange={set('source')} options={SOURCES} /></Field>}
         </div>

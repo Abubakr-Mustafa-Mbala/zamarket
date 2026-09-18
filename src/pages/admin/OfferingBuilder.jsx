@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, n } from '../../lib/format'
 import { Loading, Field, Input, Select, Textarea, Segmented, useToast, Empty, Badge } from '../../components/ui'
 import { OfferingView, BENEFIT_ICONS, defaultCta } from '../public/Offering'
+import { uploadPhoto } from '../../lib/photos'
 
 const TYPES = [['product', 'Product'], ['service', 'Service'], ['course', 'Course'], ['class', 'Class'], ['vehicle', 'Vehicle'], ['event', 'Event'], ['other', 'Other']]
 const MODELS = [
@@ -28,6 +29,32 @@ const HINTS = {
 }
 
 const lines = (v) => (v || '').split('\n').map((x) => x.trim()).filter(Boolean)
+
+function PhotoPicker({ label, hint, value, onChange, toast }) {
+  const [busy, setBusy] = useState(false)
+  const pick = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(true)
+    try { onChange(await uploadPhoto(file)) } catch (err) { toast(err.message, true) } finally { setBusy(false); e.target.value = '' }
+  }
+  return (
+    <div className="field span">
+      <label>{label}</label>
+      <div className="photo-pick">
+        {value ? <img src={value} alt="" /> : <span className="photo-empty">No photo</span>}
+        <div className="stack-sm">
+          <label className="btn sm">{busy ? 'Uploading…' : value ? 'Change photo' : '📷 Add photo'}
+            <input type="file" accept="image/*" hidden disabled={busy} onChange={pick} />
+          </label>
+          {value && <button type="button" className="btn sm ghost" onClick={() => onChange('')}>Remove</button>}
+          <input className="input" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="or paste a link" />
+        </div>
+      </div>
+      {hint && <div className="hint">{hint}</div>}
+    </div>
+  )
+}
 const toText = (arr) => (arr || []).join('\n')
 
 export default function OfferingBuilder() {
@@ -35,8 +62,10 @@ export default function OfferingBuilder() {
   const nav = useNavigate()
   const toast = useToast()
   const { profile, isStaff } = useAuth()
+  const vendorId = profile?.role === 'vendor' ? profile?.partner?.id : null
   const [tab, setTab] = useState('edit')
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const [p, setP] = useState(null)
   const [pg, setPg] = useState({})
   const [packs, setPacks] = useState([])
@@ -82,8 +111,8 @@ export default function OfferingBuilder() {
         schedule: (pg.schedule || []).filter((s) => s?.label),
         sections: (pg.sections || []).filter((s) => s?.title && (s.items || []).filter(Boolean).length).map((s) => ({ ...s, items: s.items.filter(Boolean) })),
       }
-      const row = { page: clean, offering_type: p.offering_type, sales_model: p.sales_model }
-      if (publish) row.status = 'published'
+      const row = { page: clean, offering_type: p.offering_type, sales_model: p.sales_model, images: p.images || [], price: n(p.price) }
+      if (publish) row.status = vendorId ? 'submitted' : 'published'
       const { error } = await supabase.from('products').update(row).eq('id', id)
       if (error) throw new Error(error.message)
 
@@ -100,8 +129,8 @@ export default function OfferingBuilder() {
         const res = k.id ? await supabase.from('product_packages').update(body).eq('id', k.id) : await supabase.from('product_packages').insert(body)
         if (res.error) throw new Error(res.error.message)
       }
-      toast(publish ? 'Page published' : 'Page saved')
-      nav('/admin/products')
+      toast(publish ? (vendorId ? 'Sent to ZaMarket for review' : 'Page published') : 'Page saved')
+      nav(vendorId ? '/vendor/products' : '/admin/products')
     } catch (e) { toast(e.message, true) } finally { setSaving(false) }
   }
 
@@ -134,7 +163,26 @@ export default function OfferingBuilder() {
           <Field label="Main button" hint={`Default: ${defaultCta(p.sales_model, p.offering_type)}`}><Input value={pg.cta_primary} onChange={set('cta_primary')} /></Field>
           <Field label="Second button"><Input value={pg.cta_secondary} onChange={set('cta_secondary')} placeholder="Ask a question" /></Field>
         </div>
-        <p className="tiny muted">Photos come from the product's images. The first one is the big photo here.</p>
+        <label className="small strong">Photos</label>
+        <div className="photo-row">
+          {(p.images || []).map((src, i) => (
+            <div key={i} className={`photo-thumb ${i === 0 ? 'main' : ''}`}>
+              <img src={src} alt="" />
+              {i === 0 && <span className="photo-tag">Main</span>}
+              <button type="button" onClick={() => setField('images')((p.images || []).filter((_, k) => k !== i))} aria-label="Remove">✕</button>
+              {i > 0 && <button type="button" className="mk-main" onClick={() => setField('images')([src, ...(p.images || []).filter((_, k) => k !== i)])}>Make main</button>}
+            </div>
+          ))}
+          <label className="btn sm photo-add">{uploading ? 'Uploading…' : '📷 Add photo'}
+            <input type="file" accept="image/*" hidden disabled={uploading} multiple onChange={async (e) => {
+              const files = [...(e.target.files || [])]
+              setUploading(true)
+              try { const urls = []; for (const f of files) urls.push(await uploadPhoto(f)); setField('images')([...(p.images || []), ...urls]) }
+              catch (err) { toast(err.message, true) } finally { setUploading(false); e.target.value = '' }
+            }} />
+          </label>
+        </div>
+        <p className="tiny muted">The first photo is the big one at the top. Clear daylight photos of the real thing work best.</p>
       </section>
 
       <Packages packs={packs} setPacks={setPacks} title={pg.packages_title} setTitle={set('packages_title')} hint={hint.packages} />
@@ -162,7 +210,7 @@ export default function OfferingBuilder() {
         <div className="form-grid">
           <Field label="Section title"><Input value={pg.media_section?.title} onChange={setMedia('title')} placeholder={hint.media} /></Field>
           <Field label="Name"><Input value={pg.media_section?.name} onChange={setMedia('name')} placeholder="e.g. Toyota Corolla (manual) — 2022" /></Field>
-          <Field label="Photo link" span><Input value={pg.media_section?.image} onChange={setMedia('image')} placeholder="https://" /></Field>
+          <PhotoPicker label="Photo" value={pg.media_section?.image} onChange={setMedia('image')} toast={toast} hint="The car, the salon, the venue, the equipment." />
           <Field label="Short note" span><Input value={pg.media_section?.note} onChange={setMedia('note')} placeholder="e.g. Dual controls for safety" /></Field>
         </div>
         <label className="small strong">Details</label>
@@ -239,14 +287,14 @@ export default function OfferingBuilder() {
     <div className="stack ob">
       <div className="page-head">
         <div>
-          <Link to="/admin/products" className="small">← Products</Link>
+          <Link to={vendorId ? '/vendor/products' : '/admin/products'} className="small">← Products</Link>
           <h1>{p.name}</h1>
           <p>Build the page customers see. Everything here is yours to fill in — nothing is pre-written for you.</p>
         </div>
         <div className="btn-row">
           <Badge status={p.status} />
           <button className="btn" disabled={saving} onClick={() => save(false)}>Save</button>
-          <button className="btn primary" disabled={saving} onClick={() => save(true)}>{saving ? 'Saving…' : 'Save and publish'}</button>
+          <button className="btn primary" disabled={saving} onClick={() => save(true)}>{saving ? 'Saving…' : vendorId ? 'Send for review' : 'Save and publish'}</button>
         </div>
       </div>
 

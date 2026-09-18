@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, Navigate, useSearchParams } from 'react-r
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Field, Input, Textarea, Select, useToast, Loading } from '../../components/ui'
-import { CATEGORY_NAMES as CATEGORIES } from '../../lib/categories'
+import { useDepartments } from '../../lib/departments'
 
 export function homeFor(role) {
   if (role === 'marketing') return '/admin/marketing'
@@ -98,6 +98,7 @@ function BigText({ label, hint, optional, ...rest }) {
 }
 
 export function Apply() {
+  const DEPARTMENTS = useDepartments()
   const { kind } = useParams()
   const { user, profile, loading, refresh } = useAuth()
   const toast = useToast()
@@ -107,7 +108,13 @@ export function Apply() {
   const [f, setF] = useState({})
   const [busy, setBusy] = useState(false)
   const [waitingEmail, setWaitingEmail] = useState(false)
+  const [terms, setTerms] = useState(null)
   const set = (k) => (e) => setF((c) => ({ ...c, [k]: e.target.value }))
+
+  useEffect(() => {
+    supabase.from('settings').select('key,value').in('key', ['reseller_terms', 'vendor_terms'])
+      .then(({ data }) => setTerms(Object.fromEntries((data || []).map((r) => [r.key, r.value]))))
+  }, [])
 
   // Load existing application, or send one saved before email confirmation.
   useEffect(() => {
@@ -180,7 +187,18 @@ export function Apply() {
     <form onSubmit={submit} className="wizard">
       <div>
         <h1>{isVendor ? 'Sell your products with us' : 'Earn money selling our products'}</h1>
-        <p className="lead">{isVendor ? 'Fill this in and we will call you.' : 'Share products with people you know. You earn on every sale. Fill this in and we will call you.'}</p>
+        <p className="lead">{isVendor
+          ? 'Fill this in and we will call you.'
+          : 'Share products with anyone — friends, your WhatsApp status, TikTok, Facebook, or people you meet. When someone buys through your link, you earn commission on that sale. Fill this in and we will call you.'}</p>
+        {!isVendor && (
+          <ul className="sell-points">
+            <li>Your own link, with ready-made messages, photos and prices</li>
+            <li>No stock to buy, nothing to carry, no deliveries to make</li>
+            <li>Commission on every completed sale, tracked in your dashboard</li>
+            <li>Paid after the customer receives the order</li>
+            <li>What you earn depends on what you sell. There's no salary and nothing is guaranteed.</li>
+          </ul>
+        )}
       </div>
 
       {isVendor && <BigText label="Business name" value={f.business_name || ''} onChange={set('business_name')} required />}
@@ -197,7 +215,7 @@ export function Apply() {
         <div className="stack mt">
           {isVendor ? (
             <>
-              <label className="big-field"><span className="big-label">Type of products</span><Select value={f.category} onChange={(v) => setF({ ...f, category: v })} options={CATEGORIES} placeholder="Choose" /></label>
+              <label className="big-field"><span className="big-label">Type of products</span><Select value={f.category} onChange={(v) => setF({ ...f, category: v })} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" /></label>
               <BigText label="Can you deliver, or should we collect?" value={f.delivery_capability || ''} onChange={set('delivery_capability')} />
               <BigText label="Returns / refunds" value={f.return_policy || ''} onChange={set('return_policy')} />
               <BigText label="Facebook, Instagram or website" value={f.links || ''} onChange={set('links')} />
@@ -225,9 +243,7 @@ export function Apply() {
           <details style={{ display: 'inline' }}>
             <summary style={{ display: 'inline' }}>Read them</summary>
             <span className="small muted" style={{ display: 'block', marginTop: 6 }}>
-              {isVendor
-                ? 'A marketplace fee is taken from each sale. Customers pay ZaMarket for ZaMarket orders, and you are paid your share once the order is complete. You will see a customer\'s phone and address after we confirm their order; do not ask them to pay you directly or move ZaMarket orders off the platform. Keep products and service to a good standard. We can suspend accounts that break these rules.'
-                : 'You earn only on sales that are delivered and not returned, after a 24-hour check. Buying for yourself or fake orders are not paid. Earnings are not guaranteed. We can suspend accounts that break these rules.'}
+              {(isVendor ? terms?.vendor_terms : terms?.reseller_terms) || 'Loading the rules…'}
             </span>
           </details>
         </span>

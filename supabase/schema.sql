@@ -82,6 +82,7 @@ insert into settings (key, value, description) values
   ('marketplace_fee_pct', '10', 'Fee charged to vendors on each sale (%)'),
   ('default_commission_pct', '5', 'Default reseller commission when a product has no override (%)'),
   ('commission_source', '"from_fee"', 'from_fee = reseller commission is paid out of the marketplace fee; on_top = charged in addition to the fee'),
+  ('delivery_included', 'false', 'Delivery is built into your prices, so customers are never charged for it'),
   ('local_delivery_fee', '30', 'Standard delivery fee inside the local zone'),
   ('target_margin_pct', '30', 'Target net margin used for economics traffic lights (%)'),
   ('target_markup_pct', '50', 'Profit target on top of cost, used to suggest selling prices (%)'),
@@ -92,6 +93,9 @@ insert into settings (key, value, description) values
   ('default_packaging_cost', '5', 'Default packaging cost per unit'),
   ('capital_allocation', '{"inventory":200,"packaging":50,"delivery":50,"advertising":100,"reserve":100}', 'Starting capital plan (USD)'),
   ('simple_mode_default', 'true', 'New staff start in Simple mode'),
+  ('departments', '[{"name":"Phones & electronics","icon":"phone"},{"name":"Home & kitchen","icon":"home"},{"name":"Fashion","icon":"fashion"},{"name":"Food & cakes","icon":"food"},{"name":"Services","icon":"services"},{"name":"Other","icon":"other"}]', 'Shop departments customers browse'),
+  ('reseller_terms', '"Commission is earned on completed orders that are not cancelled, refunded or returned, after a 24-hour check. Self-purchases and fake orders are not paid. Earnings depend on what you sell — nothing is guaranteed. Share honestly: never promise what a product cannot do. ZaMarket may suspend accounts that break these rules."', 'Rules resellers agree to'),
+  ('vendor_terms', '"A marketplace fee is taken from each sale. Customers pay ZaMarket for ZaMarket orders, and you are paid your share once the order is complete. You will see a customer''s phone and address after we confirm their order; do not ask them to pay you directly or move ZaMarket orders off the platform. Keep products and service to a good standard. We can suspend accounts that break these rules."', 'Rules vendors agree to'),
   ('founder_emails', '[]', 'Only these email addresses can hold the founder role'),
   ('referral_reward', '20', 'Reward paid to a customer when a friend they invited completes a first order (K)'),
   ('own_audience_fee_pct', '5', 'Marketplace fee when a vendor brings the customer through their own store link (%)'),
@@ -412,6 +416,9 @@ create table if not exists orders (
   completed_at timestamptz
 );
 
+alter table customers alter column phone drop not null;
+alter table orders add column if not exists review_code text;
+
 create table if not exists order_items (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references orders(id) on delete cascade,
@@ -643,6 +650,29 @@ create table if not exists lead_magnets (
   created_at timestamptz not null default now()
 );
 
+-- A funnel is one named path a customer takes: saw it → gave their number → bought → added more → came back.
+create table if not exists funnels (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  campaign_id uuid,
+  magnet_id uuid,
+  product_id uuid references products(id),
+  bump_offer_id uuid references offers(id),
+  repeat_offer_id uuid references offers(id),
+  notes text,
+  status text not null default 'active' check (status in ('active', 'paused')),
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- Short lessons resellers work through; ticked off one at a time.
+create table if not exists training_progress (
+  user_id uuid not null references profiles(id) on delete cascade,
+  lesson text not null,
+  done_at timestamptz not null default now(),
+  primary key (user_id, lesson)
+);
+
 create table if not exists marketing_goals (
   user_id uuid primary key references profiles(id) on delete cascade,
   outreach_daily int not null default 20,
@@ -716,6 +746,10 @@ alter table leads drop constraint if exists leads_campaign_fk;
 alter table leads add constraint leads_campaign_fk foreign key (campaign_id) references campaigns(id);
 alter table content_posts drop constraint if exists content_campaign_fk;
 alter table content_posts add constraint content_campaign_fk foreign key (campaign_id) references campaigns(id);
+alter table funnels drop constraint if exists funnels_campaign_fk;
+alter table funnels add constraint funnels_campaign_fk foreign key (campaign_id) references campaigns(id);
+alter table funnels drop constraint if exists funnels_magnet_fk;
+alter table funnels add constraint funnels_magnet_fk foreign key (magnet_id) references lead_magnets(id);
 alter table lead_magnets drop constraint if exists magnets_campaign_fk;
 alter table lead_magnets add constraint magnets_campaign_fk foreign key (campaign_id) references campaigns(id);
 alter table leads drop constraint if exists leads_magnet_fk;
@@ -928,7 +962,7 @@ create trigger trg_no_delete_settlements before delete on settlements for each r
 create or replace function reserved_slug(p text) returns boolean
 language sql immutable as $$
   select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
-    'search','sellers','store','stores','p','r','go','free','invite','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+    'search','sellers','store','stores','p','r','go','free','invite','rate','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
 $$;
 
 create or replace function make_slug(p text) returns text
@@ -1189,12 +1223,13 @@ end $$;
 -- One "deal" = what a customer gets when they take the offer once.
 create or replace function offer_deal(o offers, base numeric, normal numeric)
 returns table (units int, price numeric, normal_value numeric)
-language plpgsql immutable as $$
-declare cfg jsonb := coalesce(o.config, '{}');
+language plpgsql stable as $$
+declare cfg jsonb := coalesce(o.config, '{}'); gift_value numeric := 0;
 begin
   case o.type
     when 'buy_x_get_y' then
-      units := coalesce((cfg->>'buyQty')::int, 1) + coalesce((cfg->>'freeQty')::int, 0);
+      -- when the free item is a different product it is added as its own line, so only the paid units count here
+      units := coalesce((cfg->>'buyQty')::int, 1) + case when coalesce(cfg->>'giftProductId', '') = '' then coalesce((cfg->>'freeQty')::int, 0) else 0 end;
       price := coalesce((cfg->>'buyQty')::int, 1) * base;
     when 'bundle' then
       units := greatest(1, coalesce((cfg->>'buyQty')::int, 1));
@@ -1208,7 +1243,12 @@ begin
     else -- free_gift, free_delivery, payment_plan: normal price, benefit is elsewhere
       units := 1; price := base;
   end case;
-  normal_value := units * coalesce(nullif(normal, 0), base);
+  -- a free item from another product adds its normal price to what the deal is worth
+  if o.type = 'buy_x_get_y' and coalesce(cfg->>'giftProductId', '') <> '' then
+    select coalesce(nullif(g.normal_price, 0), g.price) * greatest(1, coalesce((cfg->>'freeQty')::int, 1))
+      into gift_value from products g where g.id = (cfg->>'giftProductId')::uuid;
+  end if;
+  normal_value := units * coalesce(nullif(normal, 0), base) + coalesce(gift_value, 0);
   return next;
 end $$;
 
@@ -1231,6 +1271,8 @@ begin
   select * into d from offer_deal(new, p.price, p.normal_price);
   cost := d.units * (product_effective_cost(p) + coalesce(p.packaging_cost, setting_num('default_packaging_cost')))
           + coalesce((new.config->>'giftCost')::numeric, 0)
+          + coalesce((select (product_effective_cost(g) + coalesce(g.packaging_cost, setting_num('default_packaging_cost'))) * greatest(1, coalesce((new.config->>'freeQty')::int, 1))
+                      from products g where new.type = 'buy_x_get_y' and coalesce(new.config->>'giftProductId','') <> '' and g.id = (new.config->>'giftProductId')::uuid), 0)
           + case when new.type = 'free_delivery' then setting_num('local_delivery_fee') else 0 end;
   comm := commission_for(p, d.price / greatest(d.units, 1), d.units);
   fee := case when p.owner_type = 'vendor' then d.price * setting_num('marketplace_fee_pct') / 100 else 0 end;
@@ -1254,6 +1296,7 @@ create trigger trg_offer_floor before insert or update on offers for each row ex
 -- What customers and resellers may see about offers: no costs, no economics.
 create or replace view public_offers as
 select o.id, o.name, o.category, o.type, o.product_id,
+       (select g.name from products g where g.id = nullif(o.config->>'giftProductId','')::uuid) as gift_name,
        (o.config - 'giftCost' - 'bumpCost') as config,
        d.units, d.price as deal_price, d.normal_value,
        o.start_at, o.end_at, o.terms,
@@ -1298,11 +1341,18 @@ declare
   v_line numeric;
 begin
   if v_manual and not (is_staff() or my_reseller_id() is not null) then raise exception 'Not allowed'; end if;
-  if coalesce(c->>'phone','') = '' or coalesce(c->>'full_name','') = '' then raise exception 'Name and phone are required'; end if;
+  if coalesce(c->>'full_name','') = '' then raise exception 'Please enter the customer''s name'; end if;
+  if coalesce(c->>'phone','') = '' and not (v_manual and is_staff()) then raise exception 'Please enter a phone number'; end if;
   if jsonb_array_length(coalesce(payload->'items','[]'::jsonb)) = 0 then raise exception 'Cart is empty'; end if;
 
   -- customer (matched on phone)
   perform set_config('zm.order_fn', 'on', true);
+  if coalesce(c->>'phone', '') = '' and v_manual and is_staff() then
+    -- walk-in: sold in person, no phone given
+    insert into customers (full_name, area, address, notes)
+    values (coalesce(nullif(c->>'full_name', ''), 'Walk-in customer'), c->>'area', c->>'address', 'Walk-in sale')
+    returning * into cust;
+  else
   if length(norm_phone(c->>'phone')) < 10 then raise exception 'Please enter a full phone number, e.g. 0977 123 456'; end if;
   -- An existing customer's saved details only change when staff record the sale; the order keeps its own address either way.
   insert into customers (full_name, phone, email, province_id, district_id, area, address)
@@ -1315,6 +1365,7 @@ begin
     area = case when is_staff() then coalesce(excluded.area, customers.area) else coalesce(customers.area, excluded.area) end,
     address = case when is_staff() then coalesce(excluded.address, customers.address) else coalesce(customers.address, excluded.address) end
   returning * into cust;
+  end if;
 
   -- campaign link (/go/code) or a vendor's own store link (/store-name): last link the customer used wins
   if coalesce(payload->>'campaign_code', '') <> '' then
@@ -1348,6 +1399,7 @@ begin
     select is_local_zone into local_zone from districts where id = (c->>'district_id')::int;
   end if;
   if local_zone then fee := setting_num('local_delivery_fee'); end if;
+  if setting_text('delivery_included') = 'true' then fee := 0; end if;
 
   insert into orders (customer_id, source, channel, seller_type, reseller_id, referral_code, province_id, district_id, area, address, instructions,
                       is_local, delivery_fee, delivery_fee_status, is_manual, notes, risk_flags, created_by)
@@ -1395,6 +1447,22 @@ begin
         raise exception 'Only % left on the offer "%"', off.inventory_limit - off.units_used, off.name;
       end if;
       update offers set units_used = units_used + qty where id = off.id;
+      -- a free item from another product (e.g. buy 2 shoes, get a T-shirt)
+      if off.type = 'buy_x_get_y' and coalesce(off.config->>'giftProductId', '') <> '' then
+        declare gift products%rowtype; gqty int := greatest(1, coalesce((off.config->>'freeQty')::int, 1)) * deals;
+        begin
+          select * into gift from products where id = (off.config->>'giftProductId')::uuid for update;
+          if found then
+            insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, note)
+            values (o.id, gift.id, off.id, gift.vendor_id, gqty, 0, product_effective_cost(gift), 0,
+                    case when gift.owner_type = 'founder' and gift.fulfilment = 'in_stock' then least(gqty, greatest(gift.stock_available, 0)) else 0 end,
+                    'Free with ' || off.name);
+            if gift.owner_type = 'founder' and gift.fulfilment = 'in_stock' and gift.stock_available > 0 then
+              perform apply_movement(gift.id, 'reserve', least(gqty, gift.stock_available), 'Free gift on order ' || o.order_number, 'order', o.id);
+            end if;
+          end if;
+        end;
+      end if;
     elsif coalesce(item->>'package_id', '') <> '' then
       select * into pkg from product_packages where id = (item->>'package_id')::uuid and product_id = prod.id and active;
       if not found then raise exception 'That package is no longer available for %', prod.name; end if;
@@ -1475,7 +1543,7 @@ begin
   end if;
   -- any open lead for this phone is won
   update leads set stage = 'won', order_id = o.id, next_follow_up = null, updated_at = now()
-   where phone = cust.phone and stage in ('new','contacted','engaged');
+   where cust.phone is not null and phone = cust.phone and stage in ('new','contacted','engaged');
   insert into lead_activities (lead_id, kind, outcome, note)
   select id, 'system', 'ordered', 'Placed order #' || o.order_number from leads where order_id = o.id;
   perform log_audit(case when v_manual then 'order.manual' else 'order.placed' end, 'orders', o.id, null,
@@ -1692,6 +1760,51 @@ begin
 end $$;
 
 -- Customer review (verified against the order's phone)
+-- A short code so a customer can rate an order from a link without typing anything.
+create or replace function review_link(p_order uuid) returns text
+language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype; code text;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select * into o from orders where id = p_order;
+  if not found then raise exception 'Order not found'; end if;
+  code := o.review_code;
+  if code is null then
+    code := lower(substr(translate(encode(gen_random_bytes(6), 'base64'), '0123456789+/=IOl', 'abcdefghjkmnpqrs'), 1, 4));
+    update orders set review_code = code where id = p_order;
+  end if;
+  return o.order_number || '-' || code;
+end $$;
+
+-- Open a rating page from that link: shows what to rate, never the customer's details.
+create or replace function review_open(p_link text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'order_number', o.order_number,
+    'first_name', split_part(coalesce(c.full_name, ''), ' ', 1),
+    'delivered', o.status in ('delivered','completed'),
+    'already', exists (select 1 from reviews r where r.order_id = o.id),
+    'items', (select jsonb_agg(jsonb_build_object('product_id', i.product_id, 'name', p.name, 'vendor', v.business_name))
+              from order_items i join products p on p.id = i.product_id left join vendors v on v.id = i.vendor_id where i.order_id = o.id))
+  from orders o left join customers c on c.id = o.customer_id
+  where o.order_number = split_part(p_link, '-', 1)::int and o.review_code = split_part(p_link, '-', 2) and o.review_code is not null;
+$$;
+
+create or replace function review_submit(p_link text, p_ratings jsonb, p_comment text) returns void
+language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype; cust customers%rowtype; it record;
+begin
+  select * into o from orders where order_number = split_part(p_link, '-', 1)::int and review_code = split_part(p_link, '-', 2) and review_code is not null;
+  if not found then raise exception 'That rating link is not valid'; end if;
+  if exists (select 1 from reviews where order_id = o.id) then raise exception 'This order has already been rated. Thank you!'; end if;
+  select * into cust from customers where id = o.customer_id;
+  for it in select * from order_items where order_id = o.id loop
+    insert into reviews (order_id, product_id, vendor_id, customer_name, product_rating, vendor_rating, delivery_rating, marketplace_rating, comment, verified)
+    values (o.id, it.product_id, it.vendor_id, coalesce(cust.full_name, 'Customer'), (p_ratings->>'product')::int, (p_ratings->>'vendor')::int,
+            (p_ratings->>'delivery')::int, (p_ratings->>'marketplace')::int, nullif(p_comment, ''), o.status in ('delivered','completed'));
+  end loop;
+end $$;
+
 create or replace function submit_review(p_order_number int, p_phone text, p_ratings jsonb, p_comment text)
 returns void language plpgsql security definer set search_path = public as $$
 declare o orders%rowtype; cust customers%rowtype; it record;
@@ -2320,6 +2433,53 @@ begin
   );
 end $$;
 
+-- How a funnel performed: numbers at each step, so you can see where people fall away.
+create or replace function funnel_report(p_funnel uuid, p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare f funnels%rowtype; v_saw int; v_leads int; v_buyers int; v_added int; v_repeat int; v_sales numeric; v_spend numeric;
+begin
+  if not can_market() then raise exception 'Not allowed'; end if;
+  select * into f from funnels where id = p_funnel;
+  if not found then raise exception 'Funnel not found'; end if;
+
+  v_saw := coalesce((select visits from campaigns where id = f.campaign_id), 0)
+         + coalesce((select views from lead_magnets where id = f.magnet_id), 0);
+
+  select count(*) into v_leads from leads l
+   where lusaka_date(l.created_at) between p_from and p_to
+     and ((f.magnet_id is not null and l.magnet_id = f.magnet_id) or (f.campaign_id is not null and l.campaign_id = f.campaign_id));
+
+  select count(distinct o.id), coalesce(sum(o.subtotal), 0) into v_buyers, v_sales
+    from orders o
+   where o.status not in ('cancelled', 'fraud_review') and lusaka_date(o.created_at) between p_from and p_to
+     and ((f.campaign_id is not null and o.campaign_id = f.campaign_id)
+          or exists (select 1 from leads l where l.order_id = o.id and ((f.magnet_id is not null and l.magnet_id = f.magnet_id) or (f.campaign_id is not null and l.campaign_id = f.campaign_id)))
+          or (f.campaign_id is null and f.magnet_id is null and f.product_id is not null
+              and exists (select 1 from order_items i where i.order_id = o.id and i.product_id = f.product_id)));
+
+  select count(distinct i.order_id) into v_added from order_items i join orders o on o.id = i.order_id
+   where f.bump_offer_id is not null and i.offer_id = f.bump_offer_id
+     and o.status not in ('cancelled', 'fraud_review') and lusaka_date(o.created_at) between p_from and p_to;
+
+  select count(*) into v_repeat from (
+    select o.customer_id from orders o
+     where o.status not in ('cancelled', 'fraud_review') and lusaka_date(o.created_at) between p_from and p_to
+       and (f.product_id is null or exists (select 1 from order_items i where i.order_id = o.id and i.product_id = f.product_id))
+     group by o.customer_id having count(*) > 1) x;
+
+  select coalesce(sum(amount), 0) into v_spend from marketing_spend
+   where spent_on between p_from and p_to and (f.campaign_id is null or campaign_id = f.campaign_id);
+
+  return jsonb_build_object(
+    'saw', v_saw, 'leads', v_leads, 'buyers', v_buyers, 'added', v_added, 'repeat', v_repeat,
+    'sales', round(v_sales, 2), 'spend', round(v_spend, 2),
+    'lead_rate', case when v_saw > 0 then round(v_leads::numeric * 100 / v_saw, 1) else null end,
+    'buy_rate', case when v_leads > 0 then round(v_buyers::numeric * 100 / v_leads, 1) else null end,
+    'add_rate', case when v_buyers > 0 then round(v_added::numeric * 100 / v_buyers, 1) else null end,
+    'per_customer', case when v_buyers > 0 then round(v_sales / v_buyers, 2) else 0 end,
+    'cost_per_customer', case when v_buyers > 0 and v_spend > 0 then round(v_spend / v_buyers, 2) else null end);
+end $$;
+
 -- A marketer's day: the one-page checklist
 create or replace function marketing_today() returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -2466,6 +2626,131 @@ select pk.id, pk.product_id, pk.name, pk.subtitle, pk.price, pk.normal_price, pk
 from product_packages pk join products p on p.id = pk.product_id
 where pk.active and p.status in ('published', 'out_of_stock');
 
+
+-- Five example offerings a founder can create with one tap, to see how each type looks.
+-- They are ordinary products marked as samples, so they can be deleted just as easily.
+create or replace function create_samples() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare made int := 0; pid uuid;
+begin
+  if not is_founder() then raise exception 'Only a founder can add the examples'; end if;
+
+  -- 1. Driving course, packages and schedule
+  if not exists (select 1 from products where name = 'Driving lessons (example)') then
+    insert into products (name, category, description, price, status, owner_type, offering_type, sales_model, fulfilment,
+      lead_time_days, order_days, time_slots, slot_capacity, service_location, duration_text, commission_type, commission_value, page)
+    values ('Driving lessons (example)', 'Services',
+      E'Lessons for beginners and nervous drivers.\nDual-control cars and patient instructors.',
+      1800, 'published', 'founder', 'course', 'book', 'service', 1, '{1,2,3,4,5,6}', '{08:00,13:00}', 2, 'at_seller', '2 hours per lesson', 'pct', 10,
+      jsonb_build_object(
+        'hero_headline', 'Learn to drive with confidence', 'location_text', 'Lusaka, Zambia',
+        'hero_points', jsonb_build_array('Qualified instructors', 'Dual-control training cars', 'Weekday and weekend classes', 'Pick-up and drop-off'),
+        'cta_primary', 'Book your classes', 'packages_title', 'Our driving classes',
+        'media_section', jsonb_build_object('title', 'Our training vehicle', 'name', 'Toyota Corolla (manual)', 'note', 'Dual controls for safety',
+          'specs', jsonb_build_array(jsonb_build_object('label','Transmission','value','Manual'), jsonb_build_object('label','Year','value','2022'))),
+        'benefits', jsonb_build_array(
+          jsonb_build_object('icon','book','title','Learner''s permit','text','We help you through the permit process.'),
+          jsonb_build_object('icon','car','title','Practical training','text','Hands-on lessons with an instructor beside you.'),
+          jsonb_build_object('icon','certificate','title','Test preparation','text','Mock tests before the real thing.'),
+          jsonb_build_object('icon','shield','title','Road safety','text','Defensive driving and road rules.')),
+        'included', jsonb_build_array('All lessons with a qualified instructor', 'Use of the training car'),
+        'requirements', jsonb_build_array('A valid NRC', 'Comfortable shoes'),
+        'schedule_title', 'Class schedule',
+        'schedule', jsonb_build_array(jsonb_build_object('label','Weekdays','hours','08:00 - 18:00'), jsonb_build_object('label','Saturdays','hours','08:00 - 14:00'), jsonb_build_object('label','Sundays','hours','By appointment')),
+        'areas', jsonb_build_array('Lusaka District', 'Kabulonga', 'Chalala', 'Matero'),
+        'why', jsonb_build_array('Patient with nervous beginners', 'Cars serviced every month', 'Flexible times around work'),
+        'sections', jsonb_build_array(jsonb_build_object('title','What you''ll cover','items', jsonb_build_array('Road signs and rules','Town driving and parking','Highway driving','Test routes')))))
+    returning id into pid;
+    insert into product_packages (product_id, name, subtitle, price, normal_price, items, featured, sort) values
+      (pid, 'Beginner package', 'Basic driving lessons', 1800, null, array['6 practical lessons','2 hours per lesson','Road safety training','Pre-test preparation'], false, 0),
+      (pid, 'Standard package', 'Complete driving course', 2800, 3200, array['10 practical lessons','2 hours per lesson','Road safety training','Pre-test and mock test','Learner''s permit help'], true, 1),
+      (pid, 'Premium package', 'Intensive driving course', 4000, null, array['15 practical lessons','2 hours per lesson','Road safety training','Pre-test and mock test','Learner''s permit help','Priority test booking'], false, 2);
+    made := made + 1;
+  end if;
+
+  -- 2. Simple service, one price, no packages
+  if not exists (select 1 from products where name = 'House cleaning (example)') then
+    insert into products (name, category, description, price, status, owner_type, offering_type, sales_model, fulfilment,
+      lead_time_days, order_days, service_location, duration_text, commission_type, commission_value, page)
+    values ('House cleaning (example)', 'Services', 'A team of two cleans your home from top to bottom.', 450, 'published', 'founder', 'service', 'book', 'service',
+      1, '{1,2,3,4,5,6}', 'at_customer', 'About 3 hours', 'pct', 10,
+      jsonb_build_object('hero_headline', 'Come home to a clean house', 'location_text', 'Lusaka District',
+        'hero_points', jsonb_build_array('Two cleaners', 'We bring our own supplies', 'Same-week booking'),
+        'benefits', jsonb_build_array(
+          jsonb_build_object('icon','check','title','Whole house','text','Rooms, kitchen and bathrooms.'),
+          jsonb_build_object('icon','clock','title','About 3 hours','text','Longer for bigger homes, agreed first.')),
+        'areas', jsonb_build_array('Lusaka District')))
+    returning id into pid;
+    made := made + 1;
+  end if;
+
+  -- 3. Course with certificate
+  if not exists (select 1 from products where name = 'Basic computer course (example)') then
+    insert into products (name, category, description, price, status, owner_type, offering_type, sales_model, fulfilment,
+      lead_time_days, order_days, duration_text, commission_type, commission_value, page)
+    values ('Basic computer course (example)', 'Services', 'Four weeks of evening classes for complete beginners.', 950, 'published', 'founder', 'course', 'book', 'service',
+      2, '{1,2,3,4,5}', '2 evenings a week for 4 weeks', 'pct', 10,
+      jsonb_build_object('hero_headline', 'Learn the computer from scratch', 'location_text', 'Lusaka',
+        'hero_points', jsonb_build_array('Evening classes', 'Certificate at the end', 'Small groups'),
+        'packages_title', 'Choose your course',
+        'benefits', jsonb_build_array(
+          jsonb_build_object('icon','book','title','From the beginning','text','Mouse, typing, files and folders.'),
+          jsonb_build_object('icon','certificate','title','Certificate','text','Given when you finish the course.')),
+        'sections', jsonb_build_array(jsonb_build_object('title','What you''ll cover','items', jsonb_build_array('Windows basics','Typing and documents','Email and internet','Printing and saving files'))),
+        'schedule', jsonb_build_array(jsonb_build_object('label','Tue and Thu','hours','17:30 - 19:30'))))
+    returning id into pid;
+    insert into product_packages (product_id, name, subtitle, price, items, featured, sort) values
+      (pid, 'Evening course', '4 weeks', 950, array['8 sessions','Course notes','Certificate'], true, 0),
+      (pid, 'One-to-one', 'At your own pace', 1600, array['6 private sessions','Course notes','Certificate'], false, 1);
+    made := made + 1;
+  end if;
+
+  -- 4. Vehicle, sold by negotiation
+  if not exists (select 1 from products where name = 'Toyota Vitz 2014 (example)') then
+    insert into products (name, category, description, price, status, owner_type, offering_type, sales_model, fulfilment,
+      deal_fee_pct, commission_type, commission_value, page)
+    values ('Toyota Vitz 2014 (example)', 'Other', 'One owner, service book available, tyres in good condition.', 85000, 'published', 'founder', 'vehicle', 'negotiate', 'in_stock',
+      3, 'pct', 5,
+      jsonb_build_object('hero_headline', 'Toyota Vitz 2014 — ready to drive', 'location_text', 'Lusaka',
+        'hero_points', jsonb_build_array('One owner', 'Service book available', 'Inspection welcome'),
+        'specs', jsonb_build_array(
+          jsonb_build_object('label','Year','value','2014'), jsonb_build_object('label','Transmission','value','Automatic'),
+          jsonb_build_object('label','Mileage','value','118,000 km'), jsonb_build_object('label','Fuel','value','Petrol')),
+        'why', jsonb_build_array('Inspection welcome before you pay', 'Paperwork in order')))
+    returning id into pid;
+    made := made + 1;
+  end if;
+
+  -- 5. Something unrelated: made-to-order food
+  if not exists (select 1 from products where name = 'Office lunch packs (example)') then
+    insert into products (name, category, description, price, status, owner_type, offering_type, sales_model, fulfilment,
+      lead_time_days, order_days, daily_limit, options, note_label, commission_type, commission_value, page)
+    values ('Office lunch packs (example)', 'Food & cakes', 'Hot lunch delivered to your office, ordered the day before.', 60, 'published', 'founder', 'product', 'buy', 'made_to_order',
+      1, '{1,2,3,4,5}', 40, '[{"name":"Main","choices":["Chicken","Beef","Vegetarian"]}]'::jsonb, 'Any allergies we should know about?', 'pct', 8,
+      jsonb_build_object('hero_headline', 'Hot lunch, delivered to the office', 'location_text', 'Lusaka District',
+        'hero_points', jsonb_build_array('Ordered the day before', 'Delivered by 12:30', 'Bulk orders welcome'),
+        'benefits', jsonb_build_array(
+          jsonb_build_object('icon','clock','title','On time','text','Delivered between 12:00 and 12:30.'),
+          jsonb_build_object('icon','people','title','Office orders','text','One delivery for the whole team.')),
+        'areas', jsonb_build_array('Lusaka District')))
+    returning id into pid;
+    made := made + 1;
+  end if;
+
+  return jsonb_build_object('created', made);
+end $$;
+
+create or replace function remove_samples() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare gone int;
+begin
+  if not is_founder() then raise exception 'Only a founder can remove the examples'; end if;
+  delete from products where name like '%(example)'
+    and not exists (select 1 from order_items i where i.product_id = products.id);
+  get diagnostics gone = row_count;
+  return jsonb_build_object('removed', gone);
+end $$;
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
 alter table staff_invites enable row level security;
@@ -2493,6 +2778,8 @@ alter table deals enable row level security;
 alter table deal_events enable row level security;
 alter table lead_activities enable row level security;
 alter table content_posts enable row level security;
+alter table funnels enable row level security;
+alter table training_progress enable row level security;
 alter table lead_magnets enable row level security;
 alter table marketing_goals enable row level security;
 alter table expenses enable row level security;
@@ -2523,7 +2810,7 @@ end $$;
 select ensure_policy('public_read', 'provinces', 'select', 'true');
 select ensure_policy('public_read', 'districts', 'select', 'true');
 select ensure_policy('public_read', 'quotes', 'select', 'true');
-select ensure_policy('read_settings', 'settings', 'select', 'key in (''local_delivery_fee'',''currency'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
+select ensure_policy('read_settings', 'settings', 'select', 'key in (''local_delivery_fee'',''currency'',''delivery_included'',''departments'',''reseller_terms'',''vendor_terms'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
 select ensure_policy('founder_settings', 'settings', 'update', 'is_founder()');
 select ensure_policy('founder_settings_insert', 'settings', 'insert', 'is_founder()');
 
@@ -2558,6 +2845,9 @@ select ensure_policy('public_insert', 'stock_requests', 'insert', 'true');
 select ensure_policy('staff_all', 'leads', 'all', 'sees_all_leads() or (can_market() and (owner_id = auth.uid() or owner_id is null))');
 select ensure_policy('staff_all', 'lead_activities', 'all', 'exists (select 1 from leads l where l.id = lead_activities.lead_id and (sees_all_leads() or (can_market() and (l.owner_id = auth.uid() or l.owner_id is null))))');
 select ensure_policy('market_all', 'content_posts', 'all', 'can_market()');
+select ensure_policy('market_all', 'funnels', 'all', 'can_market()');
+select ensure_policy('own_training', 'training_progress', 'all', 'user_id = auth.uid()');
+select ensure_policy('staff_training_read', 'training_progress', 'select', 'is_staff()');
 select ensure_policy('market_all', 'lead_magnets', 'all', 'can_market()');
 select ensure_policy('own_goals', 'marketing_goals', 'select', 'user_id = auth.uid() or sees_all_leads()');
 select ensure_policy('set_goals', 'marketing_goals', 'all', 'sees_all_leads()');
@@ -2634,6 +2924,8 @@ grant execute on function place_order(jsonb) to anon, authenticated;
 grant execute on function booked_slots(uuid, date) to anon, authenticated;
 grant execute on function go_link(text) to anon, authenticated;
 grant execute on function submit_review(int, text, jsonb, text) to anon, authenticated;
+grant execute on function review_open(text) to anon, authenticated;
+grant execute on function review_submit(text, jsonb, text) to anon, authenticated;
 
 -- ---------- Seed: Zambia's provinces and districts ----------
 insert into provinces (name) values
