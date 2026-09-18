@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
 import { Badge, Table, Loading, Modal, Stat, CopyLine, Empty } from '../../components/ui'
+import PayoutRequest from '../../components/PayoutRequest'
 import { ManualSale } from '../admin/Orders'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
 
@@ -73,10 +74,10 @@ export function ResellerProducts() {
   if (loading || !data) return <Loading />
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Products to sell</h1><p>See exactly what you earn on each one, and grab ready-made selling messages.</p></div></div>
+      <div className="page-head"><div><h1>Products to sell</h1><p>Sorted by what you earn. Tap one for ready-made messages, photos and your link.</p></div></div>
       {data.products.length === 0 ? <Empty title="No products yet">Check back soon.</Empty> : (
         <div className="product-grid">
-          {data.products.map((p) => {
+          {[...data.products].sort((a, b) => commissionLabel(b, settings).perUnit - commissionLabel(a, settings).perUnit).map((p) => {
             const c = commissionLabel(p, settings)
             return (
               <div key={p.id} className="pcard" style={{ cursor: 'pointer' }} onClick={() => setKit(p)}>
@@ -153,6 +154,7 @@ export function ResellerCommissions() {
   if (loading) return <Loading />
   return (
     <div className="stack">
+      <PayoutRequest who="reseller" />
       <div className="page-head"><div><h1>Commissions</h1><p>Pending → Verified → Approved → Paid.</p></div></div>
       <Table rows={data} empty="No commissions yet" cols={[
         { key: 'order', label: 'Order', render: (c) => `#${c.order?.order_number}` },

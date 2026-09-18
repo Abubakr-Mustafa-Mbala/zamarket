@@ -221,16 +221,50 @@ const GROUPS = [
     fields: [
       { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
       { key: 'own_audience_fee_pct', label: 'Lower fee when the vendor brought the customer (%)', type: 'number', help: 'When someone buys through the vendor\'s own store link, you take this smaller fee instead.' },
-      { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead.' },
+      { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead. Below about 10% on cheap items, resellers earn too little to bother.' },
+      { key: 'reseller_credit_days', label: 'Reseller keeps a customer for (days)', type: 'number', help: "If a customer they brought orders again within this time, the reseller still earns. 0 means they only earn on the first order." },
+      { key: 'payout_minimum', label: 'Smallest payout (K)', type: 'number', help: 'Resellers and vendors can ask to be paid once they have at least this much.' },
       { key: 'commission_grace_hours', label: 'Hours to wait before paying a commission', type: 'number', help: 'Time for the customer to report a problem. 24 is normal.' },
       { key: 'referral_reward', label: 'Reward when a customer brings a friend (K)', type: 'number', help: 'Paid after the friend\'s first order is completed.' },
     ],
   },
 ]
 
+function ResetData() {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [word, setWord] = useState('')
+  const [keep, setKeep] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('reset_test_data', { p_confirm: word, p_keep_products: keep })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast(`Cleared ${data.orders} orders and ${data.customers} customers`)
+    setOpen(false); setWord('')
+  }
+  return (
+    <section className="card stack-sm" style={{ borderColor: 'var(--bad)' }}>
+      <h3>Start fresh before you go live</h3>
+      <p className="small muted">Deletes every test order, customer, lead, campaign, review and money record, and sets order numbers back to 1001. Your team accounts and settings stay. This cannot be undone.</p>
+      {!open ? <button className="btn danger" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>Clear test data</button> : (
+        <div className="stack-sm">
+          <label className="check"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep my products and suppliers (stock counts reset to zero)</label>
+          <Field label="Type DELETE to confirm"><Input value={word} onChange={setWord} placeholder="DELETE" /></Field>
+          <div className="btn-row">
+            <button className="btn danger" disabled={busy || word !== 'DELETE'} onClick={run}>{busy ? 'Clearing…' : 'Yes, clear everything'}</button>
+            <button className="btn ghost" onClick={() => { setOpen(false); setWord('') }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export function Settings() {
   const toast = useToast()
-  const { settings, refresh } = useAuth()
+  const { settings, refresh, isFounder } = useAuth()
   const [f, setF] = useState({ ...settings })
   const [saving, setSaving] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }))
@@ -318,6 +352,8 @@ export function Settings() {
         <Field label="Vendor rules"><Textarea value={f.vendor_terms ?? ''} onChange={set('vendor_terms')} rows={5} /></Field>
         <p className="tiny muted">Have someone check these against Zambian law before you rely on them in a dispute.</p>
       </section>
+
+      {isFounder && <ResetData />}
 
       <section className="card small">
         <p className="strong" style={{ color: 'var(--ink)' }}>How a vendor sale is split</p>

@@ -182,7 +182,7 @@ export default function OfferingBuilder() {
             }} />
           </label>
         </div>
-        <p className="tiny muted">The first photo is the big one at the top. Clear daylight photos of the real thing work best.</p>
+        <p className="tiny muted">The first photo is the big one at the top. For good phone photos: shoot outside in shade or near a window, never with the flash. Put the item on a plain surface — a white wall, a wooden table. Fill the frame, hold still, and take five, then keep the sharpest. Wipe the lens first; that alone fixes most blurry photos.</p>
       </section>
 
       <Packages packs={packs} setPacks={setPacks} title={pg.packages_title} setTitle={set('packages_title')} hint={hint.packages} />

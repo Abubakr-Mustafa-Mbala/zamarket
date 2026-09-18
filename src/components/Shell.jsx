@@ -10,6 +10,9 @@ const I = {
   more: <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="19" cy="12" r="2" /></svg>,
 }
 
+// Simple mode keeps the menu to daily work. Nothing is lost — Advanced brings it back.
+const SIMPLE_HIDES = ['/admin/simulator', '/admin/suppliers', '/admin/reports', '/admin/marketing', '/admin/deals']
+
 const STAFF_NAV = [
   { group: 'Daily' },
   { to: '/admin', label: 'Dashboard', end: true },
@@ -23,7 +26,7 @@ const STAFF_NAV = [
   { to: '/admin/inventory', label: 'Inventory' },
   { to: '/admin/purchases', label: 'Purchases', advanced: true },
   { to: '/admin/suppliers', label: 'Suppliers', advanced: true },
-  { to: '/admin/simulator', label: 'Buy or not?' },
+  { to: '/admin/simulator', label: 'Should I buy?' },
   { group: 'Growth' },
   { to: '/admin/offers', label: 'Offers' },
   { to: '/admin/resellers', label: 'Resellers' },
@@ -105,7 +108,7 @@ export default function Shell({ kind }) {
   const { role } = useAuth()
   const marketer = kind === 'staff' && role === 'marketing'
   const nav = (marketer ? MARKETING_NAV : kind === 'staff' ? STAFF_NAV : kind === 'reseller' ? RESELLER_NAV : VENDOR_NAV).filter(
-    (n) => (!n.founder || isFounder) && (!n.advanced || advanced)
+    (n) => (!n.founder || isFounder) && (!n.advanced || advanced) && (advanced || marketer || !SIMPLE_HIDES.includes(n.to))
   ).filter((n, i, arr) => !n.group || (arr[i + 1] && arr[i + 1].to))
   const tabs = marketer ? MOBILE_TABS.marketing : MOBILE_TABS[kind]
   const links = nav.filter((n) => n.to)
@@ -130,9 +133,12 @@ export default function Shell({ kind }) {
             <span className="badge">{profile?.role}</span>
           </div>
           {kind === 'staff' && !marketer && (
-            <div className="segmented">
-              <button className={!advanced ? 'on' : ''} onClick={() => setAdvanced(false)}>Simple</button>
-              <button className={advanced ? 'on' : ''} onClick={() => setAdvanced(true)}>Advanced</button>
+            <div className="mode-switch">
+              <div className="segmented">
+                <button className={!advanced ? 'on' : ''} onClick={() => setAdvanced(false)} title="Only what you need for daily work">Simple</button>
+                <button className={advanced ? 'on' : ''} onClick={() => setAdvanced(true)} title="Adds costs, margins, marketing and the history of every change">Advanced</button>
+              </div>
+              <span className="mode-note hide-mobile">{advanced ? 'Costs, margins and history showing' : 'Daily work only'}</span>
             </div>
           )}
         </header>

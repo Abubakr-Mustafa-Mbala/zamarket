@@ -80,6 +80,8 @@ create table if not exists settings (
 insert into settings (key, value, description) values
   ('currency', '"K"', 'Currency symbol'),
   ('marketplace_fee_pct', '10', 'Fee charged to vendors on each sale (%)'),
+  ('reseller_credit_days', '90', 'A reseller keeps credit on repeat orders from a customer they brought, for this many days'),
+  ('payout_minimum', '50', 'Least amount a reseller or vendor can ask to be paid out (K)'),
   ('default_commission_pct', '5', 'Default reseller commission when a product has no override (%)'),
   ('commission_source', '"from_fee"', 'from_fee = reseller commission is paid out of the marketplace fee; on_top = charged in addition to the fee'),
   ('delivery_included', 'false', 'Delivery is built into your prices, so customers are never charged for it'),
@@ -777,6 +779,21 @@ create table if not exists founder_withdrawals (
   created_at timestamptz not null default now()
 );
 
+create table if not exists payouts (
+  id uuid primary key default gen_random_uuid(),
+  payee_type text not null check (payee_type in ('reseller', 'vendor')),
+  reseller_id uuid references resellers(id),
+  vendor_id uuid references vendors(id),
+  amount numeric not null,
+  method text,
+  details text,
+  status text not null default 'requested' check (status in ('requested', 'approved', 'paid', 'rejected')),
+  note text,
+  requested_at timestamptz not null default now(),
+  paid_at timestamptz,
+  handled_by uuid references profiles(id)
+);
+
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
@@ -946,6 +963,7 @@ create trigger trg_audit_settings before update on settings for each row execute
 -- Financial rows are never deleted, only reversed.
 create or replace function block_delete() returns trigger language plpgsql as $$
 begin
+  if coalesce(current_setting('zm.reset', true), '') = 'on' then return old; end if;
   raise exception 'Financial records cannot be deleted. Cancel, refund or reverse instead.';
 end $$;
 drop trigger if exists trg_no_delete_orders on orders;
@@ -1294,6 +1312,7 @@ drop trigger if exists trg_offer_floor on offers;
 create trigger trg_offer_floor before insert or update on offers for each row execute function enforce_offer_floor();
 
 -- What customers and resellers may see about offers: no costs, no economics.
+drop view if exists public_offers cascade;
 create or replace view public_offers as
 select o.id, o.name, o.category, o.type, o.product_id,
        (select g.name from products g where g.id = nullif(o.config->>'giftProductId','')::uuid) as gift_name,
@@ -1392,6 +1411,23 @@ begin
         flags := array_append(flags, 'self_purchase');
       end if;
     end if;
+  end if;
+
+  -- a customer a reseller brought stays theirs for a while, even if they come back on their own
+  if rs.id is null and not v_manual then
+    declare keep_days int := greatest(0, setting_num('reseller_credit_days')::int);
+    begin
+      if keep_days > 0 then
+        select r2.* into rs from orders o2 join resellers r2 on r2.id = o2.reseller_id
+         where o2.customer_id = cust.id and o2.status not in ('cancelled', 'fraud_review')
+           and o2.created_at > now() - (keep_days || ' days')::interval and r2.status = 'approved'
+         order by o2.created_at desc limit 1;
+        if found then
+          v_seller := 'reseller';
+          if v_source = 'organic' then v_source := 'reseller:' || rs.code || ':repeat'; end if;
+        end if;
+      end if;
+    end;
   end if;
 
   -- delivery zone
@@ -1821,6 +1857,7 @@ begin
 end $$;
 
 -- Public product view (never exposes cost)
+drop view if exists public_products cascade;
 create or replace view public_products as
 select p.id, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
        p.status, p.stock_available, p.owner_type, v.business_name as vendor_name,
@@ -1949,6 +1986,7 @@ begin
 end $$;
 
 -- Public store pages: who the seller is, never how to reach them outside ZaMarket.
+drop view if exists public_vendors cascade;
 create or replace view public_vendors as
 select v.id, v.business_name, v.category, v.description, split_part(coalesce(v.location, ''), ',', 1) as town,
        (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as rating,
@@ -2305,6 +2343,7 @@ begin
 end $$;
 
 -- Lead magnets people can see (never the download link or voucher until they sign up)
+drop view if exists public_magnets cascade;
 create or replace view public_magnets as
 select m.id, m.slug, m.name, m.format, m.headline, m.description, m.bullets, m.cta_text, m.delivery_type, m.audience,
        v.business_name as vendor_name, v.slug as vendor_slug, p.name as product_name, p.slug as product_slug
@@ -2621,6 +2660,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- Public packages for published offerings
+drop view if exists public_packages cascade;
 create or replace view public_packages as
 select pk.id, pk.product_id, pk.name, pk.subtitle, pk.price, pk.normal_price, pk.items, pk.featured, pk.sort
 from product_packages pk join products p on p.id = pk.product_id
@@ -2751,6 +2791,129 @@ begin
   return jsonb_build_object('removed', gone);
 end $$;
 
+-- Clear everything created while testing, so the business can start clean.
+-- Founder only, and it asks for the word DELETE so it cannot happen by accident.
+create or replace function reset_test_data(p_confirm text, p_keep_products boolean default true) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare counts jsonb;
+begin
+  if not is_founder() then raise exception 'Only a founder can clear test data'; end if;
+  if p_confirm <> 'DELETE' then raise exception 'Type DELETE to confirm'; end if;
+  perform set_config('zm.reset', 'on', true);
+
+  select jsonb_build_object('orders', (select count(*) from orders), 'customers', (select count(*) from customers),
+                            'leads', (select count(*) from leads), 'products', (select count(*) from products)) into counts;
+
+  delete from lead_activities; delete from leads;
+  delete from referrals; delete from reviews;
+  delete from commissions; delete from settlements; delete from payments; delete from deliveries;
+  delete from deal_events; delete from deals;
+  delete from order_items; delete from orders;
+  delete from customers; delete from stock_requests;
+  delete from inventory_movements; delete from purchase_items; delete from purchases;
+  delete from expenses; delete from marketing_spend; delete from content_posts;
+  delete from funnels; delete from lead_magnets; delete from ad_requests; delete from campaigns;
+  delete from founder_contributions; delete from founder_withdrawals;
+  delete from offers;
+  if not p_keep_products then
+    delete from product_packages; delete from products; delete from suppliers;
+  else
+    update products set stock_available = 0, stock_reserved = 0, stock_sold = 0, stock_returned = 0,
+      stock_damaged = 0, stock_lost = 0, landed_cost_total = 0, landed_units = 0;
+  end if;
+  delete from audit_logs;
+  perform setval('order_number_seq', 1000, true);
+  perform set_config('zm.reset', 'off', true);
+  perform log_audit('data.reset', 'settings', null, counts, jsonb_build_object('kept_products', p_keep_products));
+  return counts;
+end $$;
+
+-- What a partner is owed right now, and what they have already asked for.
+create or replace function payout_balance() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r uuid := my_reseller_id(); v uuid := my_vendor_id(); owed numeric := 0; asked numeric := 0; paid numeric := 0;
+begin
+  if r is not null then
+    select coalesce(sum(amount), 0) into owed from commissions where reseller_id = r and status in ('verified', 'approved');
+    select coalesce(sum(amount), 0) into asked from payouts where reseller_id = r and status in ('requested', 'approved');
+    select coalesce(sum(amount), 0) into paid from commissions where reseller_id = r and status = 'paid';
+  elsif v is not null then
+    select coalesce(sum(net_payable), 0) into owed from settlements where vendor_id = v and status in ('eligible', 'approved');
+    select coalesce(sum(amount), 0) into asked from payouts where vendor_id = v and status in ('requested', 'approved');
+    select coalesce(sum(net_payable), 0) into paid from settlements where vendor_id = v and status = 'paid';
+  else
+    raise exception 'Not allowed';
+  end if;
+  return jsonb_build_object('ready', round(owed - asked, 2), 'requested', round(asked, 2), 'paid_before', round(paid, 2), 'minimum', setting_num('payout_minimum'));
+end $$;
+
+create or replace function request_payout(p_amount numeric, p_method text, p_details text) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare r uuid := my_reseller_id(); v uuid := my_vendor_id(); bal jsonb; new_id uuid;
+begin
+  if r is null and v is null then raise exception 'Not allowed'; end if;
+  bal := payout_balance();
+  if p_amount is null or p_amount <= 0 then raise exception 'Enter how much you want to be paid'; end if;
+  if p_amount < (bal->>'minimum')::numeric then raise exception 'The smallest payout is K%', (bal->>'minimum')::numeric; end if;
+  if p_amount > (bal->>'ready')::numeric then raise exception 'You can ask for up to K% right now', (bal->>'ready')::numeric; end if;
+  if coalesce(p_method, '') = '' then raise exception 'Say how you want to be paid'; end if;
+  insert into payouts (payee_type, reseller_id, vendor_id, amount, method, details)
+  values (case when r is not null then 'reseller' else 'vendor' end, r, v, round(p_amount, 2), p_method, p_details)
+  returning id into new_id;
+  perform log_audit('payout.requested', 'payouts', new_id, null, jsonb_build_object('amount', p_amount, 'method', p_method));
+  return new_id;
+end $$;
+
+-- Paying it: marks the commissions or settlements paid too, so nothing is counted twice.
+create or replace function set_payout_status(p_payout uuid, p_status text, p_note text default null) returns void
+language plpgsql security definer set search_path = public as $$
+declare po payouts%rowtype; remaining numeric;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select * into po from payouts where id = p_payout for update;
+  if not found then raise exception 'Not found'; end if;
+  if po.status = 'paid' then raise exception 'That payout is already paid'; end if;
+  if p_status not in ('approved', 'paid', 'rejected') then raise exception 'Unknown status'; end if;
+
+  if p_status = 'paid' then
+    remaining := po.amount;
+    if po.reseller_id is not null then
+      update commissions c set status = 'paid', paid_at = now()
+       where c.id in (
+         select x.id from (
+           select cm.id, sum(cm.amount) over (order by cm.created_at, cm.id rows between unbounded preceding and current row) as run
+           from commissions cm where cm.reseller_id = po.reseller_id and cm.status in ('verified', 'approved')) x
+         where x.run <= remaining + 0.01);
+    else
+      update settlements st set status = 'paid', paid_at = now()
+       where st.id in (
+         select x.id from (
+           select se.id, sum(se.net_payable) over (order by se.created_at, se.id rows between unbounded preceding and current row) as run
+           from settlements se where se.vendor_id = po.vendor_id and se.status in ('eligible', 'approved')) x
+         where x.run <= remaining + 0.01);
+    end if;
+  end if;
+
+  update payouts set status = p_status, note = coalesce(p_note, note),
+    paid_at = case when p_status = 'paid' then now() else paid_at end, handled_by = auth.uid()
+  where id = p_payout;
+  perform log_audit('payout.' || p_status, 'payouts', p_payout, null, jsonb_build_object('amount', po.amount));
+end $$;
+
+-- A vendor can say "sold out" or "available again" on their own product without waiting for us.
+create or replace function vendor_set_availability(p_product uuid, p_available boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare p products%rowtype;
+begin
+  select * into p from products where id = p_product;
+  if not found then raise exception 'Not found'; end if;
+  if not (is_staff() or (p.vendor_id is not null and p.vendor_id = my_vendor_id())) then raise exception 'Not allowed'; end if;
+  if p.status not in ('published', 'out_of_stock') then raise exception 'This product is not published yet'; end if;
+  update products set status = case when p_available then 'published' else 'out_of_stock' end where id = p_product;
+  perform log_audit('product.availability', 'products', p_product, jsonb_build_object('status', p.status),
+    jsonb_build_object('status', case when p_available then 'published' else 'out_of_stock' end));
+end $$;
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
 alter table staff_invites enable row level security;
@@ -2787,6 +2950,7 @@ alter table marketing_spend enable row level security;
 alter table founder_contributions enable row level security;
 alter table founder_withdrawals enable row level security;
 alter table audit_logs enable row level security;
+alter table payouts enable row level security;
 alter table settings enable row level security;
 alter table provinces enable row level security;
 alter table districts enable row level security;
@@ -2863,6 +3027,8 @@ select ensure_policy('founder_all', 'founder_contributions', 'all', 'is_founder(
 select ensure_policy('founder_all', 'founder_withdrawals', 'all', 'is_founder()');
 select ensure_policy('founder_read', 'audit_logs', 'select', 'is_founder()');
 select ensure_policy('staff_all', 'referrals', 'all', 'is_staff() or can_market()');
+select ensure_policy('staff_payouts', 'payouts', 'all', 'is_staff()');
+select ensure_policy('own_payouts', 'payouts', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('staff_all', 'payments', 'all', 'is_staff()');
 select ensure_policy('staff_all', 'deliveries', 'all', 'is_staff()');
 

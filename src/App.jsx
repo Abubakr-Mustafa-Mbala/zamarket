@@ -67,17 +67,18 @@ const STAFF = ['founder', 'ops', 'finance', 'delivery', 'marketing']
 // Waits for the session AND profile before deciding. Redirecting while either is still
 // loading is what causes "signed in, then thrown back to the login page".
 function Guard({ roles, children }) {
-  const { user, role, loading, signOut } = useAuth()
+  const { user, role, loading, signOut, expired } = useAuth()
   const loc = useLocation()
   if (loading) return <div className="auth-wrap"><Loading /></div>
   if (user && !role) return (
     <div className="auth-wrap"><div className="card auth-card stack">
-      <h2>Account not set up</h2>
-      <p className="small">You're signed in, but there's no profile for this account. Make sure supabase/schema.sql was run before you created the account, then sign up again.</p>
-      <button className="btn" onClick={signOut}>Sign out</button>
+      <h2>{expired ? 'Please sign in again' : 'Account not set up'}</h2>
+      <p className="small">{expired
+        ? 'Your sign-in expired while this tab was left open. Signing in again takes a second and nothing is lost.'
+        : "You're signed in, but there's no profile for this account. Ask a founder to invite your email address, then sign up again."}</p>
+      <button className="btn primary" onClick={signOut}>{expired ? 'Sign in again' : 'Sign out'}</button>
     </div></div>
   )
-  if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
   if (!roles.includes(role)) return <Navigate to={homeFor(role)} replace />
   return children
 }

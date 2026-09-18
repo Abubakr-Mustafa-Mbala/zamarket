@@ -7,7 +7,7 @@ import { money, date, datetime, n, title } from '../../lib/format'
 import { EXPENSE_CATEGORIES } from '../../lib/statuses'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Stat, Tabs } from '../../components/ui'
 
-const TABS = [['owed', 'Who we owe'], ['commissions', 'Commissions'], ['settlements', 'Vendor payouts'], ['expenses', 'Expenses'], ['capital', 'Founder money']]
+const TABS = [['owed', 'Who we owe'], ['requests', 'Payout requests'], ['commissions', 'Commissions'], ['settlements', 'Vendor payouts'], ['expenses', 'Expenses'], ['capital', 'Founder money']]
 
 export default function Finance() {
   const [sp, setSp] = useSearchParams()
@@ -17,6 +17,7 @@ export default function Finance() {
       <div className="page-head"><div><h1>Finance</h1><p>Every kwacha owed, to whom, and why.</p></div></div>
       <Tabs tabs={TABS} value={tab} onChange={(v) => setSp({ tab: v })} />
       {tab === 'owed' && <Owed />}
+      {tab === 'requests' && <PayoutRequests />}
       {tab === 'commissions' && <Commissions />}
       {tab === 'settlements' && <Settlements />}
       {tab === 'expenses' && <Expenses />}
@@ -63,6 +64,58 @@ function Owed() {
       <Block title="Vendors" rows={data.vendors} hint="not yet eligible" />
       <Block title="Suppliers" rows={data.suppliers} />
       <p className="tiny muted">Pay people, then mark items as paid in the Commissions and Vendor payouts tabs so the numbers stay honest.</p>
+    </div>
+  )
+}
+
+function PayoutRequests() {
+  const toast = useToast()
+  const { data, loading, reload } = useData(() => q(
+    supabase.from('payouts').select('*,reseller:resellers(full_name,phone),vendor:vendors(business_name,phone)').order('requested_at', { ascending: false }).limit(200)
+  ), [])
+  const act = async (p, status) => {
+    const note = status === 'rejected' ? window.prompt('Why not?') : null
+    if (status === 'rejected' && !note) return
+    if (status === 'paid' && !window.confirm(`Confirm you have sent ${money(p.amount)}. This also marks the commissions or payouts behind it as paid.`)) return
+    const { error } = await supabase.rpc('set_payout_status', { p_payout: p.id, p_status: status, p_note: note })
+    if (error) return toast(error.message, true)
+    toast(status === 'paid' ? 'Marked paid' : `Request ${status}`); reload()
+  }
+  if (loading) return <Loading />
+  const waiting = (data || []).filter((p) => ['requested', 'approved'].includes(p.status))
+  const done = (data || []).filter((p) => !['requested', 'approved'].includes(p.status))
+  const row = (p) => {
+    const who = p.reseller?.full_name || p.vendor?.business_name || '—'
+    const phone = p.reseller?.phone || p.vendor?.phone
+    return (
+      <div key={p.id} className="mini-row">
+        <span className="grow">
+          <strong>{who}</strong>
+          <span className="tiny muted">{p.payee_type === 'reseller' ? 'Reseller' : 'Vendor'} · {date(p.requested_at)} · {p.method}{p.details ? ` to ${p.details}` : ''}{phone ? ` · ${phone}` : ''}</span>
+          {p.note && <span className="tiny muted">{p.note}</span>}
+        </span>
+        <span className="strong money">{money(p.amount)}</span>
+        <Badge status={{ requested: 'pending', approved: 'approved', paid: 'paid', rejected: 'rejected' }[p.status]}>
+          {{ requested: 'Waiting', approved: 'Approved', paid: 'Paid', rejected: 'Not approved' }[p.status]}
+        </Badge>
+        {p.status === 'requested' && <div className="btn-row"><button className="btn sm" onClick={() => act(p, 'approved')}>Approve</button><button className="btn sm ghost" onClick={() => act(p, 'rejected')}>Decline</button></div>}
+        {['requested', 'approved'].includes(p.status) && <button className="btn sm buy" onClick={() => act(p, 'paid')}>Mark paid</button>}
+      </div>
+    )
+  }
+  return (
+    <div className="stack">
+      <p className="small muted">Resellers and vendors ask to be paid here. Send the money the way they asked, then tap Mark paid — that also settles the commissions or vendor payouts behind it, so nothing is paid twice.</p>
+      <section className="card">
+        <div className="card-title"><h3>Waiting</h3><span className="strong money copper">{money(waiting.reduce((t, p) => t + n(p.amount), 0))}</span></div>
+        {waiting.length === 0 ? <p className="small muted">No requests right now.</p> : <div className="mini-table">{waiting.map(row)}</div>}
+      </section>
+      {done.length > 0 && (
+        <section className="card">
+          <h3 className="mb">History</h3>
+          <div className="mini-table">{done.map(row)}</div>
+        </section>
+      )}
     </div>
   )
 }

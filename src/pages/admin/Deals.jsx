@@ -30,7 +30,7 @@ export default function Deals() {
       <div className="page-head">
         <div>
           <h1>Enquiries and deals</h1>
-          <p>For vehicles and anything sold by talking to the customer: an enquiry comes in, you agree a price, then record the sale.</p>
+          <p>For cars and anything where the buyer and the owner talk directly. You introduce them, then record what the owner tells you was paid, so your share is worked out.</p>
         </div>
       </div>
 
@@ -144,9 +144,9 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
               <Field label="Note (optional)"><Input value={note} onChange={setNote} placeholder="What was said" /></Field>
             </div>
             <div className="btn-row">
-              <button className="btn" disabled={busy} onClick={() => act('offer')}>They offered this</button>
-              <button className="btn" disabled={busy} onClick={() => act('counter')}>We offered this</button>
-              <button className="btn primary" disabled={busy} onClick={() => act('agree')}>Price agreed</button>
+              <button className="btn" disabled={busy} onClick={() => act('offer')}>Buyer offered this</button>
+              <button className="btn" disabled={busy} onClick={() => act('counter')}>Owner asked this</button>
+              <button className="btn primary" disabled={busy} onClick={() => act('agree')}>They agreed a price</button>
               <button className="btn sm ghost" disabled={busy} onClick={() => act('note', { amount: null })}>Just save a note</button>
               <button className="btn sm danger" disabled={busy} onClick={() => act('lost', { amount: null })}>Lost</button>
             </div>
@@ -156,10 +156,10 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
         {d.status === 'agreed' && isStaff && (
           <div className="card flat stack-sm">
             <h3>Record the sale</h3>
-            <p className="small muted">Do this once the customer has actually paid and received it. Commission is worked out from the final price, not the asking price.</p>
+            <p className="small muted">Do this once the owner confirms the buyer has paid. Your share and any reseller commission are worked out from the price actually paid, not the asking price.</p>
             <div className="form-grid">
               <Field label="Final price"><Input money value={amount} onChange={setAmount} placeholder={String(d.final_price ?? d.advertised_price)} /></Field>
-              <Field label="How was it verified?" hint="Receipt number, bank reference, or who handed it over"><Input value={evidence} onChange={setEvidence} /></Field>
+              <Field label="Who confirmed it?" hint="e.g. 'Owner Mr Phiri confirmed by phone, 18 Sept' or a receipt number"><Input value={evidence} onChange={setEvidence} /></Field>
             </div>
             {d.reseller && <p className="small">Reseller {d.reseller.full_name} earns <strong>{money(wouldEarn(amount || d.final_price))}</strong> at that price.</p>}
             <button className="btn buy" disabled={busy} onClick={() => act('close')}>Record the sale</button>

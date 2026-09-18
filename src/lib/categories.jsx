@@ -31,4 +31,11 @@ export function departmentsFrom(settings) {
 }
 
 export const iconByKey = (key) => BY_KEY[key] || BY_KEY.other
-export const iconFor = (name, departments) => (departments || DEFAULT_DEPARTMENTS).map((d) => ({ ...d, icon: BY_KEY[d.icon || d.iconKey] || BY_KEY.other })).find((d) => d.name === name)?.icon || BY_KEY.other
+export function iconFor(name, departments) {
+  const list = departments?.length ? departments : DEFAULT_DEPARTMENTS
+  const d = list.find((x) => x.name === name)
+  if (!d) return BY_KEY.other
+  // departments from the hook already carry a rendered icon; settings rows carry a key
+  if (d.icon && typeof d.icon === 'object') return d.icon
+  return BY_KEY[d.iconKey || d.icon] || BY_KEY.other
+}

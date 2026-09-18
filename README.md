@@ -97,6 +97,14 @@ Customers pay ZaMarket for ZaMarket orders. Vendors work from an **Order desk**:
 
 Vendors mark items *Preparing* → *Ready*; your team marks them *Collected*. The vendor agreement says ZaMarket orders are paid through ZaMarket.
 
+## Being found on Google (SEO)
+
+Every page sends search engines a real title, description, price, photos and ratings, and a share picture so links look right in WhatsApp. Admin, checkout and personal pages are kept out of search. `/sitemap.xml` is built from live data and updates itself.
+
+**After deploying, do this once:** add your site to Google Search Console, verify it, and submit `yoursite/sitemap.xml`. Then create a free Google Business Profile for your business in Lusaka. Marketing → Search (SEO) has the steps, a list of pages that still need work, and how to name things so people find them.
+
+You can write your own search title and description on any product (Products → edit → "How it looks on Google and WhatsApp"), with a preview of the Google result.
+
 ## Earnings tracker
 
 Everyone has an **Earnings** page with a chart, a date picker (today, 7 days, 30 days, this month, last month, this year, or any dates), daily/weekly/monthly views, "▲ up / ▼ down vs the previous period", and the full records underneath with a **Download** button (opens in Excel or Google Sheets).

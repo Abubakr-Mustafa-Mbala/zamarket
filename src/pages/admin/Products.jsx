@@ -76,7 +76,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const DEPARTMENTS = useDepartments()
   const toast = useToast()
   const { settings, advanced, user, isStaff } = useAuth()
-  const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n'), fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days ?? 0, time_slots_text: (product.time_slots || []).join(', '), service_location: product.service_location || 'at_seller', slot_capacity: product.slot_capacity ?? 1, order_days: product.order_days || [], options_text: (product.options || []).map((o) => `${o.name}: ${(o.choices || []).join(', ')}`).join('\n') })
+  const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n'), seo_title: product.page?.seo?.title || '', seo_description: product.page?.seo?.description || '', fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days ?? 0, time_slots_text: (product.time_slots || []).join(', '), service_location: product.service_location || 'at_seller', slot_capacity: product.slot_capacity ?? 1, order_days: product.order_days || [], options_text: (product.options || []).map((o) => `${o.name}: ${(o.choices || []).join(', ')}`).join('\n') })
   const [calc, setCalc] = useState({ mode: 'markup', value: settings.target_markup_pct ?? 50 })
   const [uploading, setUploading] = useState(false)
   const set = (k) => (v) => setP((c) => ({ ...c, [k]: v }))
@@ -112,6 +112,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       duration_text: p.fulfilment === 'service' ? (p.duration_text || '').trim() || null : null,
       options: p.options_text.split('\n').filter((l) => l.includes(':')).map((l) => { const [name, rest] = l.split(':'); return { name: name.trim(), choices: rest.split(',').map((c) => c.trim()).filter(Boolean) } }).filter((o) => o.name && o.choices.length),
       note_label: (p.note_label || '').trim() || null,
+      page: { ...(p.page || {}), seo: { title: (p.seo_title || '').trim() || null, description: (p.seo_description || '').trim() || null } },
       status: status || (vendorMode && !['draft', 'submitted'].includes(p.status) ? 'draft' : p.status), rejection_reason: p.rejection_reason || null,
     }
     if (isNew) { row.owner_type = vendorMode ? 'vendor' : 'founder'; row.created_by = user.id; if (vendorMode) row.vendor_id = vendorMode }
@@ -152,6 +153,21 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
             </div>
           </Field>
           <Field label="FAQs (one per line: question | answer)" span><Textarea value={p.faqs_text} onChange={set('faqs_text')} rows={2} /></Field>
+          <div className="span card flat stack-sm">
+            <h3>How it looks on Google and WhatsApp</h3>
+            <p className="small muted">Leave these empty and we write them for you from the name and price. Fill them in when you want to target what people actually search.</p>
+            <Field label="Search title" hint="About 60 characters. Put the words people type first, e.g. 'Solar lamp Lusaka — rechargeable, 12 hours'">
+              <Input value={p.seo_title} onChange={set('seo_title')} maxLength={70} />
+            </Field>
+            <Field label="Search description" hint="About 150 characters. Say what it is, the price, and that you deliver in Lusaka.">
+              <Textarea value={p.seo_description} onChange={set('seo_description')} rows={2} maxLength={170} />
+            </Field>
+            <div className="serp">
+              <div className="serp-url">{window.location.host}{p.slug ? `/p/${p.slug}` : '/p/...'}</div>
+              <div className="serp-title">{p.seo_title || `${p.name || 'Product name'} — ${money(p.price || 0)} | ZaMarket Lusaka`}</div>
+              <div className="serp-desc">{p.seo_description || `Buy ${p.name || 'this'} in Lusaka for ${money(p.price || 0)}. Delivery in Lusaka District, other areas arranged. Pay when you receive it.`}</div>
+            </div>
+          </div>
           <div className="span card flat stack-sm">
             <div className="between">
               <h3>How is it sold?</h3>

@@ -39,6 +39,17 @@ export default function Funnels() {
   return (
     <div className="stack">
       <div className="card"><DateBar range={range} setRange={setRange} /></div>
+      <details className="card explain">
+        <summary>What is a funnel, and how do I use it?</summary>
+        <div className="stack-sm">
+          <p className="small">A funnel is just the path a customer walks, written down so you can count each step. Everyone loses people at every step; the trick is knowing <em>which</em> step loses the most.</p>
+          <p className="small"><strong>An example.</strong> You run a Facebook advert for solar lamps. 420 people open your link. 5 of them leave their number for your free "which lamp do I need?" guide. You call them, 2 buy. 1 of those also takes the K170 second lamp at checkout. Nobody has ordered again yet.</p>
+          <p className="small">That tells you something exact: your advert works (420 people came) but your page does not (only 5 left a number). So you fix the page, not the advert. Without the funnel you would probably have spent more money on adverts and wondered why nothing changed.</p>
+          <p className="small"><strong>To set one up:</strong> create a campaign link under Campaigns, a free guide under Lead magnets, then come back here, click New funnel, and join them to the product and the checkout add-on. The numbers fill in by themselves as people arrive.</p>
+          <p className="small">The step marked in orange is the one costing you the most. Fix that one first, then look again next week.</p>
+        </div>
+      </details>
+
       <div className="between">
         <p className="small muted">A funnel is one path a customer takes, from first seeing you to buying again. Naming the steps shows you which one is leaking.</p>
         <button className="btn primary" onClick={() => setEdit({ status: 'active' })}>New funnel</button>

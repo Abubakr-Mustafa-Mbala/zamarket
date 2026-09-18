@@ -10,6 +10,7 @@ import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
 import { useDepartments, useShopInfo } from '../../lib/departments'
+import { useSeo, productSeo } from '../../lib/seo'
 
 // ---------- shared catalogue loader (small catalogue: one fetch, cached for the session) ----------
 let cache = null
@@ -31,6 +32,16 @@ function useCatalogue() {
   return data
 }
 
+// Departments with nothing in them are hidden from shoppers — an empty shelf looks abandoned.
+function useStockedDepartments(all) {
+  const data = useCatalogue()
+  return useMemo(() => {
+    if (!data) return []
+    const have = new Set((data.products || []).map((p) => p.category))
+    return all.filter((d) => have.has(d.name))
+  }, [data, all])
+}
+
 const isOut = (p) => p.fulfilment === 'in_stock' && (p.status === 'out_of_stock' || (p.owner_type === 'founder' && p.stock_available <= 0))
 const dealFor = (offersBy, id) => (offersBy[id] || []).find((o) => DEAL_TYPES.includes(o.type))
 
@@ -47,6 +58,7 @@ function Price({ value, size }) {
 // ---------- shell ----------
 export function PublicShell() {
   const DEPARTMENTS = useDepartments()
+  const stocked = useStockedDepartments(DEPARTMENTS)
   const { count, subtotal } = useCart()
   const { user, role, profile } = useAuth()
   const { pathname } = useLocation()
@@ -77,7 +89,7 @@ export function PublicShell() {
           <form className="shop-search" onSubmit={go} role="search">
             <select aria-label="Department" value={cat} onChange={(e) => setCat(e.target.value)} className="hide-mobile">
               <option value="">All</option>
-              {DEPARTMENTS.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
+              {stocked.map((d) => <option key={d.name} value={d.name}>{d.name}</option>)}
             </select>
             <input aria-label="Search ZaMarket" placeholder="Search products, cakes, services…" value={q} onChange={(e) => setQ(e.target.value)} />
             <button type="submit" aria-label="Search">
@@ -96,7 +108,7 @@ export function PublicShell() {
         </div>
         <nav className="dept-strip" aria-label="Departments">
           <Link to="/search?deals=1">Today's deals</Link>
-          {DEPARTMENTS.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
+          {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Sellers</Link>
         </nav>
       </header>
@@ -202,6 +214,8 @@ function Row({ title, link, children }) {
 
 // ---------- home ----------
 export function Storefront() {
+  const stocked = useStockedDepartments(useDepartments())
+  useSeo({ title: 'ZaMarket — buy online in Lusaka, Zambia', description: 'Shop phones, home goods, fashion, cakes made to order and local services in Lusaka. Order online, we confirm by phone, and you pay when you receive it.' })
   const DEPARTMENTS = useDepartments()
   const data = useCatalogue()
   const { ref } = useCart()
@@ -236,27 +250,38 @@ export function Storefront() {
         </ol>
       </section>
 
-      <section className="depts" aria-label="Shop by department">
-        {DEPARTMENTS.map((d) => (
-          <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`} className="dept">
-            <span className="dept-icon">{d.icon}</span>
-            <span className="dept-name">{d.name}</span>
-            <span className="dept-count">{counts[d.name] ? `${counts[d.name]} item${counts[d.name] > 1 ? 's' : ''}` : 'Coming soon'}</span>
-          </Link>
-        ))}
-      </section>
-
-      {products.length === 0 && (
+      {products.length === 0 ? (
         <div className="empty-shop">
           <h2>The shelves are being stocked</h2>
           <p>Products from ZaMarket and local sellers will appear here soon. Have something to sell?</p>
           <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become a reseller</Link></div>
         </div>
+      ) : products.length <= 8 ? (
+        // A small shop looks better full than spread thin across empty shelves.
+        <section className="shelf">
+          <div className="shelf-head"><h2>What we have right now</h2><Link to="/search">See all</Link></div>
+          <div className="grid-products">{products.map(card)}</div>
+        </section>
+      ) : (
+        <>
+          {deals.length > 0 && <Row title="Today's deals" link="/search?deals=1">{deals.slice(0, 12).map(card)}</Row>}
+          <Row title="New on ZaMarket" link="/search?sort=new">{products.slice(0, 12).map(card)}</Row>
+          {scheduled.length > 0 && <Row title="Made to order and bookings" link="/search?type=scheduled">{scheduled.slice(0, 12).map(card)}</Row>}
+          {rated.length > 0 && <Row title="Top rated" link="/search?sort=rating">{rated.slice(0, 12).map(card)}</Row>}
+        </>
       )}
-      {deals.length > 0 && <Row title="Today's deals" link="/search?deals=1">{deals.slice(0, 12).map(card)}</Row>}
-      {scheduled.length > 0 && <Row title="Made to order and bookings" link="/search?type=scheduled">{scheduled.slice(0, 12).map(card)}</Row>}
-      {products.length > 0 && <Row title="New on ZaMarket" link="/search?sort=new">{products.slice(0, 12).map(card)}</Row>}
-      {rated.length > 0 && <Row title="Top rated" link="/search?sort=rating">{rated.slice(0, 12).map(card)}</Row>}
+
+      {stocked.length > 1 && (
+        <section className="depts" aria-label="Shop by department">
+          {stocked.map((d) => (
+            <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`} className="dept">
+              <span className="dept-icon">{d.icon}</span>
+              <span className="dept-name">{d.name}</span>
+              <span className="dept-count">{counts[d.name]} item{counts[d.name] > 1 ? 's' : ''}</span>
+            </Link>
+          ))}
+        </section>
+      )}
 
       {vendors.length > 0 && (
         <section className="shelf">
@@ -279,6 +304,13 @@ export function Storefront() {
   )
 }
 
+function useSeoStore(store) {
+  useSeo(store ? {
+    title: `${store.business_name} — ${store.category || 'Seller'} in ${store.town || 'Lusaka'} | ZaMarket`,
+    description: (store.description || `Shop ${store.business_name} on ZaMarket. Order online and pay when you receive it.`).slice(0, 160),
+  } : {})
+}
+
 function SellerCard({ v }) {
   return (
     <Link to={`/${v.slug}`} className="seller">
@@ -293,6 +325,7 @@ function SellerCard({ v }) {
 }
 
 export function SellersPage() {
+  useSeo({ title: 'Sellers on ZaMarket — local businesses in Lusaka', description: 'Browse the shops, bakers, tailors and services selling on ZaMarket in Lusaka, Zambia.' })
   const data = useCatalogue()
   if (!data) return <Loading />
   return (
@@ -310,6 +343,11 @@ const SORTS = [['featured', 'Featured'], ['price_asc', 'Price: low to high'], ['
 
 export function SearchPage() {
   const DEPARTMENTS = useDepartments()
+  const stocked = useStockedDepartments(DEPARTMENTS)
+  const [spSeo] = useSearchParams()
+  useSeo(spSeo.get('cat')
+    ? { title: `${spSeo.get('cat')} in Lusaka | ZaMarket`, description: `Buy ${spSeo.get('cat').toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged.` }
+    : { title: 'All products | ZaMarket Lusaka', noIndex: !!spSeo.get('q') })
   const data = useCatalogue()
   const [sp, setSp] = useSearchParams()
   const [sheet, setSheet] = useState(false)
@@ -357,7 +395,7 @@ export function SearchPage() {
       <div className="f-group">
         <h4>Department</h4>
         <button type="button" className={!cat ? 'on' : ''} onClick={() => setParam('cat', '')}>All departments</button>
-        {DEPARTMENTS.map((d) => <button type="button" key={d.name} className={cat === d.name ? 'on' : ''} onClick={() => setParam('cat', d.name)}>{d.name}</button>)}
+        {stocked.map((d) => <button type="button" key={d.name} className={cat === d.name ? 'on' : ''} onClick={() => setParam('cat', d.name)}>{d.name}</button>)}
       </div>
       <div className="f-group">
         <h4>How it's sold</h4>
@@ -421,6 +459,8 @@ export function SearchPage() {
 }
 
 // ---------- product page ----------
+function ProductSeo({ p }) { useSeo(productSeo(p)); return null }
+
 export function ProductPage() {
   const DEPARTMENTS = useDepartments()
   const shop = useShopInfo()
@@ -459,6 +499,7 @@ export function ProductPage() {
   if (!p) return <div className="empty-shop"><h2>This product isn't available</h2><p>It may have been removed or sold out.</p><Link to="/search" className="btn">Browse products</Link></div>
   if ((p.offering_type && p.offering_type !== 'product') || Number(p.package_count) > 0 || (p.sales_model && p.sales_model !== 'buy')) return <OfferingPage p={p} reviews={reviews} />
 
+  const seo = productSeo(p)
   const scheduled = p.fulfilment !== 'in_stock'
   const out = isOut(p)
   const opts = Array.isArray(p.options) ? p.options.filter((o) => o?.name && o?.choices?.length) : []
@@ -510,6 +551,7 @@ export function ProductPage() {
 
   return (
     <div className="pdp">
+      <ProductSeo p={p} />
       <div className="crumbs">
         <Link to="/">Home</Link>
         {storeParam && p.vendor_name ? <Link to={`/${storeParam}`}>{p.vendor_name}</Link> : p.category && <Link to={`/search?cat=${encodeURIComponent(p.category)}`}>{p.category}</Link>}
@@ -667,6 +709,7 @@ export function StorePage() {
       const m = {}; for (const x of data || []) (m[x.product_id] = m[x.product_id] || []).push(x); setOffersBy(m)
     })
   }, [slug, legacyId])
+  useSeoStore(store)
   if (store === null || products === null) return <Loading />
   if (!store) return <div className="empty-shop"><h2>We couldn't find that page</h2><p>Check the link, or browse the marketplace.</p><div className="hero-actions"><Link to="/" className="btn primary">Go to ZaMarket</Link><Link to="/sellers" className="btn">See all sellers</Link></div></div>
   const groups = products.reduce((m, p) => { const k = p.category || 'Products'; (m[k] = m[k] || []).push(p); return m }, {})

@@ -25,8 +25,21 @@ export default function Simulator() {
   return (
     <div className="stack">
       <div className="page-head">
-        <div><h1>Buy or not?</h1><p>Work out whether a product can make money before you spend a kwacha on stock.</p></div>
+        <div><h1>Should I buy this stock?</h1><p>Before you spend money on stock, check whether it can actually make a profit.</p></div>
       </div>
+
+      <details className="card explain">
+        <summary>What is this page for?</summary>
+        <div className="stack-sm">
+          <p className="small">Say a supplier offers you 50 phone cases at K40 each. Should you buy them? That depends on transport, packaging, what you'll sell them for, what a reseller takes, and how many get damaged. This page does that arithmetic.</p>
+          <ol className="week">
+            <li><strong>Fill in what it costs to get them here:</strong> how many, the price each, transport, and anything else you pay once.</li>
+            <li><strong>Fill in what it costs to sell one:</strong> your selling price, packaging, delivery, reseller commission, and any advertising.</li>
+            <li><strong>Read the answer at the top right.</strong> BUY means the numbers work. TEST FIRST means they are thin, so buy a small batch. DO NOT BUY means you would lose money.</li>
+          </ol>
+          <p className="small">It also tells you the lowest price you can sell at, how many you must sell to get your money back, and the most you could pay a supplier and still be fine. The numbers are only as good as your guesses — be honest with them, especially about damage and advertising.</p>
+        </div>
+      </details>
 
       <div className="grid-2 tight" style={{ alignItems: 'start' }}>
         <div className="stack">

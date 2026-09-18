@@ -199,7 +199,12 @@ export function OrderDetail() {
         </div>
       )}
 
-      {pay && <PayModal order={o} onClose={() => setPay(false)} onDone={() => { setPay(false); reload() }} />}
+      {pay && <PayModal order={o} onClose={() => setPay(false)} onDone={async () => {
+        setPay(false)
+        if (['out_for_delivery', 'failed_delivery'].includes(o.status)) { await move('delivered'); await move('completed') }
+        else if (o.status === 'delivered') await move('completed')
+        else reload()
+      }} />}
       {review && <ReviewRequest order={o} onClose={() => setReview(false)} />}
     </div>
   )
@@ -222,8 +227,12 @@ function NextStep({ o, next, advanced, onMove, onPay, onReview, reason, setReaso
   if (o.status === 'pending' || o.status === 'customer_unreachable' || o.status === 'fraud_review') action = { label: 'Confirm order', run: () => onMove('confirmed'), note: 'Call the customer first, then confirm' }
   else if (!paid && ['confirmed', 'payment_pending'].includes(o.status)) action = { label: 'Payment received', run: onPay, note: 'Records the payment and marks the order paid' }
   else if (['confirmed', 'payment_pending', 'paid', 'processing', 'ready_for_dispatch'].includes(o.status)) action = { label: 'Out for delivery', run: () => onMove('out_for_delivery'), note: paid ? 'On the way to the customer' : 'Not paid yet — collect on delivery' }
-  else if (o.status === 'out_for_delivery' || o.status === 'failed_delivery') action = { label: 'Delivered, done', run: async () => { await onMove('delivered'); await onMove('completed') }, note: 'Marks it delivered and finishes the order' }
-  else if (o.status === 'delivered') action = { label: 'Finish this order', run: () => onMove('completed'), note: 'Updates stock, commissions and vendor payouts' }
+  else if (o.status === 'out_for_delivery' || o.status === 'failed_delivery') action = paid
+    ? { label: 'Delivered, done', run: async () => { await onMove('delivered'); await onMove('completed') }, note: 'Marks it delivered and finishes the order' }
+    : { label: 'Delivered — record the payment', run: onPay, note: 'This order still shows unpaid. Record the cash or transfer, then it finishes.' }
+  else if (o.status === 'delivered') action = paid
+    ? { label: 'Finish this order', run: () => onMove('completed'), note: 'Updates stock, commissions and vendor payouts' }
+    : { label: 'Record the payment', run: onPay, note: 'Then the order finishes on its own.' }
 
   return (
     <div className="card next-step">
@@ -234,7 +243,13 @@ function NextStep({ o, next, advanced, onMove, onPay, onReview, reason, setReaso
       {closed ? <p className="muted small">This order was {title(o.status).toLowerCase()}. The money side has been reversed.</p>
         : o.status === 'completed' ? (
           <div className="stack-sm">
-            <p className="ok strong">This order is finished.</p>
+            {paid ? <p className="ok strong">This order is finished and paid.</p> : (
+              <>
+                <p className="warn strong">Finished, but no payment is recorded.</p>
+                <p className="small muted">If the customer paid, record it so your money and reseller commissions are right.</p>
+                <button className="btn copper" onClick={onPay}>Record the payment</button>
+              </>
+            )}
             <div className="btn-row">
               <button className="btn buy" onClick={onReview}>Ask for a review</button>
               <a className="btn" href={`/admin/orders/${o.id}/receipt`}>Print receipt</a>
@@ -280,9 +295,25 @@ function NextStep({ o, next, advanced, onMove, onPay, onReview, reason, setReaso
 function ReviewRequest({ order, onClose }) {
   const toast = useToast()
   const [link, setLink] = useState(null)
-  useEffect(() => {
-    supabase.rpc('review_link', { p_order: order.id }).then(({ data, error }) => (error ? toast(error.message, true) : setLink(data)))
-  }, [order.id])
+  const [failed, setFailed] = useState(null)
+  const make = async () => {
+    setFailed(null)
+    const { data, error } = await supabase.rpc('review_link', { p_order: order.id })
+    if (error) {
+      const stale = /jwt|expired|401/i.test(error.message || '')
+      if (stale) {
+        const { data: renewed } = await supabase.auth.refreshSession()
+        if (renewed?.session) {
+          const retry = await supabase.rpc('review_link', { p_order: order.id })
+          if (!retry.error) return setLink(retry.data)
+        }
+        return setFailed('Your sign-in expired. Sign out and back in, then try again.')
+      }
+      return setFailed(error.message)
+    }
+    setLink(data)
+  }
+  useEffect(() => { make() }, [order.id])
   const url = link ? `${window.location.origin}/rate/${link}` : ''
   const name = (order.customer?.full_name || '').split(' ')[0]
   const message = `Hi ${name}, thank you for your order from ZaMarket. If you have a moment, how did we do? ${url}`
@@ -291,7 +322,12 @@ function ReviewRequest({ order, onClose }) {
     <Modal title="Ask for a review" onClose={onClose}>
       <div className="stack">
         <p className="small muted">One tap for the customer. No order number to type, and they can ignore it if they prefer.</p>
-        {!link ? <Loading /> : (
+        {failed ? (
+          <div className="stack-sm">
+            <p className="small bad">{failed}</p>
+            <button className="btn" onClick={make}>Try again</button>
+          </div>
+        ) : !link ? <Loading /> : (
           <>
             <div className="share-box">{message}</div>
             <CopyLine text={url} />

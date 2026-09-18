@@ -7,6 +7,7 @@ import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Stat, Empty, useToast, Stars, Tabs, CopyLine, Field, Input, Select, Textarea, Segmented } from '../../components/ui'
 import { niceDate } from '../../lib/madeToOrder'
 import { ProductEditor } from '../admin/Products'
+import PayoutRequest from '../../components/PayoutRequest'
 
 const useVendor = () => useAuth().profile?.partner || null
 
@@ -57,8 +58,15 @@ export function VendorHome() {
 
 export function VendorProducts() {
   const v = useVendor()
+  const toast = useToast()
   const [edit, setEdit] = useState(null)
   const { data, loading, reload } = useData(() => v ? q(supabase.from('products').select('*').eq('vendor_id', v.id).order('created_at', { ascending: false })) : Promise.resolve([]), [v?.id])
+  const setAvailability = async (p) => {
+    const { error } = await supabase.rpc('vendor_set_availability', { p_product: p.id, p_available: p.status !== 'published' })
+    if (error) return toast(error.message, true)
+    toast(p.status === 'published' ? 'Marked sold out — customers cannot order it' : 'Back on sale')
+    reload()
+  }
   if (!v) return <Empty title="No vendor profile" />
   return (
     <div className="stack">
@@ -71,7 +79,11 @@ export function VendorProducts() {
           { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
           { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
           { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },
-          { key: 'page', label: '', render: (p) => ['draft', 'submitted', 'rejected'].includes(p.status) ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a> : null },
+          { key: 'page', label: '', render: (p) => ['draft', 'submitted', 'rejected'].includes(p.status)
+            ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a>
+            : ['published', 'out_of_stock'].includes(p.status)
+              ? <button className="btn sm" onClick={(e) => { e.stopPropagation(); setAvailability(p) }}>{p.status === 'published' ? 'Mark sold out' : 'Back in stock'}</button>
+              : null },
         ]} />
       )}
       <p className="tiny muted">Use "Design the page" to add packages, photos, schedule and everything customers see. Published products can only be changed by the marketplace team, so prices customers see stay consistent. Message us to update one.</p>
@@ -176,6 +188,7 @@ export function VendorPayouts() {
   if (loading) return <Loading />
   return (
     <div className="stack">
+      <PayoutRequest who="vendor" />
       <div className="page-head"><div><h1>Payouts</h1><p>Created when an order is completed. Pending → Eligible → Approved → Paid.</p></div></div>
       <Table rows={data} empty="No payouts yet" cols={[
         { key: 'order', label: 'Order', render: (s) => `#${s.order_number ?? '—'}` },
