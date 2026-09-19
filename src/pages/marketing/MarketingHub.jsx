@@ -7,21 +7,23 @@ import { money, num, date, title } from '../../lib/format'
 import { Loading, Modal, Field, Input, Select, Textarea, useToast, Empty, Badge, CopyLine, Segmented } from '../../components/ui'
 import BarChart from '../../components/BarChart'
 import { DateBar, useRange } from '../shared/Earnings'
+import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
 import Leads, { CHANNELS, LeadDrawer, StageChip, FollowUp } from './Leads'
 import StartHere from './StartHere'
 import Funnels from './Funnels'
 import Seo from './Seo'
+import Coverage from './Coverage'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['start', 'Start here'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, start: StartHere, funnels: Funnels, seo: Seo, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -31,6 +33,7 @@ export default function MarketingHub() {
           <p>{{
             '': 'What marketing brought in, and where it came from.',
             start: 'New to this? Start here: what to do, in order, and what every number means.',
+            coverage: 'Which products affiliates are ignoring, and how to fix it.',
             seo: 'Being found on Google for free, and what each page still needs.',
             funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
             today: 'Your checklist for today. Do the work, watch the numbers move.',
@@ -127,7 +130,7 @@ function Overview() {
               <Funnel steps={[['Leads', d.leads], ['Engaged', d.engaged], ['Won', d.won]]} />
             </div>
             <div className="card">
-              <h3 className="mb">Reseller recruitment</h3>
+              <h3 className="mb">Affiliate recruitment</h3>
               <Funnel steps={[['Applied', d.resellers.applied], ['Approved', d.resellers.approved], ['Made a first sale', d.resellers.first_sale], ['Active in 30 days', d.resellers.active]]} />
             </div>
           </div>
@@ -283,6 +286,7 @@ const FORMATS = [['post', 'Post'], ['reel', 'Reel'], ['video', 'Video'], ['story
 
 function Content() {
   const [edit, setEdit] = useState(null)
+  const [view, setView] = useState('ideas')
   const today = new Date().toISOString().slice(0, 10)
   const from = new Date(Date.now() - 90 * 864e5).toISOString().slice(0, 10)
   const { data, loading, reload } = useData(async () => {
@@ -300,8 +304,14 @@ function Content() {
     <div className="stack">
       <div className="between">
         <p className="small muted"><strong className="ink">{week}</strong> posted this week. Link each post to a campaign to see the visits, leads and sales it brings.</p>
-        <button className="btn primary" onClick={() => setEdit({ platform: 'instagram', format: 'post', posted_on: today })}>Log a post</button>
+        <div className="row">
+          <Segmented options={[['ideas', 'What to post'], ['log', 'What we posted']]} value={view} onChange={setView} />
+          <button className="btn primary" onClick={() => setEdit({ platform: 'instagram', format: 'post', posted_on: today })}>Log a post</button>
+        </div>
       </div>
+
+      {view === 'ideas' && <Ideas onUse={(idea) => setEdit({ platform: idea.platform.toLowerCase().includes('whatsapp') ? 'whatsapp' : idea.platform.toLowerCase(), format: idea.kind.toLowerCase().includes('video') ? 'video' : 'post', posted_on: today, title: idea.title, product_id: idea.product.id, notes: idea.caption })} />}
+      {view === 'log' && (<>
       {loading ? <Loading /> : (data || []).length === 0 ? <Empty title="No content logged yet">Log what you post, and link it to a campaign to measure it.</Empty> : (
         <div className="content-grid">
           {data.map((p) => (
@@ -318,7 +328,51 @@ function Content() {
           ))}
         </div>
       )}
+      </>)}
       {edit && <ContentEditor post={edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
+    </div>
+  )
+}
+
+// Thirty things to post, built from the products that are actually published.
+function Ideas({ onUse }) {
+  const toast = useToast()
+  const [shown, setShown] = useState(9)
+  const { data, loading } = useData(async () => ({
+    products: await q(supabase.from('public_products').select('id,name,slug,price,benefits,faqs,vendor_name,vendor_slug').order('created_at', { ascending: false }).limit(30)),
+    campaigns: await q(supabase.from('campaigns').select('id,name,code,status').eq('status', 'active').limit(1)),
+  }), [])
+  const ideas = useMemo(() => (data ? buildIdeas(data.products, data.campaigns?.[0], window.location.origin) : []), [data])
+  if (loading) return <Loading />
+  if (!ideas.length) return <Empty title="Publish a product first">The ideas are built from what you actually sell, so there is nothing to suggest yet.</Empty>
+  const copy = async (text) => { try { await navigator.clipboard.writeText(text); toast('Caption copied') } catch { toast('Could not copy', true) } }
+
+  return (
+    <div className="stack">
+      <section className="card stack-sm">
+        <h3>A week of posting</h3>
+        <div className="week-plan">
+          {WEEK_PLAN.map(([day, what]) => <div key={day}><strong>{day}</strong><span>{what}</span></div>)}
+        </div>
+        <p className="tiny muted">One post a day beats seven in one morning. Post for thirty days before judging whether it works.</p>
+        {!data.campaigns?.length && <p className="tiny warn">No active campaign yet, so the links below go straight to the product. Create a campaign to measure what each post brings.</p>}
+      </section>
+
+      <div className="idea-list">
+        {ideas.slice(0, shown).map((idea) => (
+          <article key={idea.id} className="post-idea">
+            <div className="between">
+              <span className="pi-head"><strong>{idea.title}</strong><span className="tiny muted">{idea.platform} · {idea.kind}</span></span>
+              <button className="btn sm" onClick={() => onUse(idea)}>Log it when posted</button>
+            </div>
+            <p className="pi-hook">{idea.hook}</p>
+            <ol className="pi-shots">{idea.shots.map((sh, i) => <li key={i}>{sh}</li>)}</ol>
+            <div className="share-box">{idea.caption}</div>
+            <button className="btn sm ghost" onClick={() => copy(idea.caption)}>Copy caption</button>
+          </article>
+        ))}
+      </div>
+      {shown < ideas.length && <button className="btn" onClick={() => setShown(shown + 9)}>Show more ideas ({ideas.length - shown} left)</button>}
     </div>
   )
 }

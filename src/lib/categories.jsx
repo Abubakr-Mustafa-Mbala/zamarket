@@ -22,7 +22,7 @@ export const ICON_KEYS = ['phone', 'home', 'fashion', 'beauty', 'food', 'service
 const BY_KEY = Object.fromEntries(BUILT_IN.map((d, i) => [ICON_KEYS[i], d.icon]))
 
 // The shop's departments are editable in Settings. These are only the fallback.
-export const DEFAULT_DEPARTMENTS = BUILT_IN.map((d, i) => ({ name: d.name, icon: ICON_KEYS[i] }))
+export const DEFAULT_DEPARTMENTS = BUILT_IN.map((d, i) => ({ name: d.name, icon: ICON_KEYS[i] })).filter((d) => d.name !== 'Other')
 
 export function departmentsFrom(settings) {
   const list = settings?.departments

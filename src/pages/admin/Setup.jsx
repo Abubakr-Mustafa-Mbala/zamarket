@@ -193,6 +193,14 @@ const GROUPS = [
       { key: 'business_name', label: 'Business name', type: 'text', help: 'Printed at the top of every receipt.' },
       { key: 'business_phone', label: 'Business phone', type: 'text', help: 'So customers can reach you from the receipt.' },
       { key: 'receipt_footer', label: 'Thank-you line on receipts', type: 'text', help: 'e.g. Thank you for shopping with us!' },
+      { key: 'company_phone', label: 'Customer service number', type: 'text', help: 'Shown publicly so people can check you are real.' },
+      { key: 'company_whatsapp', label: 'WhatsApp number', type: 'text', help: 'Shown publicly. The number most people will actually use.' },
+      { key: 'company_email', label: 'Email', type: 'text' },
+      { key: 'company_address', label: 'Where you can be found', type: 'text', help: 'An area is enough at first, e.g. "Kabwata, Lusaka". A real place builds trust.' },
+      { key: 'company_registration', label: 'PACRA registration', type: 'text', help: 'Put "Registration in progress" until it comes through. Never claim what is not true.' },
+      { key: 'social_facebook', label: 'Facebook page', type: 'text' },
+      { key: 'social_instagram', label: 'Instagram', type: 'text' },
+      { key: 'social_tiktok', label: 'TikTok', type: 'text' },
     ],
   },
   {
@@ -216,13 +224,17 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Vendors and resellers',
-    note: 'The vendor pays the marketplace fee, and the reseller\'s commission comes out of that fee.',
+    title: 'Vendors and affiliates',
+    note: 'The vendor pays the marketplace fee, and the affiliate\'s commission comes out of that fee.',
     fields: [
       { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
+      { key: 'high_value_threshold', label: 'Verification needed above (K)', type: 'number', help: 'A brand-new vendor cannot publish an item above this price until someone from your team has met them and seen an ID or PACRA paper.' },
       { key: 'own_audience_fee_pct', label: 'Lower fee when the vendor brought the customer (%)', type: 'number', help: 'When someone buys through the vendor\'s own store link, you take this smaller fee instead.' },
       { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead. Below about 10% on cheap items, resellers earn too little to bother.' },
-      { key: 'reseller_credit_days', label: 'Reseller keeps a customer for (days)', type: 'number', help: "If a customer they brought orders again within this time, the reseller still earns. 0 means they only earn on the first order." },
+      { key: 'affiliate_click_days', label: 'A click counts for (days)', type: 'number', help: 'Someone opens an affiliate link but buys later. Within this many days, the affiliate still gets the sale.' },
+      { key: 'reseller_credit_days', label: 'Full commission on repeat orders for (days)', type: 'number', help: 'Their customer orders again with no link at all. Within this window the affiliate earns the full commission again.' },
+      { key: 'affiliate_repeat_bonus', label: 'Thank-you after that window (K)', type: 'number', help: 'After the window above, the affiliate gets this flat amount each time that customer orders again.' },
+      { key: 'vendor_referral_pct', label: 'Vendor referral share (%)', type: 'number', help: 'A vendor shares their ZaMarket link; if that shopper buys from any other seller, the vendor earns this share.' },
       { key: 'payout_minimum', label: 'Smallest payout (K)', type: 'number', help: 'Resellers and vendors can ask to be paid once they have at least this much.' },
       { key: 'commission_grace_hours', label: 'Hours to wait before paying a commission', type: 'number', help: 'Time for the customer to report a problem. 24 is normal.' },
       { key: 'referral_reward', label: 'Reward when a customer brings a friend (K)', type: 'number', help: 'Paid after the friend\'s first order is completed.' },
@@ -348,7 +360,7 @@ export function Settings() {
       <section className="card stack-sm">
         <h3>The rules people agree to</h3>
         <p className="small muted">Shown on the application forms. Write them in your own words — keep them fair and true.</p>
-        <Field label="Reseller rules"><Textarea value={f.reseller_terms ?? ''} onChange={set('reseller_terms')} rows={5} /></Field>
+        <Field label="Affiliate rules"><Textarea value={f.reseller_terms ?? ''} onChange={set('reseller_terms')} rows={5} /></Field>
         <Field label="Vendor rules"><Textarea value={f.vendor_terms ?? ''} onChange={set('vendor_terms')} rows={5} /></Field>
         <p className="tiny muted">Have someone check these against Zambian law before you rely on them in a dispute.</p>
       </section>

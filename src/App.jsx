@@ -29,12 +29,14 @@ const Offers = lazy(() => import('./pages/admin/Offers'))
 const Customers = named(adminPeople, 'Customers')
 const Deliveries = named(adminPeople, 'Deliveries')
 const Vendors = named(adminPartners, 'Vendors')
-const Resellers = named(adminPartners, 'Resellers')
+const Affiliates = named(adminPartners, 'Resellers')
 const MarketingHub = lazy(() => import('./pages/marketing/MarketingHub'))
 const growthPages = () => import('./pages/public/GrowthPages')
 const MagnetPage = named(growthPages, 'MagnetPage')
 const InvitePage = named(growthPages, 'InvitePage')
 const RatePage = named(growthPages, 'RatePage')
+const About = lazy(() => import('./pages/public/About'))
+const VendorRefCapture = named(growthPages, 'VendorRefCapture')
 const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
@@ -60,6 +62,7 @@ const VendorHome = named(vendorPages, 'VendorHome')
 const VendorProducts = named(vendorPages, 'VendorProducts')
 const VendorOrders = named(vendorPages, 'VendorOrders')
 const VendorPayouts = named(vendorPages, 'VendorPayouts')
+const VendorStore = named(vendorPages, 'VendorStore')
 const VendorMarketing = named(vendorPages, 'VendorMarketing')
 
 const STAFF = ['founder', 'ops', 'finance', 'delivery', 'marketing']
@@ -122,6 +125,10 @@ export default function App() {
         <Route path="/free/:slug" element={<MagnetPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/rate/:link" element={<RatePage />} />
+        <Route path="/about" element={<About />} />
+      </Route>
+      <Route path="/v/:code" element={<VendorRefCapture />} />
+      <Route element={<PublicShell />}>
       </Route>
       <Route path="/r/:code" element={<ReferralCapture />} />
       <Route path="/r/:code/:product" element={<ReferralCapture />} />
@@ -144,7 +151,7 @@ export default function App() {
         <Route path="suppliers" element={<Suppliers />} />
         <Route path="simulator" element={<Simulator />} />
         <Route path="offers" element={<Offers />} />
-        <Route path="resellers" element={<Resellers />} />
+        <Route path="resellers" element={<Affiliates />} />
         <Route path="vendors" element={<Vendors />} />
         <Route path="marketing" element={<MarketingHub />} />
         <Route path="marketing/:section" element={<MarketingHub />} />
@@ -171,6 +178,7 @@ export default function App() {
       <Route path="/vendor" element={<Guard roles={['vendor']}><Shell kind="vendor" /></Guard>}>
         <Route index element={<VendorHome />} />
         <Route path="products" element={<VendorProducts />} />
+        <Route path="shopfront" element={<VendorStore />} />
         <Route path="orders" element={<VendorOrders />} />
         <Route path="payouts" element={<VendorPayouts />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />

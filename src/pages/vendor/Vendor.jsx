@@ -7,7 +7,10 @@ import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Stat, Empty, useToast, Stars, Tabs, CopyLine, Field, Input, Select, Textarea, Segmented } from '../../components/ui'
 import { niceDate } from '../../lib/madeToOrder'
 import { ProductEditor } from '../admin/Products'
+import { PHOTO_TIPS } from '../../lib/photos'
+import PhotoUpload from '../../components/PhotoUpload'
 import PayoutRequest from '../../components/PayoutRequest'
+import ShareThis from '../../components/ShareThis'
 
 const useVendor = () => useAuth().profile?.partner || null
 
@@ -43,6 +46,15 @@ export function VendorHome() {
           <p className="small muted">Share it on Instagram, WhatsApp or Facebook. Sales from people who arrive through your link cost you a {data.store.own_fee_pct}% fee instead of {data.store.normal_fee_pct}%. So far: {data.store.own_orders} order{data.store.own_orders === 1 ? '' : 's'}, {money(data.store.own_sales)}.</p>
         </div>
       )}
+      <section className="card stack-sm">
+        <h3>Your link to ZaMarket</h3>
+        <p className="small muted">Share this with anyone. If they buy from your store, you pay our smaller fee of {settings.own_audience_fee_pct}%. If they buy from another seller here, you still earn {settings.vendor_referral_pct}% of what they spend.</p>
+        <ShareThis store={v} products={[]} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
+        {v.ref_code
+          ? <CopyLine text={`${window.location.origin}/v/${v.ref_code}`} />
+          : <p className="small muted">Your link appears once your account is fully set up.</p>}
+        {Number(sum.referral_earned) > 0 && <p className="small">Earned from people you sent: <strong className="copper">{money(sum.referral_earned)}</strong></p>}
+      </section>
       <Link to="/vendor/earnings" className="card between" style={{ color: 'inherit' }}><span><span className="strong">See your earnings chart</span><br /><span className="small muted">Day by day, pick any dates, all your records</span></span><span aria-hidden>›</span></Link>
       <div className="grid-2 tight">
         <div className="card"><h3 className="mb">Products</h3>{['published', 'submitted', 'draft', 'rejected'].map((st) => <div key={st} className="between small"><Badge status={st} /><span>{data.products.filter((p) => p.status === st).length}</span></div>)}</div>
@@ -274,6 +286,91 @@ export function VendorMarketing() {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+
+// A vendor sets up their shopfront: logo, cover, tagline, what makes them good, hours.
+export function VendorStore() {
+  const v = useVendor()
+  const toast = useToast()
+  const { refresh } = useAuth()
+  const [busy, setBusy] = useState('')
+  const [f, setF] = useState(() => ({
+    tagline: v?.tagline || '', about: v?.about || v?.description || '',
+    logo_url: v?.logo_url || '', cover_url: v?.cover_url || '',
+    highlights_text: (v?.highlights || []).join('\n'),
+    hours_text: (v?.opening_hours || []).map((h) => `${h.label}: ${h.hours}`).join('\n'),
+  }))
+  if (!v) return <Empty title="No vendor profile" />
+  const set = (k) => (val) => setF((x) => ({ ...x, [k]: val }))
+
+  const pickPhoto = (field) => async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setBusy(field)
+    try { set(field)(await uploadPhoto(file)) } catch (err) { toast(err.message, true) } finally { setBusy(''); e.target.value = '' }
+  }
+  const save = async () => {
+    const row = {
+      tagline: f.tagline.trim() || null,
+      about: f.about.trim() || null,
+      logo_url: f.logo_url || null,
+      cover_url: f.cover_url || null,
+      highlights: f.highlights_text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 6),
+      opening_hours: f.hours_text.split('\n').filter((l) => l.includes(':')).map((l) => {
+        const [label, ...rest] = l.split(':')
+        return { label: label.trim(), hours: rest.join(':').trim() }
+      }),
+    }
+    const { error } = await supabase.from('vendors').update(row).eq('id', v.id)
+    if (error) return toast(error.message, true)
+    await refresh()
+    toast('Your shop is updated')
+  }
+
+  return (
+    <div className="stack">
+      <div className="page-head">
+        <div><h1>My shopfront</h1><p>This is what a customer sees at {window.location.host}/{v.slug}. Fill it in properly and it looks like your own shop.</p></div>
+        <div className="btn-row">
+          <a className="btn" href={`/${v.slug}`} target="_blank" rel="noreferrer">View my shop</a>
+          <button className="btn primary" onClick={save}>Save</button>
+        </div>
+      </div>
+
+      <section className="card form-grid">
+        <div className="span photo-help">
+          <strong>Photos are cleaned up for you</strong> — squared, centred and brightened. Use a clear logo and a wide photo of your work or your place.
+          <ul>{PHOTO_TIPS.slice(0, 3).map((t) => <li key={t}>{t}</li>)}</ul>
+        </div>
+        <Field label="Logo or profile picture">
+          <div className="photo-pick">
+            {f.logo_url ? <img src={f.logo_url} alt="" /> : <span className="photo-empty">No logo</span>}
+            <PhotoUpload label="Choose" onDone={set('logo_url')} />
+          </div>
+        </Field>
+        <Field label="Cover photo" hint="Wide photo across the top of your shop">
+          <div className="photo-pick">
+            {f.cover_url ? <img src={f.cover_url} alt="" /> : <span className="photo-empty">No cover</span>}
+            <PhotoUpload label="Choose" onDone={set('cover_url')} />
+          </div>
+        </Field>
+        <Field label="One line about your shop" hint="e.g. Home-baked cakes for birthdays and weddings" span>
+          <Input value={f.tagline} onChange={set('tagline')} maxLength={90} />
+        </Field>
+        <Field label="What makes you good" hint="One per line, up to six. Shown as tags." span>
+          <Textarea value={f.highlights_text} onChange={set('highlights_text')} rows={3} placeholder={'Baked fresh to order\nDelivery in Lusaka\nCustom designs welcome'} />
+        </Field>
+        <Field label="When you work" hint="One per line, e.g. Mon–Fri: 08:00 – 17:00" span>
+          <Textarea value={f.hours_text} onChange={set('hours_text')} rows={3} placeholder={'Mon–Fri: 08:00 – 17:00\nSaturday: 09:00 – 13:00'} />
+        </Field>
+        <Field label="About your shop" hint="A short paragraph. Who you are, how long you have done this, what you care about." span>
+          <Textarea value={f.about} onChange={set('about')} rows={4} />
+        </Field>
+        <div className="span"><button className="btn primary" onClick={save}>Save my shopfront</button></div>
+      </section>
     </div>
   )
 }

@@ -61,13 +61,15 @@ export function CartProvider({ children }) {
   const setRef = (code) => setTouch({ type: 'reseller', code })
   const setStoreRef = (slug) => { if (!(touch?.type === 'campaign' && touch.store === slug)) setTouch({ type: 'store', code: slug }) }
   const setCampaign = (code, store) => setTouch({ type: 'campaign', code, store: store || null })
+  const setVendorRef = (code) => setTouch({ type: 'vendor_ref', code })
   const setInvite = (code) => setTouch({ type: 'invite', code })
   const attribution = () => ({
     referral_code: touch?.type === 'reseller' ? touch.code : null,
     store_ref: touch?.type === 'store' ? touch.code : null,
     campaign_code: touch?.type === 'campaign' ? touch.code : null,
     invite_code: touch?.type === 'invite' ? touch.code : null,
-    source: touch?.type === 'reseller' ? `reseller:${touch.code}` : touch?.type === 'store' ? `vendor:${touch.code}` : touch?.type === 'campaign' ? `campaign:${touch.code}` : touch?.type === 'invite' ? `referral:${touch.code}` : 'organic',
+    vendor_ref: touch?.type === 'vendor_ref' ? touch.code : null,
+    source: touch?.type === 'reseller' ? `reseller:${touch.code}` : touch?.type === 'store' ? `vendor:${touch.code}` : touch?.type === 'campaign' ? `campaign:${touch.code}` : touch?.type === 'invite' ? `referral:${touch.code}` : touch?.type === 'vendor_ref' ? `vendor_ref:${touch.code}` : 'organic',
   })
   const count = items.reduce((s, x) => s + x.qty * (x.units || 1), 0)
   const subtotal = items.reduce((s, x) => s + x.qty * x.price, 0)
@@ -81,7 +83,7 @@ export function CartProvider({ children }) {
   const madeToOrder = items.filter((x) => x.fulfilment === 'made_to_order' || x.fulfilment === 'service')
   const needsAddress = items.some((x) => x.fulfilment !== 'service' || x.service_location === 'at_customer')
   const needsDelivery = items.some((x) => x.fulfilment !== 'service')
-  return <Ctx.Provider value={{ items, add, setQty, clear, count, subtotal, savings, payload, madeToOrder, needsAddress, needsDelivery, setChoice, ref, setRef, touch, setStoreRef, setCampaign, setInvite, attribution }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ items, add, setQty, clear, count, subtotal, savings, payload, madeToOrder, needsAddress, needsDelivery, setChoice, ref, setRef, touch, setStoreRef, setCampaign, setInvite, setVendorRef, attribution }}>{children}</Ctx.Provider>
 }
 
 export const useCart = () => useContext(Ctx)

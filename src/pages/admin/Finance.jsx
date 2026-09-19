@@ -105,7 +105,7 @@ function PayoutRequests() {
   }
   return (
     <div className="stack">
-      <p className="small muted">Resellers and vendors ask to be paid here. Send the money the way they asked, then tap Mark paid — that also settles the commissions or vendor payouts behind it, so nothing is paid twice.</p>
+      <p className="small muted">Affiliates and vendors ask to be paid here. Send the money the way they asked, then tap Mark paid — that also settles the commissions or vendor payouts behind it, so nothing is paid twice.</p>
       <section className="card">
         <div className="card-title"><h3>Waiting</h3><span className="strong money copper">{money(waiting.reduce((t, p) => t + n(p.amount), 0))}</span></div>
         {waiting.length === 0 ? <p className="small muted">No requests right now.</p> : <div className="mini-table">{waiting.map(row)}</div>}

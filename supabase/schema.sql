@@ -80,6 +80,20 @@ create table if not exists settings (
 insert into settings (key, value, description) values
   ('currency', '"K"', 'Currency symbol'),
   ('marketplace_fee_pct', '10', 'Fee charged to vendors on each sale (%)'),
+  ('affiliate_click_days', '30', 'How long after clicking an affiliate link a purchase still counts for them'),
+  ('affiliate_repeat_bonus', '5', 'Flat thank-you paid to the affiliate when their customer orders again after the full-commission window (K)'),
+  ('high_value_threshold', '2000', 'Above this price, a vendor must be verified before the item can be published (K)'),
+  ('company_phone', '""', 'Customer service number shown publicly'),
+  ('company_whatsapp', '""', 'WhatsApp number shown publicly'),
+  ('company_email', '""', 'Email shown publicly'),
+  ('company_address', '""', 'Where you can be found, shown publicly'),
+  ('company_registration', '""', 'PACRA registration number or status, shown publicly'),
+  ('social_facebook', '""', 'Facebook page link'),
+  ('social_instagram', '""', 'Instagram link'),
+  ('social_tiktok', '""', 'TikTok link'),
+  ('first_sale_bonus', '25', 'Extra paid to an affiliate the first time a product is ever sold through an affiliate (K)'),
+  ('coverage_days', '30', 'A product counts as neglected if no affiliate sold it in this many days'),
+  ('vendor_referral_pct', '2', 'Paid to a vendor when someone they sent to ZaMarket buys from anyone (%)'),
   ('reseller_credit_days', '90', 'A reseller keeps credit on repeat orders from a customer they brought, for this many days'),
   ('payout_minimum', '50', 'Least amount a reseller or vendor can ask to be paid out (K)'),
   ('default_commission_pct', '5', 'Default reseller commission when a product has no override (%)'),
@@ -95,7 +109,7 @@ insert into settings (key, value, description) values
   ('default_packaging_cost', '5', 'Default packaging cost per unit'),
   ('capital_allocation', '{"inventory":200,"packaging":50,"delivery":50,"advertising":100,"reserve":100}', 'Starting capital plan (USD)'),
   ('simple_mode_default', 'true', 'New staff start in Simple mode'),
-  ('departments', '[{"name":"Phones & electronics","icon":"phone"},{"name":"Home & kitchen","icon":"home"},{"name":"Fashion","icon":"fashion"},{"name":"Food & cakes","icon":"food"},{"name":"Services","icon":"services"},{"name":"Other","icon":"other"}]', 'Shop departments customers browse'),
+  ('departments', '[{"name":"Phones & electronics","icon":"phone"},{"name":"Home & kitchen","icon":"home"},{"name":"Fashion","icon":"fashion"},{"name":"Food & cakes","icon":"food"},{"name":"Services","icon":"services"}]', 'Shop departments customers browse'),
   ('reseller_terms', '"Commission is earned on completed orders that are not cancelled, refunded or returned, after a 24-hour check. Self-purchases and fake orders are not paid. Earnings depend on what you sell — nothing is guaranteed. Share honestly: never promise what a product cannot do. ZaMarket may suspend accounts that break these rules."', 'Rules resellers agree to'),
   ('vendor_terms', '"A marketplace fee is taken from each sale. Customers pay ZaMarket for ZaMarket orders, and you are paid your share once the order is complete. You will see a customer''s phone and address after we confirm their order; do not ask them to pay you directly or move ZaMarket orders off the platform. Keep products and service to a good standard. We can suspend accounts that break these rules."', 'Rules vendors agree to'),
   ('founder_emails', '[]', 'Only these email addresses can hold the founder role'),
@@ -419,6 +433,27 @@ create table if not exists orders (
 );
 
 alter table customers alter column phone drop not null;
+alter table customers add column if not exists owner_reseller_id uuid references resellers(id);
+alter table customers add column if not exists owned_since timestamptz;
+alter table orders add column if not exists referrer_vendor_id uuid references vendors(id);
+alter table vendors add column if not exists ref_code text unique;
+-- Verification rises with what a vendor is trusted to sell. We record that a check
+-- happened and who did it — never the ID number itself.
+alter table vendors add column if not exists trust_level text not null default 'new' check (trust_level in ('new', 'known', 'verified'));
+alter table vendors add column if not exists id_seen boolean not null default false;
+alter table vendors add column if not exists id_seen_note text;
+alter table vendors add column if not exists id_seen_by uuid references profiles(id);
+alter table vendors add column if not exists id_seen_at timestamptz;
+alter table vendors add column if not exists business_reg_no text;
+alter table vendors add column if not exists trust_note text;
+alter table products add column if not exists boost_pct numeric;
+alter table products add column if not exists boost_until timestamptz;
+alter table vendors add column if not exists logo_url text;
+alter table vendors add column if not exists cover_url text;
+alter table vendors add column if not exists tagline text;
+alter table vendors add column if not exists about text;
+alter table vendors add column if not exists opening_hours jsonb not null default '[]';
+alter table vendors add column if not exists highlights text[] default '{}';
 alter table orders add column if not exists review_code text;
 
 create table if not exists order_items (
@@ -794,6 +829,23 @@ create table if not exists payouts (
   handled_by uuid references profiles(id)
 );
 
+create table if not exists bonus_credits (
+  id uuid primary key default gen_random_uuid(),
+  payee_type text not null check (payee_type in ('reseller', 'vendor')),
+  reseller_id uuid references resellers(id),
+  vendor_id uuid references vendors(id),
+  order_id uuid references orders(id),
+  kind text not null check (kind in ('repeat_customer', 'vendor_referral', 'first_sale')),
+  amount numeric not null,
+  status text not null default 'pending' check (status in ('pending', 'eligible', 'paid', 'void')),
+  note text,
+  created_at timestamptz not null default now(),
+  paid_at timestamptz
+);
+
+alter table bonus_credits drop constraint if exists bonus_credits_kind_check;
+alter table bonus_credits add constraint bonus_credits_kind_check check (kind in ('repeat_customer', 'vendor_referral', 'first_sale'));
+
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
@@ -899,8 +951,11 @@ $$;
 -- Commission rule: product override → global default
 create or replace function commission_for(p_product products, p_unit_price numeric, p_qty int) returns numeric
 language plpgsql stable security definer set search_path = public as $$
+declare boosted boolean := p_product.boost_pct is not null and coalesce(p_product.boost_until, now()) > now();
 begin
-  if p_product.commission_type = 'flat' then
+  if boosted then
+    return round(p_unit_price * p_qty * p_product.boost_pct / 100, 2);
+  elsif p_product.commission_type = 'flat' then
     return coalesce(p_product.commission_value, 0) * p_qty;
   elsif p_product.commission_type = 'pct' then
     return round(p_unit_price * p_qty * coalesce(p_product.commission_value, 0) / 100, 2);
@@ -980,7 +1035,7 @@ create trigger trg_no_delete_settlements before delete on settlements for each r
 create or replace function reserved_slug(p text) returns boolean
 language sql immutable as $$
   select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
-    'search','sellers','store','stores','p','r','go','free','invite','rate','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+    'search','sellers','store','stores','p','r','go','free','invite','rate','about','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
 $$;
 
 create or replace function make_slug(p text) returns text
@@ -1029,6 +1084,22 @@ update products set slug = null where slug is null or slug !~ '^[a-z0-9]+(-[a-z0
 update vendors set slug = null where slug is null;
 
 -- ---------- Guards: fields only staff (or the system) may change ----------
+-- Anything expensive needs a verified seller behind it.
+create or replace function guard_high_value() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v vendors%rowtype; limit_price numeric := setting_num('high_value_threshold');
+begin
+  if new.status = 'published' and new.vendor_id is not null and limit_price > 0 and new.price > limit_price then
+    select * into v from vendors where id = new.vendor_id;
+    if v.trust_level = 'new' then
+      raise exception 'Items above K% need a verified seller. Complete verification with the ZaMarket team first.', limit_price;
+    end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists trg_high_value on products;
+create trigger trg_high_value before insert or update on products for each row execute function guard_high_value();
+
 create or replace function guard_partner_fields() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
@@ -1350,6 +1421,7 @@ declare
   off offers%rowtype;
   pkg product_packages%rowtype;
   v_needed date := nullif(payload->>'needed_by', '')::date;
+  v_referrer uuid;
   v_today date := lusaka_date(now());
   booked int;
   v_choices jsonb;
@@ -1413,21 +1485,29 @@ begin
     end if;
   end if;
 
-  -- a customer a reseller brought stays theirs for a while, even if they come back on their own
-  if rs.id is null and not v_manual then
+  -- the affiliate who first brought this customer keeps them on the books
+  if rs.id is not null and cust.owner_reseller_id is null then
+    update customers set owner_reseller_id = rs.id, owned_since = now() where id = cust.id;
+    cust.owner_reseller_id := rs.id;
+  end if;
+
+  -- a customer an affiliate brought stays theirs for the full-commission window
+  if rs.id is null and not v_manual and cust.owner_reseller_id is not null then
     declare keep_days int := greatest(0, setting_num('reseller_credit_days')::int);
     begin
-      if keep_days > 0 then
-        select r2.* into rs from orders o2 join resellers r2 on r2.id = o2.reseller_id
-         where o2.customer_id = cust.id and o2.status not in ('cancelled', 'fraud_review')
-           and o2.created_at > now() - (keep_days || ' days')::interval and r2.status = 'approved'
-         order by o2.created_at desc limit 1;
-        if found then
-          v_seller := 'reseller';
-          if v_source = 'organic' then v_source := 'reseller:' || rs.code || ':repeat'; end if;
-        end if;
+      select r2.* into rs from resellers r2
+       where r2.id = cust.owner_reseller_id and r2.status = 'approved'
+         and coalesce(cust.owned_since, now()) > now() - (keep_days || ' days')::interval;
+      if found then
+        v_seller := 'reseller';
+        if v_source = 'organic' then v_source := 'reseller:' || rs.code || ':repeat'; end if;
       end if;
     end;
+  end if;
+
+  -- a vendor who sent this shopper to ZaMarket
+  if coalesce(payload->>'vendor_ref', '') <> '' then
+    select v2.id into v_referrer from vendors v2 where v2.ref_code = lower(payload->>'vendor_ref') and v2.status = 'approved';
   end if;
 
   -- delivery zone
@@ -1437,9 +1517,9 @@ begin
   if local_zone then fee := setting_num('local_delivery_fee'); end if;
   if setting_text('delivery_included') = 'true' then fee := 0; end if;
 
-  insert into orders (customer_id, source, channel, seller_type, reseller_id, referral_code, province_id, district_id, area, address, instructions,
+  insert into orders (customer_id, referrer_vendor_id, source, channel, seller_type, reseller_id, referral_code, province_id, district_id, area, address, instructions,
                       is_local, delivery_fee, delivery_fee_status, is_manual, notes, risk_flags, created_by)
-  values (cust.id, v_source, v_channel, v_seller, rs.id, nullif(payload->>'referral_code',''), (c->>'province_id')::int, (c->>'district_id')::int,
+  values (cust.id, v_referrer, v_source, v_channel, v_seller, rs.id, nullif(payload->>'referral_code',''), (c->>'province_id')::int, (c->>'district_id')::int,
           c->>'area', c->>'address', c->>'instructions', local_zone, fee, case when local_zone then 'confirmed' else 'pending' end,
           v_manual, payload->>'notes', flags, auth.uid())
   returning * into o;
@@ -1690,6 +1770,50 @@ begin
       end if;
     end loop;
 
+    -- their customer came back after the full-commission window: a flat thank-you instead
+    if o.reseller_id is null then
+      declare owner_id uuid; bonus numeric := setting_num('affiliate_repeat_bonus');
+      begin
+        select c2.owner_reseller_id into owner_id from customers c2 where c2.id = o.customer_id;
+        if owner_id is not null and bonus > 0 and not exists (select 1 from bonus_credits b where b.order_id = p_order and b.kind = 'repeat_customer') then
+          insert into bonus_credits (payee_type, reseller_id, order_id, kind, amount, status, note)
+          values ('reseller', owner_id, p_order, 'repeat_customer', bonus, 'eligible', 'Their customer ordered again');
+        end if;
+      end;
+    end if;
+
+    -- a vendor sent this shopper to ZaMarket: they earn on what the shopper bought from others
+    if o.referrer_vendor_id is not null then
+      declare pct numeric := setting_num('vendor_referral_pct'); base numeric;
+      begin
+        select coalesce(sum(i.line_total), 0) into base from order_items i
+         where i.order_id = p_order and coalesce(i.vendor_id, '00000000-0000-0000-0000-000000000000') <> o.referrer_vendor_id;
+        if pct > 0 and base > 0 and not exists (select 1 from bonus_credits b where b.order_id = p_order and b.kind = 'vendor_referral') then
+          insert into bonus_credits (payee_type, vendor_id, order_id, kind, amount, status, note)
+          values ('vendor', o.referrer_vendor_id, p_order, 'vendor_referral', round(base * pct / 100, 2), 'eligible', 'Someone they sent to ZaMarket bought');
+        end if;
+      end;
+    end if;
+
+    -- the first time anyone sells this product through an affiliate
+    if o.reseller_id is not null and setting_num('first_sale_bonus') > 0 then
+      declare fresh uuid;
+      begin
+        select oi.product_id into fresh from order_items oi
+         where oi.order_id = p_order
+           and not exists (
+             select 1 from order_items x join orders y on y.id = x.order_id
+              where x.product_id = oi.product_id and y.reseller_id is not null
+                and y.status = 'completed' and y.id <> p_order)
+         limit 1;
+        if fresh is not null and not exists (select 1 from bonus_credits b where b.order_id = p_order and b.kind = 'first_sale') then
+          insert into bonus_credits (payee_type, reseller_id, order_id, kind, amount, status, note)
+          values ('reseller', o.reseller_id, p_order, 'first_sale', setting_num('first_sale_bonus'), 'eligible',
+                  'First affiliate sale of ' || (select name from products where id = fresh));
+        end if;
+      end;
+    end if;
+
     if o.reseller_id is not null then
       select coalesce(sum(commission_for(p, oi.unit_price, oi.quantity)), 0) into comm
       from order_items oi join products p on p.id = oi.product_id where oi.order_id = p_order;
@@ -1713,6 +1837,7 @@ begin
       end if;
     end loop;
     update referrals set status = 'void' where order_id = p_order and status <> 'paid';
+    update bonus_credits set status = 'void' where order_id = p_order and status <> 'paid';
     update offers ofr set units_used = greatest(0, ofr.units_used - x.q)
     from (select offer_id, sum(quantity) q from order_items where order_id = p_order and offer_id is not null group by offer_id) x
     where ofr.id = x.offer_id;
@@ -1772,6 +1897,9 @@ begin
   if not is_founder() then raise exception 'Only founders review applications'; end if;
   if p_table = 'vendors' then
     update vendors set status = p_status, reviewed_by = auth.uid(), reviewed_at = now() where id = p_id returning user_id into uid;
+    if p_status = 'approved' then
+      update vendors set ref_code = coalesce(ref_code, slug, clean_code(split_part(business_name, ' ', 1), business_name, 'vendors')) where id = p_id;
+    end if;
     if p_status = 'approved' and uid is not null then update profiles set role = 'vendor' where id = uid and role = 'customer'; end if;
   elsif p_table = 'resellers' then
     update resellers set status = p_status, reviewed_by = auth.uid(), reviewed_at = now() where id = p_id returning user_id into uid;
@@ -1859,7 +1987,7 @@ end $$;
 -- Public product view (never exposes cost)
 drop view if exists public_products cascade;
 create or replace view public_products as
-select p.id, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
+select p.id, p.boost_pct, p.boost_until, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
        p.status, p.stock_available, p.owner_type, v.business_name as vendor_name,
        (select round(avg(product_rating),1) from reviews r where r.product_id = p.id and r.approved) as rating,
        (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
@@ -1989,10 +2117,10 @@ end $$;
 drop view if exists public_vendors cascade;
 create or replace view public_vendors as
 select v.id, v.business_name, v.category, v.description, split_part(coalesce(v.location, ''), ',', 1) as town,
+       v.slug, v.logo_url, v.cover_url, v.tagline, v.about, v.opening_hours, v.highlights, v.trust_level,
        (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as rating,
        (select count(*) from reviews r where r.vendor_id = v.id and r.approved) as review_count,
        (select count(*) from products p where p.vendor_id = v.id and p.status = 'published') as product_count
-, v.slug
 from vendors v where v.status = 'approved';
 
 create or replace function vendor_summary() returns jsonb
@@ -2003,6 +2131,7 @@ language sql stable security definer set search_path = public as $$
     'returns', (select count(distinct o.id) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and o.status in ('refunded','returned')),
     'to_make', (select count(*) from order_items i join orders o on o.id = i.order_id where i.vendor_id = my_vendor_id() and i.vendor_status in ('new','preparing') and o.status not in ('cancelled','refunded','returned','fraud_review','completed','delivered')),
     'rating', (select round(avg(vendor_rating), 1) from reviews where vendor_id = my_vendor_id() and approved),
+    'referral_earned', coalesce((select sum(amount) from bonus_credits where vendor_id = my_vendor_id() and status in ('eligible', 'paid')), 0),
     'reviews', coalesce((select jsonb_agg(jsonb_build_object('rating', vendor_rating, 'comment', comment, 'created_at', created_at) order by created_at desc) from (select * from reviews where vendor_id = my_vendor_id() order by created_at desc limit 5) r), '[]')
   );
 $$;
@@ -2805,7 +2934,7 @@ begin
                             'leads', (select count(*) from leads), 'products', (select count(*) from products)) into counts;
 
   delete from lead_activities; delete from leads;
-  delete from referrals; delete from reviews;
+  delete from referrals; delete from reviews; delete from bonus_credits; delete from payouts;
   delete from commissions; delete from settlements; delete from payments; delete from deliveries;
   delete from deal_events; delete from deals;
   delete from order_items; delete from orders;
@@ -2835,10 +2964,12 @@ declare r uuid := my_reseller_id(); v uuid := my_vendor_id(); owed numeric := 0;
 begin
   if r is not null then
     select coalesce(sum(amount), 0) into owed from commissions where reseller_id = r and status in ('verified', 'approved');
+    owed := owed + coalesce((select sum(amount) from bonus_credits where reseller_id = r and status = 'eligible'), 0);
     select coalesce(sum(amount), 0) into asked from payouts where reseller_id = r and status in ('requested', 'approved');
     select coalesce(sum(amount), 0) into paid from commissions where reseller_id = r and status = 'paid';
   elsif v is not null then
     select coalesce(sum(net_payable), 0) into owed from settlements where vendor_id = v and status in ('eligible', 'approved');
+    owed := owed + coalesce((select sum(amount) from bonus_credits where vendor_id = v and status = 'eligible'), 0);
     select coalesce(sum(amount), 0) into asked from payouts where vendor_id = v and status in ('requested', 'approved');
     select coalesce(sum(net_payable), 0) into paid from settlements where vendor_id = v and status = 'paid';
   else
@@ -2877,6 +3008,8 @@ begin
 
   if p_status = 'paid' then
     remaining := po.amount;
+    update bonus_credits set status = 'paid', paid_at = now()
+     where status = 'eligible' and ((po.reseller_id is not null and reseller_id = po.reseller_id) or (po.vendor_id is not null and vendor_id = po.vendor_id));
     if po.reseller_id is not null then
       update commissions c set status = 'paid', paid_at = now()
        where c.id in (
@@ -2912,6 +3045,150 @@ begin
   update products set status = case when p_available then 'published' else 'out_of_stock' end where id = p_product;
   perform log_audit('product.availability', 'products', p_product, jsonb_build_object('status', p.status),
     jsonb_build_object('status', case when p_available then 'published' else 'out_of_stock' end));
+end $$;
+
+-- Everything that should have been credited but was not, so nobody goes unpaid.
+create or replace function attribution_check() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'missing_commission', coalesce((select jsonb_agg(jsonb_build_object('id', o.id, 'order_number', o.order_number, 'reseller', r.full_name, 'amount', o.subtotal, 'completed_at', o.completed_at))
+      from orders o join resellers r on r.id = o.reseller_id
+      where o.status = 'completed' and not exists (select 1 from commissions c where c.order_id = o.id)), '[]'),
+    'missing_settlement', coalesce((select jsonb_agg(jsonb_build_object('id', o.id, 'order_number', o.order_number, 'vendor', v.business_name, 'amount', x.gross))
+      from orders o
+      join lateral (select i.vendor_id, sum(i.line_total) gross from order_items i where i.order_id = o.id and i.vendor_id is not null group by i.vendor_id) x on true
+      join vendors v on v.id = x.vendor_id
+      where o.status = 'completed' and not exists (select 1 from settlements st where st.order_id = o.id and st.vendor_id = x.vendor_id)), '[]'),
+    'delivered_not_finished', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'order_number', order_number, 'amount', total, 'since', completed_at))
+      from orders where status = 'delivered' and created_at < now() - interval '1 day'), '[]'),
+    'commission_overdue', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'reseller', r.full_name, 'amount', c.amount, 'since', c.eligible_at))
+      from commissions c join resellers r on r.id = c.reseller_id
+      where c.status = 'pending' and c.eligible_at < now()), '[]'),
+    'settlement_overdue', coalesce((select jsonb_agg(jsonb_build_object('id', st.id, 'vendor', v.business_name, 'amount', st.net_payable, 'since', st.created_at))
+      from settlements st join vendors v on v.id = st.vendor_id
+      where st.status = 'pending' and st.created_at < now() - interval '2 days'), '[]'),
+    'payout_waiting', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'who', coalesce(r.full_name, v.business_name), 'amount', p.amount, 'since', p.requested_at))
+      from payouts p left join resellers r on r.id = p.reseller_id left join vendors v on v.id = p.vendor_id
+      where p.status in ('requested', 'approved') and p.requested_at < now() - interval '2 days'), '[]'),
+    'unpaid_completed', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'order_number', order_number, 'amount', total))
+      from orders where status = 'completed' and payment_status <> 'paid'), '[]')
+  );
+end $$;
+
+-- Create the commission and vendor payout rows that a completed order should have had.
+create or replace function attribution_fix() returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype; it record; vend vendors%rowtype; fee_pct numeric; comm numeric; made int := 0; setts int := 0;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+
+  for o in select * from orders where status = 'completed' loop
+    -- reseller commission
+    if o.reseller_id is not null and not exists (select 1 from commissions c where c.order_id = o.id) then
+      select coalesce(sum(commission_for(p, oi.unit_price, oi.quantity)), 0) into comm
+        from order_items oi join products p on p.id = oi.product_id where oi.order_id = o.id;
+      if comm > 0 then
+        insert into commissions (order_id, reseller_id, base_amount, rate_type, rate_value, amount, status, eligible_at, notes)
+        values (o.id, o.reseller_id, o.subtotal, 'mixed', 0, comm,
+                (case when 'self_purchase' = any(o.risk_flags) then 'rejected' else 'pending' end)::commission_status,
+                coalesce(o.completed_at, now()) + (setting_num('commission_grace_hours') || ' hours')::interval,
+                'Added by the missed-payment check');
+        made := made + 1;
+      end if;
+    end if;
+
+    -- vendor payouts
+    for it in select i.vendor_id, sum(i.line_total) gross from order_items i where i.order_id = o.id and i.vendor_id is not null group by i.vendor_id loop
+      if not exists (select 1 from settlements st where st.order_id = o.id and st.vendor_id = it.vendor_id) then
+        select * into vend from vendors where id = it.vendor_id;
+        fee_pct := case when o.store_vendor_id = it.vendor_id
+                        then least(coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')), setting_num('own_audience_fee_pct'))
+                        else coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')) end;
+        insert into settlements (vendor_id, order_id, order_number, gross, marketplace_fee, reseller_commission, net_payable, status)
+        values (it.vendor_id, o.id, o.order_number, it.gross, round(it.gross * fee_pct / 100, 2), 0,
+                round(it.gross - it.gross * fee_pct / 100, 2), 'pending');
+        setts := setts + 1;
+      end if;
+    end loop;
+  end loop;
+
+  if made + setts > 0 then perform log_audit('attribution.fix', 'orders', null, null, jsonb_build_object('commissions', made, 'settlements', setts)); end if;
+  return jsonb_build_object('commissions', made, 'settlements', setts);
+end $$;
+
+-- Which products affiliates are ignoring, and what a boost would be worth.
+create or replace function product_coverage() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare days int := greatest(1, setting_num('coverage_days')::int);
+begin
+  if not can_market() then raise exception 'Not allowed'; end if;
+  return coalesce((select jsonb_agg(x order by x->>'last_affiliate_sale' nulls first) from (
+    select jsonb_build_object(
+      'id', p.id, 'name', p.name, 'slug', p.slug, 'price', p.price, 'category', p.category,
+      'vendor', v.business_name,
+      'commission_type', p.commission_type, 'commission_value', p.commission_value,
+      'boost_pct', p.boost_pct, 'boost_until', p.boost_until,
+      'earns', commission_for(p, p.price, 1),
+      'affiliate_sales', (select count(*) from order_items i join orders o on o.id = i.order_id
+                           where i.product_id = p.id and o.reseller_id is not null and o.status not in ('cancelled','fraud_review')),
+      'recent_affiliate_sales', (select count(*) from order_items i join orders o on o.id = i.order_id
+                           where i.product_id = p.id and o.reseller_id is not null and o.status not in ('cancelled','fraud_review')
+                             and o.created_at > now() - (days || ' days')::interval),
+      'all_sales', (select count(*) from order_items i join orders o on o.id = i.order_id
+                           where i.product_id = p.id and o.status not in ('cancelled','fraud_review')),
+      'affiliates', (select count(distinct o.reseller_id) from order_items i join orders o on o.id = i.order_id
+                           where i.product_id = p.id and o.reseller_id is not null),
+      'last_affiliate_sale', (select max(o.created_at) from order_items i join orders o on o.id = i.order_id
+                           where i.product_id = p.id and o.reseller_id is not null)
+    ) as x
+    from products p left join vendors v on v.id = p.vendor_id
+    where p.status = 'published') s), '[]');
+end $$;
+
+-- Pay more on a product for a while, so affiliates have a reason to pick it up.
+create or replace function boost_product(p_product uuid, p_pct numeric, p_days int) returns void
+language plpgsql security definer set search_path = public as $$
+declare p products%rowtype;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select * into p from products where id = p_product;
+  if not found then raise exception 'Not found'; end if;
+  if p_pct is not null and p_pct > 0 then
+    if p_pct > 50 then raise exception 'That is more than half the price — set it below 50%%'; end if;
+    update products set boost_pct = p_pct, boost_until = now() + (greatest(1, coalesce(p_days, 14)) || ' days')::interval where id = p_product;
+  else
+    update products set boost_pct = null, boost_until = null where id = p_product;
+  end if;
+  perform log_audit('product.boost', 'products', p_product,
+    jsonb_build_object('boost_pct', p.boost_pct), jsonb_build_object('boost_pct', p_pct, 'days', p_days));
+end $$;
+
+-- Record that a vendor was checked. The ID number is never stored, only that it was seen.
+create or replace function set_vendor_trust(p_vendor uuid, p_level text, p_id_seen boolean, p_note text, p_reg_no text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare v vendors%rowtype;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  if p_level not in ('new', 'known', 'verified') then raise exception 'Unknown level'; end if;
+  select * into v from vendors where id = p_vendor;
+  if not found then raise exception 'Not found'; end if;
+  if p_level = 'verified' and not coalesce(p_id_seen, false) then
+    raise exception 'A vendor can only be verified once someone has seen their ID or registration in person';
+  end if;
+  update vendors set
+    trust_level = p_level,
+    id_seen = coalesce(p_id_seen, id_seen),
+    id_seen_note = case when coalesce(p_id_seen, false) then coalesce(p_note, id_seen_note) else id_seen_note end,
+    id_seen_by = case when coalesce(p_id_seen, false) and not id_seen then auth.uid() else id_seen_by end,
+    id_seen_at = case when coalesce(p_id_seen, false) and not id_seen then now() else id_seen_at end,
+    business_reg_no = coalesce(nullif(p_reg_no, ''), business_reg_no),
+    trust_note = coalesce(p_note, trust_note)
+  where id = p_vendor;
+  perform log_audit('vendor.trust', 'vendors', p_vendor,
+    jsonb_build_object('trust_level', v.trust_level, 'id_seen', v.id_seen),
+    jsonb_build_object('trust_level', p_level, 'id_seen', p_id_seen));
 end $$;
 
 -- ---------- Row Level Security ----------
@@ -2951,6 +3228,7 @@ alter table founder_contributions enable row level security;
 alter table founder_withdrawals enable row level security;
 alter table audit_logs enable row level security;
 alter table payouts enable row level security;
+alter table bonus_credits enable row level security;
 alter table settings enable row level security;
 alter table provinces enable row level security;
 alter table districts enable row level security;
@@ -2974,7 +3252,7 @@ end $$;
 select ensure_policy('public_read', 'provinces', 'select', 'true');
 select ensure_policy('public_read', 'districts', 'select', 'true');
 select ensure_policy('public_read', 'quotes', 'select', 'true');
-select ensure_policy('read_settings', 'settings', 'select', 'key in (''local_delivery_fee'',''currency'',''delivery_included'',''departments'',''reseller_terms'',''vendor_terms'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
+select ensure_policy('read_settings', 'settings', 'select', 'key like ''company_%'' or key like ''social_%'' or key in (''local_delivery_fee'',''currency'',''delivery_included'',''departments'',''reseller_terms'',''vendor_terms'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
 select ensure_policy('founder_settings', 'settings', 'update', 'is_founder()');
 select ensure_policy('founder_settings_insert', 'settings', 'insert', 'is_founder()');
 
@@ -3028,6 +3306,8 @@ select ensure_policy('founder_all', 'founder_withdrawals', 'all', 'is_founder()'
 select ensure_policy('founder_read', 'audit_logs', 'select', 'is_founder()');
 select ensure_policy('staff_all', 'referrals', 'all', 'is_staff() or can_market()');
 select ensure_policy('staff_payouts', 'payouts', 'all', 'is_staff()');
+select ensure_policy('staff_bonuses', 'bonus_credits', 'all', 'is_staff()');
+select ensure_policy('own_bonuses', 'bonus_credits', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('own_payouts', 'payouts', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('staff_all', 'payments', 'all', 'is_staff()');
 select ensure_policy('staff_all', 'deliveries', 'all', 'is_staff()');
@@ -3035,6 +3315,9 @@ select ensure_policy('staff_all', 'deliveries', 'all', 'is_staff()');
 -- offers: public sees active; staff all
 select ensure_policy('read_offers', 'offers', 'select', 'is_staff()');
 select ensure_policy('staff_offers', 'offers', 'all', 'is_staff()');
+select ensure_policy('vendor_offer_read', 'offers', 'select', 'exists (select 1 from products p where p.id = offers.product_id and p.vendor_id = my_vendor_id())');
+select ensure_policy('vendor_offer_new', 'offers', 'insert', 'status in (''draft'', ''pending_approval'') and exists (select 1 from products p where p.id = offers.product_id and p.vendor_id = my_vendor_id())');
+select ensure_policy('vendor_offer_edit', 'offers', 'update', 'status in (''draft'', ''pending_approval'') and exists (select 1 from products p where p.id = offers.product_id and p.vendor_id = my_vendor_id())', 'status in (''draft'', ''pending_approval'') and exists (select 1 from products p where p.id = offers.product_id and p.vendor_id = my_vendor_id())');
 
 -- applications: anyone logged in can apply; see own; staff see all
 select ensure_policy('apply_vendor', 'vendors', 'insert', 'user_id = auth.uid()');
@@ -3128,3 +3411,9 @@ select * from (values
   ('Speed of delivery is a feature.', null)
 ) as q(text, author)
 where not exists (select 1 from quotes);
+
+-- Vendors already trading keep trading: the new rule applies to newcomers, not to
+-- people who have already delivered orders for you.
+update vendors v set trust_level = 'known'
+ where v.trust_level = 'new' and v.status = 'approved'
+   and exists (select 1 from settlements st where st.vendor_id = v.id);

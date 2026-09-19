@@ -11,7 +11,7 @@ export function AdminEarnings() {
   const tab = sp.get('tab') || 'business'
   return (
     <div className="stack">
-      <Tabs tabs={[['business', 'Our business'], ['partners', "Resellers & vendors"]]} value={tab} onChange={(v) => setSp({ tab: v })} />
+      <Tabs tabs={[['business', 'Our business'], ['partners', "Affiliates & vendors"]]} value={tab} onChange={(v) => setSp({ tab: v })} />
       {tab === 'business'
         ? <Earnings scope="business" heading="Earnings" sub="What the business is making, day by day." />
         : <PartnersBoard />}
@@ -35,9 +35,9 @@ function PartnersBoard() {
       {error ? <Empty title="Couldn't load">{error}</Empty> : !data ? <Loading /> : (
         <>
           <div className="card">
-            <div className="between mb"><h3>Resellers</h3><span className="small muted">Commission earned {money(data.resellers.reduce((t, r) => t + Number(r.earned), 0))}</span></div>
+            <div className="between mb"><h3>Affiliates</h3><span className="small muted">Commission earned {money(data.resellers.reduce((t, r) => t + Number(r.earned), 0))}</span></div>
             <div className="records-cards">
-              {data.resellers.length === 0 ? <p className="small muted">No approved resellers yet.</p> : data.resellers.map((r) => (
+              {data.resellers.length === 0 ? <p className="small muted">No approved affiliates yet.</p> : data.resellers.map((r) => (
                 <button key={r.id} type="button" className="pick" onClick={() => nav(`/admin/earnings/reseller/${r.id}`)}>
                   <span className="grow"><span className="strong">{r.name}</span><span className="small muted">{num(r.orders)} sales · {money(r.sales)}</span></span>
                   <span className="right"><span className="strong copper">{money(r.earned)}</span><br /><span className="tiny muted">paid {money(r.paid)}</span></span>
@@ -45,7 +45,7 @@ function PartnersBoard() {
               ))}
             </div>
             <div className="records-table"><Table rows={data.resellers} empty="No approved resellers yet" onRow={(r) => nav(`/admin/earnings/reseller/${r.id}`)} cols={[
-              { key: 'name', label: 'Reseller', render: (r) => <div><div className="strong">{r.name}</div><div className="tiny muted">{r.code}{r.status !== 'approved' ? ' · ' + r.status : ''}</div></div> },
+              { key: 'name', label: 'Affiliate', render: (r) => <div><div className="strong">{r.name}</div><div className="tiny muted">{r.code}{r.status !== 'approved' ? ' · ' + r.status : ''}</div></div> },
               { key: 'orders', label: 'Sales', num: true, render: (r) => num(r.orders) },
               { key: 'sales', label: 'Sales value', num: true, render: (r) => money(r.sales) },
               { key: 'earned', label: 'Earned', num: true, render: (r) => <span className="strong copper">{money(r.earned)}</span> },

@@ -5,7 +5,9 @@ import { useAuth } from '../../lib/auth'
 import { money, pct, slugify, n, title } from '../../lib/format'
 import { margin, markup, priceFromMargin, priceFromMarkup, unitEconomics, light } from '../../lib/economics'
 import { useDepartments } from '../../lib/departments'
-import { uploadPhoto } from '../../lib/photos'
+import VendorMath from '../../components/VendorMath'
+import { PHOTO_TIPS } from '../../lib/photos'
+import PhotoUpload from '../../components/PhotoUpload'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
 export const effectiveCost = (p) => (p.cost_override != null ? n(p.cost_override) : p.landed_units > 0 ? n(p.landed_cost_total) / p.landed_units : 0)
@@ -73,6 +75,8 @@ function SampleButton({ onDone }) {
 }
 
 export function ProductEditor({ product, onClose, onDone, vendorMode }) {
+  const { profile: me } = useAuth()
+  const vendorProfile = me?.partner || null
   const DEPARTMENTS = useDepartments()
   const toast = useToast()
   const { settings, advanced, user, isStaff } = useAuth()
@@ -208,6 +212,11 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           </div>
         </div>
 
+        {vendorMode && (
+          <div className="card flat">
+            <VendorMath price={p.price} vendor={vendorProfile} onUsePrice={(v) => set('price')(String(v))} />
+          </div>
+        )}
         {!vendorMode && (
           <div className="card flat">
             <div className="between mb"><h3>Economics</h3><Light tone={lt.tone} label={lt.label} /></div>
@@ -239,7 +248,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
                 <div className="form-grid">
                   <Field label="Cost override" hint="Leave empty to use landed cost"><Input money value={p.cost_override} onChange={set('cost_override')} /></Field>
                   <Field label="Packaging per unit"><Input money value={p.packaging_cost} onChange={set('packaging_cost')} placeholder={String(settings.default_packaging_cost ?? 0)} /></Field>
-                  <Field label="Reseller commission"><Select value={p.commission_type || ''} onChange={(v) => set('commission_type')(v || null)} options={[['', `Default (${settings.default_commission_pct}%)`], ['pct', 'Percentage'], ['flat', 'Flat amount']]} /></Field>
+                  <Field label="Affiliate commission"><Select value={p.commission_type || ''} onChange={(v) => set('commission_type')(v || null)} options={[['', `Default (${settings.default_commission_pct}%)`], ['pct', 'Percentage'], ['flat', 'Flat amount']]} /></Field>
                   {p.commission_type && <Field label={p.commission_type === 'pct' ? 'Commission %' : 'Commission K'}><Input money value={p.commission_value} onChange={set('commission_value')} /></Field>}
                 </div>
               </div>

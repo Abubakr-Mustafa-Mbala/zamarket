@@ -31,10 +31,10 @@ export default function Simulator() {
       <details className="card explain">
         <summary>What is this page for?</summary>
         <div className="stack-sm">
-          <p className="small">Say a supplier offers you 50 phone cases at K40 each. Should you buy them? That depends on transport, packaging, what you'll sell them for, what a reseller takes, and how many get damaged. This page does that arithmetic.</p>
+          <p className="small">Say a supplier offers you 50 phone cases at K40 each. Should you buy them? That depends on transport, packaging, what you'll sell them for, what an affiliate takes, and how many get damaged. This page does that arithmetic.</p>
           <ol className="week">
             <li><strong>Fill in what it costs to get them here:</strong> how many, the price each, transport, and anything else you pay once.</li>
-            <li><strong>Fill in what it costs to sell one:</strong> your selling price, packaging, delivery, reseller commission, and any advertising.</li>
+            <li><strong>Fill in what it costs to sell one:</strong> your selling price, packaging, delivery, affiliate commission, and any advertising.</li>
             <li><strong>Read the answer at the top right.</strong> BUY means the numbers work. TEST FIRST means they are thin, so buy a small batch. DO NOT BUY means you would lose money.</li>
           </ol>
           <p className="small">It also tells you the lowest price you can sell at, how many you must sell to get your money back, and the most you could pay a supplier and still be fine. The numbers are only as good as your guesses — be honest with them, especially about damage and advertising.</p>
@@ -58,7 +58,7 @@ export default function Simulator() {
             </Field>
             <Field label="Packaging per unit"><Input money value={i.packaging} onChange={set('packaging')} /></Field>
             <Field label="Delivery cost per order (our cost)"><Input money value={i.delivery} onChange={set('delivery')} /></Field>
-            <Field label="Reseller commission (%)"><Input type="number" value={i.commissionPct} onChange={set('commissionPct')} /></Field>
+            <Field label="Affiliate commission (%)"><Input type="number" value={i.commissionPct} onChange={set('commissionPct')} /></Field>
             <Field label="Advertising per customer"><Input money value={i.advertising} onChange={set('advertising')} /></Field>
             <Field label="Expected returns / refunds (%)"><Input type="number" value={i.returnPct} onChange={set('returnPct')} /></Field>
             <Field label="Storage / rent for this batch (total)"><Input money value={i.storage} onChange={set('storage')} /></Field>
@@ -122,7 +122,7 @@ export default function Simulator() {
               ['Max product cost you could pay', u.maxProductCost],
               ['Max advertising per customer', u.maxAdvertising],
               ['Max delivery cost', u.maxDelivery],
-              ['Max reseller commission', pct(u.maxCommissionPct)],
+              ['Max affiliate commission', pct(u.maxCommissionPct)],
               ['Max marketplace fee', pct(u.maxMarketplaceFeePct)],
             ]} />
           </div>

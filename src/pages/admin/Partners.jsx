@@ -4,7 +4,43 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n, title, pct } from '../../lib/format'
-import { Badge, Table, Loading, Modal, Field, Input, Select, Breakdown, useToast, Tabs, Stat, CopyLine } from '../../components/ui'
+import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, useToast, Tabs, Stat, CopyLine } from '../../components/ui'
+
+function TrustCell({ v, onDone }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState({ level: v.trust_level || 'new', id_seen: !!v.id_seen, note: v.id_seen_note || '', reg: v.business_reg_no || '' })
+  const save = async () => {
+    const { error } = await supabase.rpc('set_vendor_trust', { p_vendor: v.id, p_level: f.level, p_id_seen: f.id_seen, p_note: f.note || null, p_reg_no: f.reg || null })
+    if (error) return toast(error.message, true)
+    toast('Saved'); setOpen(false); onDone()
+  }
+  const label = { new: 'Not checked', known: 'Met them', verified: 'Verified' }[v.trust_level || 'new']
+  return (
+    <>
+      <button className="btn sm" onClick={(e) => { e.stopPropagation(); setOpen(true) }}>
+        <Badge status={v.trust_level === 'verified' ? 'approved' : v.trust_level === 'known' ? 'pending' : 'draft'}>{label}</Badge>
+      </button>
+      {open && (
+        <Modal title={`Checks on ${v.business_name}`} onClose={() => setOpen(false)}>
+          <div className="stack">
+            <p className="small muted">Ask for as little as possible, as late as possible. Everyday sellers need nothing beyond a phone and an area. Meet them and see an ID or PACRA paper before they list anything expensive, and before a large payout.</p>
+            <Field label="How far have we checked them?">
+              <Segmented options={[['new', 'Not checked'], ['known', 'Met them'], ['verified', 'ID or PACRA seen']]} value={f.level} onChange={(val) => setF({ ...f, level: val })} />
+            </Field>
+            <label className="check"><input type="checkbox" checked={f.id_seen} onChange={(e) => setF({ ...f, id_seen: e.target.checked })} /> Someone on our team saw their ID or registration in person</label>
+            <Field label="What was seen, by whom, where" hint="Never type the ID number itself — just the fact of the check">
+              <Textarea value={f.note} onChange={(val) => setF({ ...f, note: val })} rows={2} placeholder="NRC seen at their shop in Kabwata, 19 Sept, by Abubakr" />
+            </Field>
+            <Field label="PACRA number (optional)"><Input value={f.reg} onChange={(val) => setF({ ...f, reg: val })} /></Field>
+            {v.id_seen_at && <p className="tiny muted">First checked {date(v.id_seen_at)}.</p>}
+            <button className="btn primary" onClick={save}>Save</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
 
 export function Vendors() {
   const { isFounder, settings } = useAuth()
@@ -43,6 +79,7 @@ export function Vendors() {
       {loading ? <Loading /> : (
         <Table rows={rows} onRow={setOpen} empty={tab === 'pending' ? 'No applications waiting' : 'No vendors here'} cols={[
           { key: 'business_name', label: 'Vendor', render: (v) => <div><div className="strong">{v.business_name}</div><div className="tiny muted">{v.category} · {v.location}</div></div> },
+          { key: 'trust_level', label: 'Checked', render: (v) => <TrustCell v={v} onDone={reload} /> },
           { key: 'status', label: 'Status', render: (v) => <span className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</span> },
           { key: 'live', label: 'Live products', num: true },
           { key: 'sales', label: 'Sales', num: true, render: (v) => money(v.sales) },
@@ -131,7 +168,7 @@ export function Resellers() {
 
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Resellers</h1><p>People selling on commission. Default {settings.default_commission_pct}% unless a product says otherwise.</p></div></div>
+      <div className="page-head"><div><h1>Affiliates</h1><p>People selling on commission. Default {settings.default_commission_pct}% unless a product says otherwise.</p></div></div>
       <div className="grid-3">
         <Stat label="Active resellers" value={(data || []).filter((r) => r.status === 'approved').length} />
         <Stat label="Owed now" value={money((data || []).reduce((t, r) => t + r.owed, 0))} tone="copper" />
@@ -168,7 +205,7 @@ export function Resellers() {
                 {open.status === 'pending' && <button className="btn danger" onClick={() => review(open.id, 'rejected')}>Reject</button>}
                 {open.status === 'approved' && <button className="btn danger" onClick={() => review(open.id, 'suspended')}>Suspend</button>}
               </div>
-            ) : <p className="tiny muted">Only a founder can approve or suspend resellers.</p>}
+            ) : <p className="tiny muted">Only a founder can approve or suspend affiliates.</p>}
           </div>
         </Modal>
       )}

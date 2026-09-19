@@ -123,7 +123,7 @@ export function OrderDetail() {
           <div className="small">{[o.address, o.area, o.district?.name, o.province?.name].filter(Boolean).join(', ')}</div>
           {o.instructions && <div className="small muted">Note: {o.instructions}</div>}
           {!o.is_local && <span className="badge warn">Outside Lusaka District — confirm delivery by phone</span>}
-          {o.risk_flags?.includes('self_purchase') && <span className="badge bad">Possible self-purchase: the customer's phone matches the reseller. No commission will be paid.</span>}
+          {o.risk_flags?.includes('self_purchase') && <span className="badge bad">Possible self-purchase: the customer's phone matches the affiliate. No commission will be paid.</span>}
           {o.risk_flags?.includes('not_enough_stock') && <span className="badge warn">Ordered more than was in stock. Check stock before confirming.</span>}
         </div>
         <div className="card stack-sm">
@@ -246,7 +246,7 @@ function NextStep({ o, next, advanced, onMove, onPay, onReview, reason, setReaso
             {paid ? <p className="ok strong">This order is finished and paid.</p> : (
               <>
                 <p className="warn strong">Finished, but no payment is recorded.</p>
-                <p className="small muted">If the customer paid, record it so your money and reseller commissions are right.</p>
+                <p className="small muted">If the customer paid, record it so your money and affiliate commissions are right.</p>
                 <button className="btn copper" onClick={onPay}>Record the payment</button>
               </>
             )}

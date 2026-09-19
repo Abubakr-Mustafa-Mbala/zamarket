@@ -70,7 +70,7 @@ export function Account() {
       <div className="card stack-sm">
         <p>Your account is set up. You can shop as a customer, or apply to join as a partner.</p>
         <div className="btn-row">
-          <Link className="btn primary" to="/apply/reseller">Apply to be a reseller</Link>
+          <Link className="btn primary" to="/apply/reseller">Apply to be an affiliate</Link>
           <Link className="btn" to="/apply/vendor">Apply to sell as a vendor</Link>
         </div>
       </div>
@@ -190,6 +190,16 @@ export function Apply() {
         <p className="lead">{isVendor
           ? 'Fill this in and we will call you.'
           : 'Share products with anyone — friends, your WhatsApp status, TikTok, Facebook, or people you meet. When someone buys through your link, you earn commission on that sale. Fill this in and we will call you.'}</p>
+        {isVendor && (
+          <div className="card flat small stack-sm">
+            <strong>Before you fill this in, here is who we are.</strong>
+            <p>Listing is free. We only earn when something of yours sells. We take the order, confirm it with the customer by phone, and deliver it. You are paid after delivery, and you can ask to be paid from your dashboard.</p>
+            <p><strong>What we ask for now:</strong> your business name, your phone, and the area you work from. That is all.</p>
+            <p><strong>What we ask for later:</strong> if you want to list expensive items, or before a large payout, we meet you and look at an ID or PACRA paper. We write down that the check happened — <strong>we never store your ID number</strong>.</p>
+            <p>You must own what you sell, or have the owner's permission.</p>
+            <p><Link to="/about">See our contacts, address and what we do with your details →</Link></p>
+          </div>
+        )}
         {!isVendor && (
           <ul className="sell-points">
             <li>Your own link, with ready-made messages, photos and prices</li>

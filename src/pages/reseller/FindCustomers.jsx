@@ -5,6 +5,8 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, n } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
+import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
+import ShareThis from '../../components/ShareThis'
 import { Loading, Empty, CopyLine, useToast, Select, Field } from '../../components/ui'
 
 const wa = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`
@@ -69,7 +71,7 @@ export default function FindCustomers() {
   const [productId, setProductId] = useState('')
   const [way, setWay] = useState('known')
   const { data, loading } = useData(async () => ({
-    products: await q(supabase.from('public_products').select('id,name,slug,price,normal_price,description,benefits,commission_type,commission_value,vendor_slug,fulfilment').eq('status', 'published').order('name')),
+    products: await q(supabase.from('public_products').select('id,name,slug,price,normal_price,description,benefits,commission_type,commission_value,vendor_slug,fulfilment,boost_pct,boost_until').eq('status', 'published').order('name')),
     summary: r ? await q(supabase.rpc('reseller_summary', { p_reseller: r.id })) : null,
   }), [r?.id])
 
@@ -127,6 +129,10 @@ export default function FindCustomers() {
         <h3>Your link</h3>
         <p className="small muted">Every sale through this link is credited to you. Share the product link when you're talking about one thing, and the main link otherwise.</p>
         <CopyLine text={`https://${link}`} />
+        <ShareThis store={{ business_name: 'ZaMarket', tagline: 'Everything in one place, delivered in Lusaka', category: 'Marketplace', town: 'Lusaka', product_count: (data.products || []).length }}
+          products={data.products || []} link={`https://${link}`}
+          caption={`Everything I sell is here — phones, home goods, cakes made to order and services. Delivered in Lusaka, you pay when you receive it.\nShop here: https://${link}`}
+          className="btn buy" label="Make a picture of the shop" />
         {product && <CopyLine text={`https://${productLink}`} />}
       </section>
 
@@ -152,6 +158,8 @@ export default function FindCustomers() {
           </>
         )}
       </section>
+
+      <PostIdeas products={data.products || []} code={r.code} settings={settings} />
 
       <section className="card stack-sm">
         <h3>Where to find people</h3>
@@ -180,5 +188,46 @@ export default function FindCustomers() {
         <Link to="/sell/products" className="btn">See all products and what you earn</Link>
       </section>
     </div>
+  )
+}
+
+
+// The same posting plan the marketplace uses, with the affiliate's own link in every caption.
+function PostIdeas({ products, code, settings }) {
+  const toast = useToast()
+  const [shown, setShown] = useState(6)
+  const ideas = useMemo(() => buildIdeas(products, null, window.location.origin, code), [products, code])
+  if (!ideas.length) return null
+  const copy = async (text) => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
+  return (
+    <section className="card stack-sm">
+      <h3>What to post</h3>
+      <p className="small muted">Ready posts using your link, so any sale from them is yours. Copy the caption, film the shots, post it.</p>
+      <div className="week-plan">
+        {WEEK_PLAN.map(([day, what]) => <div key={day}><strong>{day}</strong><span>{what}</span></div>)}
+      </div>
+      <div className="idea-list">
+        {ideas.slice(0, shown).map((idea) => {
+          const earn = commissionLabel(idea.product, settings)
+          return (
+            <article key={idea.id} className="post-idea">
+              <div className="between">
+                <span className="pi-head"><strong>{idea.title}</strong><span className="tiny muted">{idea.platform} · {idea.kind}</span></span>
+                <span className="tiny copper strong">You earn {money(earn.perUnit)}</span>
+              </div>
+              <p className="pi-hook">{idea.hook}</p>
+              <ol className="pi-shots">{idea.shots.map((sh, i) => <li key={i}>{sh}</li>)}</ol>
+              <div className="share-box">{idea.caption}</div>
+              <div className="btn-row">
+                <ShareThis product={idea.product} link={`${window.location.origin}/r/${code}/${idea.product.slug}`} caption={idea.caption} className="btn sm primary" label="Make picture" />
+                <button className="btn sm" onClick={() => copy(idea.caption)}>Copy caption</button>
+                <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(idea.caption)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+      {shown < ideas.length && <button className="btn" onClick={() => setShown(shown + 6)}>More ideas ({ideas.length - shown} left)</button>}
+    </section>
   )
 }

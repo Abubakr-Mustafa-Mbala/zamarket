@@ -11,6 +11,7 @@ import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
 import { useDepartments, useShopInfo } from '../../lib/departments'
 import { useSeo, productSeo } from '../../lib/seo'
+import ShareThis from '../../components/ShareThis'
 
 // ---------- shared catalogue loader (small catalogue: one fetch, cached for the session) ----------
 let cache = null
@@ -131,10 +132,12 @@ export function PublicShell() {
           <div>
             <h4>Earn with us</h4>
             <Link to="/apply/vendor">Sell on ZaMarket</Link>
-            <Link to="/apply/reseller">Become a reseller</Link>
+            <Link to="/apply/reseller">Become an affiliate</Link>
           </div>
           <div>
-            <h4>Your account</h4>
+            <h4>ZaMarket</h4>
+          <Link to="/about">About us and contacts</Link>
+          <h4>Your account</h4>
             <Link to={user ? home : '/login'}>{user ? 'Your account' : 'Sign in'}</Link>
             <Link to="/cart">Cart</Link>
           </div>
@@ -239,9 +242,8 @@ export function Storefront() {
           <p>Phones, home goods, cakes baked to order and services from local sellers — all in one place, with nothing to pay until we've confirmed your order.</p>
           <div className="hero-actions">
             <Link to="/search" className="btn primary">Start shopping</Link>
-            <Link to="/apply/vendor" className="btn ghost-dark">Sell on ZaMarket</Link>
           </div>
-          {ref && <p className="tiny hero-ref">You're shopping through a reseller's link. They'll get credit for your order.</p>}
+          {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They'll get credit for your order.</p>}
         </div>
         <ol className="how" aria-label="How ordering works">
           <li><span className="how-n">1</span><div><strong>Order online</strong><span>Add to cart and check out in a minute.</span></div></li>
@@ -254,7 +256,7 @@ export function Storefront() {
         <div className="empty-shop">
           <h2>The shelves are being stocked</h2>
           <p>Products from ZaMarket and local sellers will appear here soon. Have something to sell?</p>
-          <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become a reseller</Link></div>
+          <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become an affiliate</Link></div>
         </div>
       ) : products.length <= 8 ? (
         // A small shop looks better full than spread thin across empty shelves.
@@ -297,7 +299,7 @@ export function Storefront() {
         </div>
         <div className="hero-actions">
           <Link to="/apply/vendor" className="btn on-dark">Sell on ZaMarket</Link>
-          <Link to="/apply/reseller" className="btn ghost-light">Become a reseller</Link>
+          <Link to="/apply/reseller" className="btn ghost-light">Become an affiliate</Link>
         </div>
       </section>
     </div>
@@ -309,6 +311,24 @@ function useSeoStore(store) {
     title: `${store.business_name} — ${store.category || 'Seller'} in ${store.town || 'Lusaka'} | ZaMarket`,
     description: (store.description || `Shop ${store.business_name} on ZaMarket. Order online and pay when you receive it.`).slice(0, 160),
   } : {})
+}
+
+// Cars and similar are listings, not shelf items: big photo, key facts, asking price.
+function ListingCard({ p, store }) {
+  const specs = (p.page?.specs || []).slice(0, 4)
+  return (
+    <Link to={store ? `/${store}/${p.slug}` : `/p/${p.slug}`} className="listing">
+      <span className="listing-photo">{p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="ph" aria-hidden />}</span>
+      <span className="listing-body">
+        <span className="listing-name">{p.name}</span>
+        {specs.length > 0 && <span className="listing-specs">{specs.map((sp) => <span key={sp.label}><b>{sp.label}</b> {sp.value}</span>)}</span>}
+        <span className="listing-foot">
+          <span className="listing-price">{money(p.price)}{p.sales_model === 'negotiate' && <span className="tiny muted"> asking</span>}</span>
+          <span className="btn sm primary">{p.sales_model === 'negotiate' || p.sales_model === 'enquire' ? 'Enquire' : 'View'}</span>
+        </span>
+      </span>
+    </Link>
+  )
 }
 
 function SellerCard({ v }) {
@@ -542,6 +562,7 @@ export function ProductPage() {
           <button className="btn buy block" onClick={buyNow}>{cta}</button>
         </>
       )}
+      <ShareThis product={p} link={window.location.href.split('?')[0]} sellerName={p.vendor_name} className="btn block" label="Share this" />
       <div className="bb-meta">
         <div><span>Payment</span><span>After we confirm by phone</span></div>
         <div><span>Sold by</span><span>{p.vendor_name ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : 'ZaMarket'}</span></div>
@@ -624,7 +645,7 @@ export function ProductPage() {
         ))}
       </section>
       {more.length > 0 && <Row title={p.vendor_id ? `More from ${p.vendor_name}` : 'You may also like'}>{more.map((x) => <ProductCard key={x.id} p={x} inStore={!!storeParam} deal={dealFor(catalogue.offersBy, x.id)} />)}</Row>}
-      <p className="small muted pdp-earn">Want to earn by selling this? <Link to="/apply/reseller">Become a reseller</Link>.</p>
+      <p className="small muted pdp-earn">Want to earn by selling this? <Link to="/apply/reseller">Become an affiliate</Link>.</p>
 
       {!out && (
         <div className="mobile-buybar">
@@ -712,28 +733,89 @@ export function StorePage() {
   useSeoStore(store)
   if (store === null || products === null) return <Loading />
   if (!store) return <div className="empty-shop"><h2>We couldn't find that page</h2><p>Check the link, or browse the marketplace.</p><div className="hero-actions"><Link to="/" className="btn primary">Go to ZaMarket</Link><Link to="/sellers" className="btn">See all sellers</Link></div></div>
-  const groups = products.reduce((m, p) => { const k = p.category || 'Products'; (m[k] = m[k] || []).push(p); return m }, {})
+  // A shop is laid out by what it sells: cars like a dealership, courses like a college,
+  // everything else by department.
+  const SECTIONS = [
+    ['vehicle', 'Vehicles for sale'],
+    ['course', 'Courses and training'],
+    ['class', 'Classes'],
+    ['event', 'Events'],
+    ['service', 'Services'],
+  ]
+  const byKind = products.reduce((m, p) => { const k = p.offering_type || 'product'; (m[k] = m[k] || []).push(p); return m }, {})
+  const special = SECTIONS.filter(([k]) => byKind[k]?.length)
+  const plain = [...(byKind.product || []), ...(byKind.other || [])]
+  const groups = plain.reduce((m, p) => { const k = p.category || 'Products'; (m[k] = m[k] || []).push(p); return m }, {})
   const kinds = new Set(products.map((p) => p.fulfilment))
+  const featured = [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.review_count || 0) - (a.review_count || 0)).slice(0, products.length > 6 ? 4 : 0)
   const note = kinds.has('service') && kinds.size === 1 ? 'Book online. We confirm your booking by phone.' : kinds.has('made_to_order') ? 'Freshly made to order. Order and pay through ZaMarket and we deliver it to you.' : 'Order through ZaMarket and we deliver it to you.'
   return (
     <div className="stack">
       <div className="crumbs"><Link to="/">Home</Link><Link to="/sellers">Sellers</Link><span>{store.business_name}</span></div>
-      <div className="store-banner">
-        <span className="seller-mark lg" aria-hidden>{store.business_name.slice(0, 1)}</span>
-        <div>
-          <h1>{store.business_name}</h1>
-          <div className="small">{[store.category, store.town].filter(Boolean).join(', ')}{store.rating ? <> <Stars n={store.rating} /> {store.rating} ({store.review_count})</> : ''}</div>
-          {store.description && <p>{store.description}</p>}
-          <p className="small muted">{note}</p>
-          <Link to="/" className="small">Browse everything on ZaMarket</Link>
+
+      <header className="store-top">
+        <div className="store-cover" style={store.cover_url ? { backgroundImage: `url(${store.cover_url})` } : undefined} aria-hidden />
+        <div className="store-id">
+          {store.logo_url
+            ? <img className="store-logo" src={store.logo_url} alt="" />
+            : <span className="store-logo letter" aria-hidden>{store.business_name.slice(0, 1)}</span>}
+          <div className="store-name">
+            <h1>{store.business_name}</h1>
+            <p className="store-tag">{store.tagline || [store.category, store.town].filter(Boolean).join(' · ')}</p>
+            <div className="store-facts">
+              {store.trust_level === 'verified' && <span className="verified-badge" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified seller</span>}
+              {store.rating ? <span><Stars n={store.rating} /> {store.rating} ({store.review_count})</span> : <span className="muted">New seller</span>}
+              <span>{products.length} {products.length === 1 ? 'item' : 'items'}</span>
+              {store.town && <span>{store.town}</span>}
+            </div>
+          </div>
+          <div className="store-cta">
+            <a className="btn primary" href="#shop">Shop this store</a>
+            <ShareThis store={store} products={products} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />
+            <span className="tiny muted">{note}</span>
+          </div>
         </div>
-      </div>
+      </header>
+
+      {(store.highlights?.length > 0 || store.opening_hours?.length > 0 || store.about) && (
+        <div className="store-strip">
+          {(store.highlights || []).slice(0, 4).map((h, i) => <span key={i} className="store-point">{h}</span>)}
+          {(store.opening_hours || []).slice(0, 3).map((o, i) => <span key={`h${i}`} className="store-point">{o.label}: {o.hours}</span>)}
+        </div>
+      )}
+
+      {featured.length > 0 && (
+        <section className="shelf" id="shop">
+          <div className="shelf-head"><h2>Popular here</h2></div>
+          <div className="grid-products">{featured.map((p) => <ProductCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />)}</div>
+        </section>
+      )}
+
+      {special.map(([kind, title]) => (
+        <section key={kind} className="stack-sm" id={kind === special[0][0] ? 'shop' : undefined}>
+          <h2>{title}</h2>
+          <div className={kind === 'vehicle' ? 'grid-listings' : 'grid-products'}>
+            {byKind[kind].map((p) => (kind === 'vehicle'
+              ? <ListingCard key={p.id} p={p} store={store.slug} />
+              : <ProductCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
+          </div>
+        </section>
+      ))}
+
       {products.length === 0 ? <div className="empty-shop"><h2>No products yet</h2><p>Check back soon.</p></div> : Object.entries(groups).map(([cat, list]) => (
-        <section key={cat} className="stack-sm">
+        <section key={cat} className="stack-sm" id={cat === Object.keys(groups)[0] ? 'shop' : undefined}>
           <h2>{cat}</h2>
           <div className="grid-products">{list.map((p) => <ProductCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
         </section>
       ))}
+
+      {(store.about || store.description) && (
+        <section className="card store-about">
+          <h2>About {store.business_name}</h2>
+          <p>{store.about || store.description}</p>
+          <p className="small muted">Everything here is ordered and paid through ZaMarket. We confirm every order by phone and deliver it to you.</p>
+        </section>
+      )}
     </div>
   )
 }

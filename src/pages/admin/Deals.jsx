@@ -129,7 +129,7 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
           {d.message && <><dt>Their message</dt><dd>{d.message}</dd></>}
           {d.vendor && <><dt>Vendor</dt><dd>{d.vendor.business_name}</dd></>}
           {d.reseller && <><dt>Brought by</dt><dd>{d.reseller.full_name} ({d.reseller.code}) · {rate}</dd></>}
-          {closed && d.reseller && <><dt>Reseller earns</dt><dd className="copper strong">{money(d.reseller_amount)}</dd></>}
+          {closed && d.reseller && <><dt>Affiliate earns</dt><dd className="copper strong">{money(d.reseller_amount)}</dd></>}
           {closed && <><dt>Our fee</dt><dd className="strong">{money(d.marketplace_amount)} {d.fee_status === 'received' ? <span className="badge ok">Received</span> : <span className="badge warn">To collect</span>}</dd></>}
           {closed && d.evidence && <><dt>Verified by</dt><dd>{d.evidence}</dd></>}
           {lost && d.lost_reason && <><dt>Lost because</dt><dd>{d.lost_reason}</dd></>}
@@ -156,7 +156,7 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
         {d.status === 'agreed' && isStaff && (
           <div className="card flat stack-sm">
             <h3>Record the sale</h3>
-            <p className="small muted">Do this once the owner confirms the buyer has paid. Your share and any reseller commission are worked out from the price actually paid, not the asking price.</p>
+            <p className="small muted">Do this once the owner confirms the buyer has paid. Your share and any affiliate commission are worked out from the price actually paid, not the asking price.</p>
             <div className="form-grid">
               <Field label="Final price"><Input money value={amount} onChange={setAmount} placeholder={String(d.final_price ?? d.advertised_price)} /></Field>
               <Field label="Who confirmed it?" hint="e.g. 'Owner Mr Phiri confirmed by phone, 18 Sept' or a receipt number"><Input value={evidence} onChange={setEvidence} /></Field>

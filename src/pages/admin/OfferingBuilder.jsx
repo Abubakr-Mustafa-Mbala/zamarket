@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, n } from '../../lib/format'
 import { Loading, Field, Input, Select, Textarea, Segmented, useToast, Empty, Badge } from '../../components/ui'
 import { OfferingView, BENEFIT_ICONS, defaultCta } from '../public/Offering'
-import { uploadPhoto } from '../../lib/photos'
+import PhotoUpload from '../../components/PhotoUpload'
 
 const TYPES = [['product', 'Product'], ['service', 'Service'], ['course', 'Course'], ['class', 'Class'], ['vehicle', 'Vehicle'], ['event', 'Event'], ['other', 'Other']]
 const MODELS = [
@@ -44,9 +44,7 @@ function PhotoPicker({ label, hint, value, onChange, toast }) {
       <div className="photo-pick">
         {value ? <img src={value} alt="" /> : <span className="photo-empty">No photo</span>}
         <div className="stack-sm">
-          <label className="btn sm">{busy ? 'Uploading…' : value ? 'Change photo' : '📷 Add photo'}
-            <input type="file" accept="image/*" hidden disabled={busy} onChange={pick} />
-          </label>
+          <PhotoUpload label={value ? 'Change photo' : '📷 Add photo'} onDone={onChange} />
           {value && <button type="button" className="btn sm ghost" onClick={() => onChange('')}>Remove</button>}
           <input className="input" value={value || ''} onChange={(e) => onChange(e.target.value)} placeholder="or paste a link" />
         </div>
@@ -173,14 +171,7 @@ export default function OfferingBuilder() {
               {i > 0 && <button type="button" className="mk-main" onClick={() => setField('images')([src, ...(p.images || []).filter((_, k) => k !== i)])}>Make main</button>}
             </div>
           ))}
-          <label className="btn sm photo-add">{uploading ? 'Uploading…' : '📷 Add photo'}
-            <input type="file" accept="image/*" hidden disabled={uploading} multiple onChange={async (e) => {
-              const files = [...(e.target.files || [])]
-              setUploading(true)
-              try { const urls = []; for (const f of files) urls.push(await uploadPhoto(f)); setField('images')([...(p.images || []), ...urls]) }
-              catch (err) { toast(err.message, true) } finally { setUploading(false); e.target.value = '' }
-            }} />
-          </label>
+          <PhotoUpload multiple className="btn sm photo-add" onDone={(url) => setField('images')([...(p.images || []), url])} />
         </div>
         <p className="tiny muted">The first photo is the big one at the top. For good phone photos: shoot outside in shade or near a window, never with the flash. Put the item on a plain surface — a white wall, a wooden table. Fill the frame, hold still, and take five, then keep the sharpest. Wipe the lens first; that alone fixes most blurry photos.</p>
       </section>

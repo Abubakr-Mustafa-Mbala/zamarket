@@ -11,7 +11,7 @@ const I = {
 }
 
 // Simple mode keeps the menu to daily work. Nothing is lost — Advanced brings it back.
-const SIMPLE_HIDES = ['/admin/simulator', '/admin/suppliers', '/admin/reports', '/admin/marketing', '/admin/deals']
+const SIMPLE_HIDES = ['/admin/simulator', '/admin/suppliers', '/admin/reports', '/admin/deals']
 
 const STAFF_NAV = [
   { group: 'Daily' },
@@ -55,6 +55,7 @@ const RESELLER_NAV = [
 
 const VENDOR_NAV = [
   { to: '/vendor', label: 'Overview', end: true },
+  { to: '/vendor/shopfront', label: 'My shopfront' },
   { to: '/vendor/products', label: 'My products' },
   { to: '/vendor/orders', label: 'Orders' },
   { to: '/vendor/earnings', label: 'My earnings' },

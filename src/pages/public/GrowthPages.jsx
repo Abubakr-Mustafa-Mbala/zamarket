@@ -156,3 +156,13 @@ function Stars5({ label, value, onChange }) {
     </div>
   )
 }
+
+
+// /v/<name> — a vendor sent this shopper to ZaMarket. They earn on whatever is bought.
+export function VendorRefCapture() {
+  const { code } = useParams()
+  const { setVendorRef } = useCart()
+  const nav = useNavigate()
+  useEffect(() => { if (code) setVendorRef(code.toLowerCase()); nav('/', { replace: true }) }, [code])
+  return null
+}

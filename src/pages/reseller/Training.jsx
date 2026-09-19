@@ -85,7 +85,7 @@ export const LESSONS = [
       'Do not create fake orders or use your own number. Those are not paid.',
       'If you are unsure about a claim, ask us before you say it.',
     ],
-    doIt: 'Read the reseller rules on your account page.',
+    doIt: 'Read the affiliate rules on your account page.',
   },
   {
     key: 'track', title: 'Knowing your own numbers', minutes: 3,
