@@ -30,14 +30,7 @@ const HINTS = {
 
 const lines = (v) => (v || '').split('\n').map((x) => x.trim()).filter(Boolean)
 
-function PhotoPicker({ label, hint, value, onChange, toast }) {
-  const [busy, setBusy] = useState(false)
-  const pick = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBusy(true)
-    try { onChange(await uploadPhoto(file)) } catch (err) { toast(err.message, true) } finally { setBusy(false); e.target.value = '' }
-  }
+function PhotoPicker({ label, hint, value, onChange }) {
   return (
     <div className="field span">
       <label>{label}</label>
@@ -201,7 +194,7 @@ export default function OfferingBuilder() {
         <div className="form-grid">
           <Field label="Section title"><Input value={pg.media_section?.title} onChange={setMedia('title')} placeholder={hint.media} /></Field>
           <Field label="Name"><Input value={pg.media_section?.name} onChange={setMedia('name')} placeholder="e.g. Toyota Corolla (manual) — 2022" /></Field>
-          <PhotoPicker label="Photo" value={pg.media_section?.image} onChange={setMedia('image')} toast={toast} hint="The car, the salon, the venue, the equipment." />
+          <PhotoPicker label="Photo" value={pg.media_section?.image} onChange={setMedia('image')} hint="The car, the salon, the venue, the equipment." />
           <Field label="Short note" span><Input value={pg.media_section?.note} onChange={setMedia('note')} placeholder="e.g. Dual controls for safety" /></Field>
         </div>
         <label className="small strong">Details</label>

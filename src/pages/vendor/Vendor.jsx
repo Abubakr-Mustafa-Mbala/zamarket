@@ -98,6 +98,16 @@ export function VendorProducts() {
               : null },
         ]} />
       )}
+      <div className="card flat small stack-sm">
+        <strong>What the words mean</strong>
+        <ul className="fc-rules">
+          <li><strong>Draft</strong> — only you can see it. Keep editing until you are happy.</li>
+          <li><strong>Sent for review</strong> — with the ZaMarket team. We check it and publish it, usually the same day.</li>
+          <li><strong>Published</strong> — live in the shop. Tap <strong>Mark sold out</strong> any time and it disappears from the shop until you put it back.</li>
+          <li><strong>Rejected</strong> — something needed changing. Open it to see why, fix it, and send it again.</li>
+        </ul>
+        <p className="tiny muted">To change a published item, ask us — prices and details are locked once it is live so a customer never sees a price change mid-order.</p>
+      </div>
       <p className="tiny muted">Use "Design the page" to add packages, photos, schedule and everything customers see. Published products can only be changed by the marketplace team, so prices customers see stay consistent. Message us to update one.</p>
       {edit && <ProductEditor product={edit} vendorMode={v.id} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
     </div>
@@ -306,12 +316,6 @@ export function VendorStore() {
   if (!v) return <Empty title="No vendor profile" />
   const set = (k) => (val) => setF((x) => ({ ...x, [k]: val }))
 
-  const pickPhoto = (field) => async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBusy(field)
-    try { set(field)(await uploadPhoto(file)) } catch (err) { toast(err.message, true) } finally { setBusy(''); e.target.value = '' }
-  }
   const save = async () => {
     const row = {
       tagline: f.tagline.trim() || null,

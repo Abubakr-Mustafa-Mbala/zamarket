@@ -27,7 +27,7 @@ export default function About() {
     <div className="about">
       <header className="about-head">
         <h1>About {name}</h1>
-        <p className="lead">{name} is a marketplace in Lusaka. Local sellers list what they make and sell; we take the order, call the customer to confirm it, and deliver it. Money changes hands when the goods do.</p>
+        <p className="lead">{name} is a marketplace in Lusaka. Local sellers list what they make and sell; we take the order, call the customer to confirm the price and delivery, collect payment, and deliver.</p>
         <p className="lead">We started it because buying online here usually means paying a stranger first and hoping. That is the part we removed.</p>
       </header>
 
@@ -50,7 +50,7 @@ export default function About() {
       <section className="about-cols">
         <article>
           <h2>Buying from us</h2>
-          <p>You order online. We call you to agree the delivery and the price before anything is paid. When the order reaches you, you pay — cash or mobile money, whichever suits.</p>
+          <p>You order online and we call you to agree the price and the delivery before any money moves. For items we hold ourselves you can pay when the order reaches you. For a local seller's goods we collect payment by mobile money first, because we pay that seller when we collect the goods from them.</p>
           <p>If what arrives is not what was described, tell us and we will put it right. We only ever ask for your name, your phone and where to deliver.</p>
         </article>
         <article>

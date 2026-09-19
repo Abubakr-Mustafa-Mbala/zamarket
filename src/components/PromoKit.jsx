@@ -40,10 +40,11 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   }, [layout, product, link, offer])
 
   const copy = async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
+  const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
   const share = async () => {
     if (!blob) return copy()
     const how = await sharePicture(blob, { caption: text, filename: `${product.slug}.jpg` })
-    if (how === 'downloaded') toast('Picture saved. Post it with the caption.')
+    if (how === 'downloaded') toast('Picture saved to your downloads')
   }
 
   return (
@@ -63,9 +64,13 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
           <textarea className="input kit-text" rows={9} value={text} onChange={(e) => setEdited(e.target.value)} />
           <div className="btn-row">
-            <button className="btn primary" onClick={share}>{layout === 'none' ? 'Copy message' : 'Share picture and message'}</button>
-            <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
-            <button className="btn" onClick={copy}>Copy</button>
+            {layout === 'none'
+              ? <button className="btn primary" onClick={copy}>Copy the message</button>
+              : canShareFiles
+                ? <button className="btn primary" onClick={share}>Share picture and message</button>
+                : <button className="btn primary" onClick={share}>Download the picture</button>}
+            <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
+            <button className="btn" onClick={copy}>Copy the message</button>
             {edited !== null && <button className="btn ghost sm" onClick={() => setEdited(null)}>Undo my edits</button>}
           </div>
         </div>

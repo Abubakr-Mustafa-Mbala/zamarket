@@ -116,7 +116,7 @@ export async function offerCard({ product, link, offerText }) {
     ctx.fillText(money(product.normal_price), 64 + pw + 22, after + 62)
   }
 
-  footer(ctx, link, 'On ZaMarket · pay when you receive it')
+  footer(ctx, link, 'On ZaMarket · confirmed by phone before you pay')
   return toBlob(c)
 }
 
@@ -175,10 +175,10 @@ export async function productCard({ product, link, sellerName }) {
   ctx.fillStyle = '#4B5A66'
   ctx.font = '400 34px Instrument Sans, system-ui, sans-serif'
   const line = product.fulfilment === 'service'
-    ? 'Book online · pay after we confirm'
+    ? 'Book online · confirmed by phone first'
     : product.fulfilment === 'made_to_order'
       ? 'Made to order · delivered in Lusaka'
-      : 'Delivered in Lusaka · pay when you receive it'
+      : 'Delivered in Lusaka · confirmed by phone first'
   ctx.fillText(line, 64, afterName + 140)
 
   footer(ctx, link, sellerName ? `Sold by ${sellerName} on ZaMarket` : 'On ZaMarket')

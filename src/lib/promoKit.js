@@ -4,6 +4,7 @@
 // something the seller did not say.
 
 import { money } from './format'
+import { payCaption } from './paymentWords'
 
 const pick = (arr, i) => arr[((i % arr.length) + arr.length) % arr.length]
 
@@ -21,10 +22,10 @@ export function facts(product, offer, link, settings) {
     offer: offer?.copy || null,
     link,
     delivery: product.fulfilment === 'service'
-      ? 'Book online, pay after we confirm'
+      ? `Book online. ${payCaption(product, settings)}`
       : product.fulfilment === 'made_to_order'
-        ? 'Made to order, delivered in Lusaka'
-        : 'Delivered in Lusaka, pay when you receive it',
+        ? `Made to order, delivered in Lusaka. ${payCaption(product, settings)}`
+        : `Delivered in Lusaka. ${payCaption(product, settings)}`,
     kind: product.offering_type || 'product',
     vendor: product.vendor_name || null,
   }

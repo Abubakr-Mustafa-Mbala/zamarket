@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import ActionBell from './ActionBell'
 
 const I = {
   home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 11 12 3l9 8v10H3z" /></svg>,
@@ -29,7 +30,7 @@ const STAFF_NAV = [
   { to: '/admin/simulator', label: 'Should I buy?' },
   { group: 'Growth' },
   { to: '/admin/offers', label: 'Offers' },
-  { to: '/admin/resellers', label: 'Resellers' },
+  { to: '/admin/resellers', label: 'Affiliates' },
   { to: '/admin/vendors', label: 'Vendors' },
   { to: '/admin/marketing', label: 'Marketing' },
   { to: '/admin/reviews', label: 'Reviews' },
@@ -48,7 +49,6 @@ const RESELLER_NAV = [
   { to: '/sell/find-customers', label: 'Find customers' },
   { to: '/sell/training', label: 'Training' },
   { to: '/sell/products', label: 'Products to sell' },
-  { to: '/sell/new-sale', label: 'Record a sale' },
   { to: '/sell/earnings', label: 'My earnings' },
   { to: '/sell/commissions', label: 'Commissions' },
 ]
@@ -92,7 +92,7 @@ const MOBILE_TABS = {
   reseller: [
     { to: '/sell', label: 'Sales', icon: I.home, end: true },
     { to: '/sell/find-customers', label: 'Sell', icon: I.box },
-    { to: '/sell/new-sale', label: 'New sale', icon: I.cart },
+    { to: '/sell/find-customers', label: 'Promote', icon: I.cart },
     { to: '/sell/earnings', label: 'Earnings', icon: I.coins },
   ],
   vendor: [
@@ -133,6 +133,7 @@ export default function Shell({ kind }) {
             <span className="strong">{profile?.full_name || profile?.email}</span>
             <span className="badge">{profile?.role}</span>
           </div>
+          <ActionBell />
           {kind === 'staff' && !marketer && (
             <div className="mode-switch">
               <div className="segmented">

@@ -38,7 +38,7 @@ export default async function handler(request, context) {
   const shop = Deno.env.get('SITE_NAME') || 'ZaMarket'
 
   let title = `${shop} — buy online in Lusaka, Zambia`
-  let description = 'Shop phones, home goods, fashion, food made to order and local services in Lusaka. Order online, we confirm by phone, and you pay when you receive it.'
+  let description = 'Shop phones, home goods, fashion, food made to order and local services in Lusaka. Order online and we call you to confirm the price and delivery.'
   let image = `${site}/social.png`
   let canonical = site + url.pathname
   let jsonld = null
@@ -58,7 +58,7 @@ export default async function handler(request, context) {
         if (p) {
           const what = p.fulfilment === 'service' ? 'Book' : 'Buy'
           title = p.page?.seo?.title || `${p.name} — ${money(p.price)} | ${shop} Lusaka`
-          description = clip(p.page?.seo?.description || p.page?.hero_headline || p.description || `${what} ${p.name} in Lusaka for ${money(p.price)}. ${p.vendor_name ? `Sold by ${p.vendor_name}. ` : ''}Delivery in Lusaka District, other areas arranged. Pay when you receive it.`)
+          description = clip(p.page?.seo?.description || p.page?.hero_headline || p.description || `${what} ${p.name} in Lusaka for ${money(p.price)}. ${p.vendor_name ? `Sold by ${p.vendor_name}. ` : ''}Delivery in Lusaka District, other areas arranged. We confirm every order by phone first.`)
           if (p.images?.[0]) image = p.images[0]
           canonical = p.vendor_slug ? `${site}/${p.vendor_slug}/${p.slug}` : `${site}/p/${p.slug}`
           jsonld = {
@@ -74,7 +74,7 @@ export default async function handler(request, context) {
         const v = await api(`public_vendors?slug=eq.${encodeURIComponent(storeSlug)}&select=business_name,description,category,town,rating,review_count,slug`, SB, KEY)
         if (v) {
           title = `${v.business_name} — ${v.category || 'Seller'} in ${v.town || 'Lusaka'} | ${shop}`
-          description = clip(v.description || `Shop ${v.business_name} on ${shop}. ${v.category || ''} in ${v.town || 'Lusaka'}, Zambia. Order online and pay when you receive it.`)
+          description = clip(v.description || `Shop ${v.business_name} on ${shop}. ${v.category || ''} in ${v.town || 'Lusaka'}, Zambia. Order online and we call you to confirm.`)
           canonical = `${site}/${v.slug}`
           jsonld = {
             '@context': 'https://schema.org', '@type': 'Store', name: v.business_name,
@@ -93,7 +93,7 @@ export default async function handler(request, context) {
       } else if (parts[0] === 'search') {
         const cat = url.searchParams.get('cat')
         const qq = url.searchParams.get('q')
-        if (cat) { title = `${cat} in Lusaka | ${shop}`; description = clip(`Buy ${cat.toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged. Pay when you receive it.`); canonical = `${site}/search?cat=${encodeURIComponent(cat)}` }
+        if (cat) { title = `${cat} in Lusaka | ${shop}`; description = clip(`Buy ${cat.toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged. We confirm every order by phone first.`); canonical = `${site}/search?cat=${encodeURIComponent(cat)}` }
         else if (qq) { title = `${qq} in Lusaka | ${shop}`; robots = 'noindex,follow' }
       } else if (parts.length === 0) {
         jsonld = {

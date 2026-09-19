@@ -3197,6 +3197,100 @@ begin
     jsonb_build_object('trust_level', p_level, 'id_seen', p_id_seen));
 end $$;
 
+-- Everything waiting on somebody, in one list. Each person sees only their own work.
+create or replace function action_center() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v uuid := my_vendor_id(); r uuid := my_reseller_id(); out jsonb := '[]'; today date := lusaka_date(now());
+  add_group jsonb;
+begin
+  if is_staff() or can_market() then
+    -- the till: orders and money first
+    add_group := jsonb_build_object('key', 'new_orders', 'label', 'New orders to confirm', 'tone', 'urgent', 'link', '/admin/orders?status=pending',
+      'count', (select count(*) from orders where status = 'pending'),
+      'oldest', (select min(created_at) from orders where status = 'pending'));
+    out := out || jsonb_build_array(add_group);
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'unpaid', 'label', 'Delivered but not paid', 'tone', 'urgent', 'link', '/admin/orders?status=delivered',
+      'count', (select count(*) from orders where status in ('delivered', 'completed') and payment_status <> 'paid'),
+      'oldest', (select min(created_at) from orders where status in ('delivered', 'completed') and payment_status <> 'paid')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'to_deliver', 'label', 'Waiting to go out', 'tone', 'normal', 'link', '/admin/deliveries',
+      'count', (select count(*) from orders where status in ('paid', 'processing', 'ready_for_dispatch')),
+      'oldest', (select min(created_at) from orders where status in ('paid', 'processing', 'ready_for_dispatch'))));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'needed_today', 'label', 'Needed today or overdue', 'tone', 'urgent', 'link', '/admin/orders',
+      'count', (select count(*) from orders where needed_by is not null and needed_by <= today and status not in ('completed','cancelled','refunded','returned')),
+      'oldest', (select min(created_at) from orders where needed_by is not null and needed_by <= today and status not in ('completed','cancelled','refunded','returned'))));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'payouts', 'label', 'Payout requests', 'tone', 'money', 'link', '/admin/finance?tab=requests',
+      'count', (select count(*) from payouts where status in ('requested', 'approved')),
+      'amount', (select coalesce(sum(amount), 0) from payouts where status in ('requested', 'approved')),
+      'oldest', (select min(requested_at) from payouts where status in ('requested', 'approved'))));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'commissions', 'label', 'Commissions to check', 'tone', 'money', 'link', '/admin/finance?tab=commissions',
+      'count', (select count(*) from commissions where status = 'pending' and eligible_at < now()),
+      'amount', (select coalesce(sum(amount), 0) from commissions where status = 'pending' and eligible_at < now())));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'settlements', 'label', 'Vendor payouts to approve', 'tone', 'money', 'link', '/admin/finance?tab=settlements',
+      'count', (select count(*) from settlements where status = 'pending'),
+      'amount', (select coalesce(sum(net_payable), 0) from settlements where status = 'pending')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'vendor_apps', 'label', 'Vendors waiting for a decision', 'tone', 'normal', 'link', '/admin/vendors',
+      'count', (select count(*) from vendors where status = 'pending'),
+      'oldest', (select min(created_at) from vendors where status = 'pending')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'affiliate_apps', 'label', 'Affiliates waiting for a decision', 'tone', 'normal', 'link', '/admin/resellers',
+      'count', (select count(*) from resellers where status = 'pending'),
+      'oldest', (select min(created_at) from resellers where status = 'pending')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'products', 'label', 'Products sent for review', 'tone', 'normal', 'link', '/admin/products',
+      'count', (select count(*) from products where status = 'submitted')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'enquiries', 'label', 'Enquiries waiting', 'tone', 'normal', 'link', '/admin/deals',
+      'count', (select count(*) from deals where status in ('enquiry', 'negotiating')),
+      'oldest', (select min(created_at) from deals where status in ('enquiry', 'negotiating'))));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'ad_requests', 'label', 'Vendors asking for advertising', 'tone', 'normal', 'link', '/admin/marketing/requests',
+      'count', (select count(*) from ad_requests where status = 'new')));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'reviews', 'label', 'Reviews to approve', 'tone', 'normal', 'link', '/admin/reviews',
+      'count', (select count(*) from reviews where not approved)));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'leads', 'label', 'Leads to follow up', 'tone', 'normal', 'link', '/admin/marketing/leads',
+      'count', (select count(*) from leads where stage in ('new','contacted','engaged') and (next_follow_up <= today or (stage = 'new' and last_contact_at is null)))));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'stock', 'label', 'Running out of stock', 'tone', 'normal', 'link', '/admin/inventory',
+      'count', (select count(*) from products where owner_type = 'founder' and fulfilment = 'in_stock' and status = 'published' and stock_available <= 3)));
+
+    out := out || jsonb_build_array(jsonb_build_object('key', 'stock_requests', 'label', 'People waiting for stock', 'tone', 'normal', 'link', '/admin/marketing/leads',
+      'count', (select count(*) from stock_requests where not fulfilled)));
+
+  elsif v is not null then
+    out := out || jsonb_build_array(jsonb_build_object('key', 'to_make', 'label', 'Orders to prepare', 'tone', 'urgent', 'link', '/vendor/orders',
+      'count', (select count(*) from order_items i join orders o on o.id = i.order_id
+                 where i.vendor_id = v and i.vendor_status in ('new', 'preparing')
+                   and o.status in ('confirmed','payment_pending','paid','processing','ready_for_dispatch'))));
+    out := out || jsonb_build_array(jsonb_build_object('key', 'due_today', 'label', 'Needed today or overdue', 'tone', 'urgent', 'link', '/vendor/orders',
+      'count', (select count(*) from order_items i join orders o on o.id = i.order_id
+                 where i.vendor_id = v and i.vendor_status in ('new', 'preparing') and o.needed_by is not null and o.needed_by <= today)));
+    out := out || jsonb_build_array(jsonb_build_object('key', 'money_ready', 'label', 'Money you can ask for', 'tone', 'money', 'link', '/vendor/payouts',
+      'count', (select count(*) from settlements where vendor_id = v and status in ('eligible', 'approved')),
+      'amount', (select coalesce(sum(net_payable), 0) from settlements where vendor_id = v and status in ('eligible', 'approved'))));
+    out := out || jsonb_build_array(jsonb_build_object('key', 'rejected', 'label', 'Products needing changes', 'tone', 'normal', 'link', '/vendor/products',
+      'count', (select count(*) from products where vendor_id = v and status = 'rejected')));
+
+  elsif r is not null then
+    out := out || jsonb_build_array(jsonb_build_object('key', 'money_ready', 'label', 'Money you can ask for', 'tone', 'money', 'link', '/sell/commissions',
+      'count', (select count(*) from commissions where reseller_id = r and status in ('verified', 'approved')),
+      'amount', (select coalesce(sum(amount), 0) from commissions where reseller_id = r and status in ('verified', 'approved'))));
+    out := out || jsonb_build_array(jsonb_build_object('key', 'payout_status', 'label', 'Payouts being processed', 'tone', 'normal', 'link', '/sell/commissions',
+      'count', (select count(*) from payouts where reseller_id = r and status in ('requested', 'approved')),
+      'amount', (select coalesce(sum(amount), 0) from payouts where reseller_id = r and status in ('requested', 'approved'))));
+  end if;
+
+  return (select coalesce(jsonb_agg(g), '[]') from jsonb_array_elements(out) g where (g->>'count')::int > 0);
+end $$;
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
 alter table staff_invites enable row level security;

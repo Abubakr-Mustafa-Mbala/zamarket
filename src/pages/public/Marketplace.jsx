@@ -10,6 +10,9 @@ import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
 import { useDepartments, useShopInfo } from '../../lib/departments'
+import { payLine } from '../../lib/paymentWords'
+import { commissionLabel } from '../../lib/economics'
+import PromoKit from '../../components/PromoKit'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareThis from '../../components/ShareThis'
 
@@ -120,7 +123,7 @@ export function PublicShell() {
         <div className="sf-cols">
           <div>
             <div className="wordmark on-mint">ZaMarket</div>
-            <p>Lusaka's marketplace for products, made-to-order goods and local services. Order online, we confirm by phone, you pay and receive.</p>
+            <p>Lusaka's marketplace for products, made-to-order goods and local services. Order online, we confirm by phone, then you pay and receive.</p>
           </div>
           <div>
             <h4>Shop</h4>
@@ -218,7 +221,7 @@ function Row({ title, link, children }) {
 // ---------- home ----------
 export function Storefront() {
   const stocked = useStockedDepartments(useDepartments())
-  useSeo({ title: 'ZaMarket — buy online in Lusaka, Zambia', description: 'Shop phones, home goods, fashion, cakes made to order and local services in Lusaka. Order online, we confirm by phone, and you pay when you receive it.' })
+  useSeo({ title: 'ZaMarket — buy online in Lusaka, Zambia', description: 'Shop phones, home goods, fashion, cakes made to order and local services in Lusaka. Order online and we call you to confirm the price and delivery.' })
   const DEPARTMENTS = useDepartments()
   const data = useCatalogue()
   const { ref } = useCart()
@@ -240,7 +243,7 @@ export function Storefront() {
         <div className="hero2-copy">
           <span className="hero2-eyebrow">Lusaka · delivered to your door</span>
           <h1>Buy from local sellers, without the risk.</h1>
-          <p>We take the order, call you to confirm it, and deliver. You pay when it reaches you.</p>
+          <p>We take the order, call you to confirm the price and delivery, then get it to you.</p>
           <div className="hero-actions">
             <Link to="/search" className="btn primary">Start shopping</Link>
             {stocked[0] && <Link to={`/search?cat=${encodeURIComponent(stocked[0].name)}`} className="btn ghost-dark">{stocked[0].name}</Link>}
@@ -257,8 +260,8 @@ export function Storefront() {
       </section>
 
       <ul className="promises" aria-label="How ordering works">
-        <li><strong>Nothing paid upfront</strong><span>We confirm by phone first</span></li>
-        <li><strong>Pay on delivery</strong><span>Cash or mobile money</span></li>
+        <li><strong>Nothing paid upfront</strong><span>We call you first, always</span></li>
+        <li><strong>Confirmed first</strong><span>Price agreed before you pay</span></li>
         <li><strong>Local sellers</strong><span>Checked before they sell</span></li>
         <li><strong>Real people</strong><span>Call us any working day</span></li>
       </ul>
@@ -320,7 +323,7 @@ export function Storefront() {
 function useSeoStore(store) {
   useSeo(store ? {
     title: `${store.business_name} — ${store.category || 'Seller'} in ${store.town || 'Lusaka'} | ZaMarket`,
-    description: (store.description || `Shop ${store.business_name} on ZaMarket. Order online and pay when you receive it.`).slice(0, 160),
+    description: (store.description || `Shop ${store.business_name} on ZaMarket. Order online and we call you to confirm.`).slice(0, 160),
   } : {})
 }
 
@@ -492,6 +495,33 @@ export function SearchPage() {
 // ---------- product page ----------
 function ProductSeo({ p }) { useSeo(productSeo(p)); return null }
 
+// An approved affiliate browsing the shop gets their link and the promotion kit
+// right here, on whatever they are looking at.
+function AffiliateBar({ p }) {
+  const { role, profile, settings } = useAuth()
+  const [open, setOpen] = useState(false)
+  const toast = useToast()
+  const code = profile?.partner?.code
+  if (role !== 'reseller' || !code || !p?.slug) return null
+  const link = `${window.location.origin}/r/${code}/${p.slug}`
+  const earn = commissionLabel(p, settings)
+  const copy = async () => { try { await navigator.clipboard.writeText(link); toast('Your link is copied') } catch { toast('Could not copy', true) } }
+  return (
+    <div className="aff-bar">
+      <div>
+        <strong>Your link for this one</strong>
+        <span className="tiny">{link.replace(/^https?:\/\//, '')}</span>
+      </div>
+      <div className="btn-row">
+        <span className="aff-earn">You earn {money(earn.perUnit)}</span>
+        <button className="btn sm" onClick={copy}>Copy link</button>
+        <button className="btn sm primary" onClick={() => setOpen(true)}>Promote this</button>
+      </div>
+      {open && <PromoKit product={p} offer={null} code={code} settings={settings} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
 export function ProductPage() {
   const DEPARTMENTS = useDepartments()
   const shop = useShopInfo()
@@ -553,6 +583,7 @@ export function ProductPage() {
       {save > 0 && <div className="bb-save">Was <s>{money(p.normal_price)}</s>. You save {money(save)}</div>}
       <div className={`bb-avail ${out ? 'out' : ''}`}>{availability}</div>
       {!scheduled && !out && <div className={`bb-line ${shop.deliveryIncluded ? 'ok strong' : ''}`}>{deliveryLine}</div>}
+      <div className="bb-line">{payLine(p, shop.settings || {})}</div>
       {p.fulfilment === 'service' && <div className="bb-line">Pick your date{p.time_slots?.length ? ' and time' : ''} at checkout.</div>}
       {p.fulfilment === 'made_to_order' && <div className="bb-line">Choose the date you need it at checkout.</div>}
       {out ? (
@@ -584,6 +615,7 @@ export function ProductPage() {
   return (
     <div className="pdp">
       <ProductSeo p={p} />
+      <AffiliateBar p={p} />
       <div className="crumbs">
         <Link to="/">Home</Link>
         {storeParam && p.vendor_name ? <Link to={`/${storeParam}`}>{p.vendor_name}</Link> : p.category && <Link to={`/search?cat=${encodeURIComponent(p.category)}`}>{p.category}</Link>}

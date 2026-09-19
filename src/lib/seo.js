@@ -34,7 +34,7 @@ export function productSeo(p, shop = 'ZaMarket') {
   const seo = p.page?.seo || {}
   return {
     title: seo.title || `${p.name} — ${price} | ${shop} Lusaka`,
-    description: seo.description || `${p.fulfilment === 'service' ? 'Book' : 'Buy'} ${p.name} in Lusaka for ${price}. ${p.vendor_name ? `Sold by ${p.vendor_name}. ` : ''}Delivery in Lusaka District, other areas arranged. Pay when you receive it.`.slice(0, 160),
+    description: seo.description || `${p.fulfilment === 'service' ? 'Book' : 'Buy'} ${p.name} in Lusaka for ${price}. ${p.vendor_name ? `Sold by ${p.vendor_name}. ` : ''}Delivery in Lusaka District, other areas arranged. We confirm every order by phone first.`.slice(0, 160),
     image: p.images?.[0],
   }
 }

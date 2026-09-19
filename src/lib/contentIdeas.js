@@ -17,7 +17,7 @@ const TEMPLATES = [
     title: (p) => `Unboxing the ${p.name}`,
     hook: () => 'New stock just arrived.',
     shots: (p) => ['Open the packaging on camera', 'Show what is inside', 'Show it working or being used'],
-    caption: (p, link) => `Just arrived: ${p.name}. ${money(p.price)}.\nWe deliver in Lusaka and you pay when you receive it.\n${link}`,
+    caption: (p, link) => `Just arrived: ${p.name}. ${money(p.price)}.\nWe call you to confirm, then deliver in Lusaka.\n${link}`,
   },
   {
     key: 'in_use', platform: 'Instagram', kind: 'Photo or short video',
@@ -73,7 +73,7 @@ const TEMPLATES = [
     title: () => 'How ordering works',
     hook: () => 'People hesitate because they do not trust online.',
     shots: () => ['A photo of an order going out', 'Three steps written on screen'],
-    caption: (p, link) => `Order online, we call you to confirm, you pay when you receive it. Nothing paid upfront.\n${link}`,
+    caption: (p, link) => `Order online. We call you to confirm the price and delivery before any money moves.\n${link}`,
   },
 ]
 

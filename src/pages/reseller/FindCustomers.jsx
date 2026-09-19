@@ -59,7 +59,7 @@ const OBJECTIONS = [
   ['It is too expensive', "Ask what they're comparing it to. Then explain what's included — delivery, the warranty, the quality. If it's still too much, offer a cheaper product instead of dropping the price."],
   ["I'll think about it", "Fine. Ask: 'What would you need to know to decide?' Then answer that, and agree when you'll check back."],
   ['Is it original?', 'Say exactly what you know and nothing more. Show the photos, and say where it comes from. Never promise what you cannot back up.'],
-  ["I don't trust buying online", 'They pay when they receive it. ZaMarket calls to confirm every order before anything is paid.'],
+  ["I don't trust buying online", 'ZaMarket calls to confirm every order before any money moves, and the customer pays by mobile money or on delivery depending on the item.'],
   ['Can I get a discount?', "You don't set prices, but tell them about any live offer. If there isn't one, say so honestly."],
   ['Send it and I pay later', 'Say no politely. Orders are confirmed by ZaMarket and paid on delivery.'],
 ]
@@ -86,7 +86,7 @@ export default function FindCustomers() {
     const benefit = (product.benefits || [])[0]
     return [
       { label: 'Someone you know', text: `Hi ${'{name}'}, how are you? I've started selling on ZaMarket. We have ${product.name} at ${price}${benefit ? ` — ${benefit.toLowerCase()}` : ''}. Delivery in Lusaka. Want me to send you the details?\n\n${productLink}` },
-      { label: 'Status or social post', text: `${product.name} — ${price}\n${(product.benefits || []).slice(0, 3).map((b) => `• ${b}`).join('\n')}\nDelivery in Lusaka, pay when you receive it.\nOrder here: ${productLink}` },
+      { label: 'Status or social post', text: `${product.name} — ${price}\n${(product.benefits || []).slice(0, 3).map((b) => `• ${b}`).join('\n')}\nDelivery in Lusaka. We confirm every order by phone.\nOrder here: ${productLink}` },
       { label: 'A group', text: `Selling ${product.name} at ${price}. ${benefit || ''} Delivery in Lusaka, other areas arranged. Order through ZaMarket here: ${productLink}` },
       { label: 'Following up', text: `Hi ${'{name}'}, just checking if you still want the ${product.name}. No problem either way — I'll keep you posted if the price changes.` },
       { label: 'After they buy', text: `Thank you! ZaMarket will call you to confirm and arrange delivery. If you're happy with it, telling one friend helps me a lot.` },
@@ -131,7 +131,7 @@ export default function FindCustomers() {
         <CopyLine text={`https://${link}`} />
         <ShareThis store={{ business_name: 'ZaMarket', tagline: 'Everything in one place, delivered in Lusaka', category: 'Marketplace', town: 'Lusaka', product_count: (data.products || []).length }}
           products={data.products || []} link={`https://${link}`}
-          caption={`Everything I sell is here — phones, home goods, cakes made to order and services. Delivered in Lusaka, you pay when you receive it.\nShop here: https://${link}`}
+          caption={`Everything I sell is here — phones, home goods, cakes made to order and services. Delivered in Lusaka, we confirm every order by phone first.\nShop here: https://${link}`}
           className="btn buy" label="Make a picture of the shop" />
         {product && <CopyLine text={`https://${productLink}`} />}
       </section>
