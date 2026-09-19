@@ -1934,7 +1934,13 @@ begin
   if not found then raise exception 'Order not found'; end if;
   code := o.review_code;
   if code is null then
-    code := lower(substr(translate(encode(gen_random_bytes(6), 'base64'), '0123456789+/=IOl', 'abcdefghjkmnpqrs'), 1, 4));
+    -- four easy letters, from a random uuid. No extensions needed, and no digits
+    -- or lookalike letters so it can be read out over the phone.
+    loop
+      code := translate(substr(replace(gen_random_uuid()::text, '-', ''), 1, 4),
+                        '0123456789abcdef', 'kmnpqrstuvwxyzab');
+      exit when not exists (select 1 from orders o2 where o2.review_code = code and o2.order_number = o.order_number);
+    end loop;
     update orders set review_code = code where id = p_order;
   end if;
   return o.order_number || '-' || code;
