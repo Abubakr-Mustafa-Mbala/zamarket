@@ -25,55 +25,58 @@ export default function About() {
 
   return (
     <div className="about">
-      <h1>About {name}</h1>
-      <p className="lead">We are a Lusaka marketplace. Local sellers list what they sell, we take the order, confirm it by phone, and deliver it. You pay when you receive it.</p>
+      <header className="about-head">
+        <h1>About {name}</h1>
+        <p className="lead">{name} is a marketplace in Lusaka. Local sellers list what they make and sell; we take the order, call the customer to confirm it, and deliver it. Money changes hands when the goods do.</p>
+        <p className="lead">We started it because buying online here usually means paying a stranger first and hoping. That is the part we removed.</p>
+      </header>
 
-      <section className="card stack-sm">
-        <h2>Talk to a person</h2>
-        <ul className="contact-list">
-          {phone && <li><span>Phone</span><a href={`tel:${phone}`}>{phone}</a></li>}
-          {wa && <li><span>WhatsApp</span><a href={`https://wa.me/${String(wa).replace(/\D/g, '').replace(/^0/, '260')}`} target="_blank" rel="noreferrer">{wa}</a></li>}
-          {email && <li><span>Email</span><a href={`mailto:${email}`}>{email}</a></li>}
-          {address && <li><span>Find us</span><span>{address}</span></li>}
-          {reg && <li><span>Registration</span><span>{reg}</span></li>}
-        </ul>
-        {socials.length > 0 && (
-          <div className="btn-row">{socials.map(([label, url]) => <a key={label} className="btn sm" href={url} target="_blank" rel="noreferrer">{label}</a>)}</div>
-        )}
-        {!phone && !wa && !email && <p className="small muted">Contact details are being set up.</p>}
+      <section className="about-contact">
+        <div>
+          <h2>Talk to a person</h2>
+          <p className="small muted">Any working day. A real number, answered by us.</p>
+          <ul className="contact-list">
+            {phone && <li><span>Phone</span><a href={`tel:${phone}`}>{phone}</a></li>}
+            {wa && <li><span>WhatsApp</span><a href={`https://wa.me/${String(wa).replace(/\D/g, '').replace(/^0/, '260')}`} target="_blank" rel="noreferrer">{wa}</a></li>}
+            {email && <li><span>Email</span><a href={`mailto:${email}`}>{email}</a></li>}
+            {address && <li><span>Find us</span><span>{address}</span></li>}
+            {reg && <li><span>Registration</span><span>{reg}</span></li>}
+          </ul>
+          {!phone && !wa && !email && <p className="small muted">Contact details are being set up.</p>}
+          {socials.length > 0 && <div className="btn-row mt">{socials.map(([label, url]) => <a key={label} className="btn sm" href={url} target="_blank" rel="noreferrer">{label}</a>)}</div>}
+        </div>
       </section>
 
-      <section className="card stack-sm">
-        <h2>If you are buying</h2>
-        <ul className="plain-list">
-          <li>You pay nothing until we have called you and agreed the price and delivery.</li>
-          <li>You pay when the order reaches you, unless you choose to pay earlier.</li>
-          <li>If what arrives is not what was described, tell us and we will put it right.</li>
-          <li>We only ask for your name, phone and where to deliver. Nothing else.</li>
-        </ul>
+      <section className="about-cols">
+        <article>
+          <h2>Buying from us</h2>
+          <p>You order online. We call you to agree the delivery and the price before anything is paid. When the order reaches you, you pay — cash or mobile money, whichever suits.</p>
+          <p>If what arrives is not what was described, tell us and we will put it right. We only ever ask for your name, your phone and where to deliver.</p>
+        </article>
+        <article>
+          <h2>Selling with us</h2>
+          <p>Listing costs nothing. We earn a share only when something of yours sells, and you are paid after the customer has received it. You can ask to be paid from your dashboard whenever there is money waiting.</p>
+          <p>Bring your own customers through your store link and our share is smaller, because you did the work of finding them.</p>
+        </article>
+        <article>
+          <h2>Checks on sellers</h2>
+          <p>To sell everyday items we need a business name, a phone number and the area you work from. That is all, and you can start the same day.</p>
+          <p>Before anyone lists expensive items, or takes a large payout, we meet them and look at an NRC or PACRA paper. <strong>We write down that the check happened. We do not keep the ID number.</strong></p>
+          <p>Everything sold here must belong to the seller, or be sold with the owner's permission.</p>
+        </article>
+        <article>
+          <h2>Your details</h2>
+          <p>Your phone and address are used to deliver your order, and for nothing else. We do not sell anyone's details to anybody.</p>
+          <p>A seller sees a customer's phone and address only after an order is confirmed, so they can prepare and deliver it. Ask us to delete your details and we will, except where we must keep a record of a sale.</p>
+        </article>
       </section>
 
-      <section className="card stack-sm">
-        <h2>If you are selling with us</h2>
-        <ul className="plain-list">
-          <li>Listing is free. We take a share only when something sells.</li>
-          <li>You keep your own customers. Bring them through your own store link and our fee is smaller.</li>
-          <li>We pay you after the order is delivered and checked. You can ask to be paid from your dashboard.</li>
-          <li>To start selling everyday items we need your business name, phone and area. Nothing more.</li>
-          <li>For expensive items, or before large payouts, we meet you and check an ID or PACRA paper. <strong>We record that the check happened, not your ID number.</strong></li>
-          <li>You must own what you sell, or have the owner's permission. Anything suspected stolen is removed and reported.</li>
-        </ul>
+      <section className="about-cta">
+        <div>
+          <h2>Sell with us, or earn from sharing</h2>
+          <p className="small muted">Two ways in. Both are free to start.</p>
+        </div>
         <div className="btn-row"><Link className="btn primary" to="/apply/vendor">Sell on ZaMarket</Link><Link className="btn" to="/apply/reseller">Become an affiliate</Link></div>
-      </section>
-
-      <section className="card stack-sm">
-        <h2>What we do with your details</h2>
-        <ul className="plain-list">
-          <li>We use your phone and address to deliver your order and nothing else.</li>
-          <li>We do not sell anyone's details to anybody.</li>
-          <li>Sellers only see a customer's phone and address after an order is confirmed, so they can deliver it.</li>
-          <li>Ask us to delete your details and we will, unless we must keep a record of a sale.</li>
-        </ul>
       </section>
     </div>
   )

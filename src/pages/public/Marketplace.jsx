@@ -236,21 +236,32 @@ export function Storefront() {
 
   return (
     <div className="home">
-      <section className="hero">
-        <div className="hero-copy">
-          <h1>Lusaka's marketplace, delivered to your door.</h1>
-          <p>Phones, home goods, cakes baked to order and services from local sellers — all in one place, with nothing to pay until we've confirmed your order.</p>
+      <section className="hero2">
+        <div className="hero2-copy">
+          <span className="hero2-eyebrow">Lusaka · delivered to your door</span>
+          <h1>Buy from local sellers, without the risk.</h1>
+          <p>We take the order, call you to confirm it, and deliver. You pay when it reaches you.</p>
           <div className="hero-actions">
             <Link to="/search" className="btn primary">Start shopping</Link>
+            {stocked[0] && <Link to={`/search?cat=${encodeURIComponent(stocked[0].name)}`} className="btn ghost-dark">{stocked[0].name}</Link>}
           </div>
           {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They'll get credit for your order.</p>}
         </div>
-        <ol className="how" aria-label="How ordering works">
-          <li><span className="how-n">1</span><div><strong>Order online</strong><span>Add to cart and check out in a minute.</span></div></li>
-          <li><span className="how-n">2</span><div><strong>We call to confirm</strong><span>Delivery cost and payment are agreed with you first.</span></div></li>
-          <li><span className="how-n">3</span><div><strong>Pay and receive</strong><span>Delivered in Lusaka District; other areas arranged.</span></div></li>
-        </ol>
+        <div className="hero2-art" aria-hidden>
+          {(deals.length ? deals : products).slice(0, 3).map((p, i) => (
+            <span key={p.id} className={`hero2-tile t${i}`}>
+              {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="hero2-ph" />}
+            </span>
+          ))}
+        </div>
       </section>
+
+      <ul className="promises" aria-label="How ordering works">
+        <li><strong>Nothing paid upfront</strong><span>We confirm by phone first</span></li>
+        <li><strong>Pay on delivery</strong><span>Cash or mobile money</span></li>
+        <li><strong>Local sellers</strong><span>Checked before they sell</span></li>
+        <li><strong>Real people</strong><span>Call us any working day</span></li>
+      </ul>
 
       {products.length === 0 ? (
         <div className="empty-shop">

@@ -72,7 +72,7 @@ export default function AddStock() {
   const price = f.price === '' ? pr.minYou.price : n(f.price)
   const k = pr.keep(price)
   const target = pr.targetMarkup
-  const picked = price === pr.minYou.price ? 'you' : price === pr.minAffiliate.price ? 'reseller' : null
+  const picked = price === pr.minYou.price ? 'you' : price === pr.minReseller.price ? 'reseller' : null
 
   const pickProduct = (p) => {
     setF((c) => ({
@@ -245,7 +245,7 @@ export default function AddStock() {
             </button>
             <button type="button" className={`tier ${picked === 'reseller' ? 'on' : ''}`} onClick={() => set('price')(String(pr.minReseller.price))}>
               <span className="tier-name">Minimum with affiliates<em>still {target}% after their cut</em></span>
-              <span className="tier-price">{money(pr.minAffiliate.price, { whole: pr.minAffiliate.price % 1 === 0 })}</span>
+              <span className="tier-price">{money(pr.minReseller.price, { whole: pr.minReseller.price % 1 === 0 })}</span>
               <span className="tier-keep">you keep {money(pr.keep(pr.minReseller.price).withReseller)} each</span>
             </button>
           </div>
@@ -263,8 +263,8 @@ export default function AddStock() {
               </div>
               <div>
                 <div className="rc-title">An affiliate sells it</div>
-                <div className="rc-keep">{money(k.withAffiliate)}</div>
-                <div className="rc-sub">you keep · {k.onCostAffiliate}% on cost · reseller gets {money(k.commission)}</div>
+                <div className="rc-keep">{money(k.withReseller)}</div>
+                <div className="rc-sub">you keep · {k.onCostReseller}% on cost · reseller gets {money(k.commission)}</div>
                 <div className="rc-total">{money(k.withReseller * sellable, { whole: true })} if all {sellable} sell</div>
               </div>
             </div>
@@ -282,9 +282,9 @@ export default function AddStock() {
               </dl>
             </details>
             {k.you <= 0 && <div className="warn-line bad">This price is below your cost. You lose money on every sale.</div>}
-            {k.you > 0 && k.withAffiliate <= 0 && <div className="warn-line bad">You lose money when an affiliate sells at this price.</div>}
+            {k.you > 0 && k.withReseller <= 0 && <div className="warn-line bad">You lose money when an affiliate sells at this price.</div>}
             {k.you > 0 && price < pr.minYou.exact && <div className="warn-line warn">Below your {target}% target — you'd make {k.onCostYou}% on cost.</div>}
-            {price >= pr.minYou.exact && k.withReseller > 0 && k.onCostAffiliate < target && <div className="warn-line warn">When a reseller sells, you make {k.onCostReseller}% on cost — under your {target}% target. Use "Minimum with affiliates" ({money(pr.minReseller.price)}) to protect it.</div>}
+            {price >= pr.minYou.exact && k.withReseller > 0 && k.onCostReseller < target && <div className="warn-line warn">When an affiliate sells, you make {k.onCostReseller}% on cost — under your {target}% target. Use "Minimum with affiliates" ({money(pr.minReseller.price)}) to protect it.</div>}
           </div>
 
           <label className="check big-check">
@@ -301,7 +301,7 @@ export default function AddStock() {
             <div className="done-tick">✓</div>
             <div className="strong">{done.sellable} × {done.name} added</div>
             <div>Selling at <strong>{money(done.price)}</strong> each</div>
-            <div className="small">If all sell: you keep about <strong>{money(done.keepAll, { whole: true })}</strong> ({money(done.keepAllAffiliate, { whole: true })} if affiliates sell them all)</div>
+            <div className="small">If all sell: you keep about <strong>{money(done.keepAll, { whole: true })}</strong> ({money(done.keepAllReseller, { whole: true })} if affiliates sell them all)</div>
             <div className="small muted">{done.status === 'published' ? 'Customers and resellers can see it now.' : 'Hidden for now. Publish it from Products when ready.'}</div>
           </div>
           <Link className="btn big copper block" to="/admin/offers">Make a deal for it (like Buy 2 get 1)</Link>
