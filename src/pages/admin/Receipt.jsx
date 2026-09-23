@@ -6,6 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, datetime, n, title } from '../../lib/format'
 import { Loading, Segmented, useToast } from '../../components/ui'
 import { btSupported, receiptBytes, printBytes } from '../../lib/thermal'
+import QrCode from '../../components/QrCode'
 
 export default function Receipt() {
   const { id } = useParams()
@@ -96,6 +97,11 @@ export default function Receipt() {
         <div className="r-sign"><span>Received by (customer)</span><span className="r-line" /></div>
         <div className="r-sign"><span>Delivered by</span><span className="r-line" /></div>
         <div className="r-rule" />
+        <div className="r-qr">
+          <QrCode value={`${window.location.origin}/order/${o.order_number}${o.verify_code ? `?v=${o.verify_code}` : ''}`} size={104} />
+          <span>Scan to view this order</span>
+          <strong>ZM-{String(o.order_number).padStart(6, '0')}</strong>
+        </div>
         <div className="r-center r-foot">
           <div>{settings.receipt_footer || 'Thank you for shopping with us!'}</div>
           <div>Rate your order: {window.location.host}/review</div>

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
-import { money } from '../../lib/format'
-import { Field, Input, Select, Textarea, useToast } from '../../components/ui'
+import { money, date } from '../../lib/format'
+import { Field, Input, Select, Textarea, useToast, Loading } from '../../components/ui'
 import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
 import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
 import { useShopInfo } from '../../lib/departments'
@@ -280,6 +280,11 @@ export function OrderConfirmed() {
   const [sp] = useSearchParams()
   const local = sp.get('local') === '1'
   const total = sp.get('total')
+  const code = sp.get('v')
+
+  // Scanned from a receipt: show what was bought, not "we'll call you shortly".
+  if (code) return <OrderVerify number={number} code={code} />
+
   return (
     <div className="card stack" style={{ maxWidth: 560, margin: '24px auto', textAlign: 'center', padding: 28 }}>
       <div style={{ fontSize: 40 }}>✓</div>
@@ -289,6 +294,64 @@ export function OrderConfirmed() {
       <p className="small muted">Keep your phone nearby — we usually call within a few hours.</p>
       <Link className="btn primary" to="/">Back to the store</Link>
       <InviteCard orderNumber={number} />
+    </div>
+  )
+}
+
+const STATUS_WORDS = {
+  pending: 'Waiting for us to confirm it with you',
+  confirmed: 'Confirmed with you',
+  payment_pending: 'Waiting for payment',
+  paid: 'Paid',
+  processing: 'Being prepared',
+  ready_for_dispatch: 'Ready to go out',
+  out_for_delivery: 'On the way to you',
+  delivered: 'Delivered',
+  completed: 'Finished',
+  cancelled: 'Cancelled',
+  refunded: 'Refunded',
+}
+
+function OrderVerify({ number, code }) {
+  const [data, setData] = useState(null)
+  useEffect(() => {
+    supabase.rpc('order_verify', { p_number: Number(number), p_code: code }).then(({ data: d }) => setData(d || { found: false }))
+  }, [number, code])
+
+  if (!data) return <Loading />
+  if (!data.found) return (
+    <div className="card stack" style={{ maxWidth: 520, margin: '24px auto', textAlign: 'center', padding: 28 }}>
+      <h1>We can't find that order</h1>
+      <p className="muted">The code on this receipt doesn't match an order. Check the link, or call us and read out the order number.</p>
+      <Link className="btn primary" to="/">Go to ZaMarket</Link>
+    </div>
+  )
+
+  return (
+    <div className="card stack" style={{ maxWidth: 520, margin: '24px auto', padding: 26 }}>
+      <div className="between">
+        <div>
+          <h1 style={{ fontSize: '1.4rem' }}>Order ZM-{String(data.order_number).padStart(6, '0')}</h1>
+          <p className="small muted">Placed {date(data.placed_on)} · sold by {data.seller}</p>
+        </div>
+        <span className="verified-badge">✓ Genuine ZaMarket order</span>
+      </div>
+
+      <div className="mini-table">
+        {(data.items || []).map((i, k) => (
+          <div key={k} className="mini-row"><span className="grow">{i.qty} × {i.name}</span><span className="strong">{money(i.line)}</span></div>
+        ))}
+      </div>
+      <div className="between"><span className="muted">Delivery</span><span>{Number(data.delivery_fee) > 0 ? money(data.delivery_fee) : 'Included'}</span></div>
+      <div className="between strong" style={{ fontSize: '1.15rem' }}><span>Total</span><span>{money(data.total)}</span></div>
+
+      <div className="card flat stack-sm">
+        <div className="between"><span className="muted small">Where it is</span><strong>{STATUS_WORDS[data.status] || data.status}</strong></div>
+        <div className="between"><span className="muted small">Payment</span><strong>{data.payment_status === 'paid' ? 'Paid in full' : data.payment_status === 'part_paid' ? 'Part paid' : 'Not yet paid'}</strong></div>
+      </div>
+
+      <p className="tiny muted">This page shows only what was bought and what it cost. Nothing about you is shown here. If something is wrong, call us with this order number.</p>
+      <Link className="btn primary" to="/">Shop on ZaMarket</Link>
     </div>
   )
 }

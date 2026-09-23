@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
+import { useSaved } from '../../lib/saved'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Stars, Modal, Field, Input, useToast, Loading } from '../../components/ui'
@@ -11,8 +12,11 @@ import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
 import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
+import { themeOf, themeVars } from '../../lib/storeTheme'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
+import OfferingCard from '../../components/OfferingCard'
+import Icon from '../../lib/icons'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareThis from '../../components/ShareThis'
 
@@ -60,6 +64,104 @@ function Price({ value, size }) {
 }
 
 // ---------- shell ----------
+// The homepage hero is a marketing slot: today it might be a business, tomorrow a
+// deal or a collection. Set by the marketplace, never random.
+function FeaturedHero({ fallbackProducts }) {
+  const [slots, setSlots] = useState(null)
+  const [i, setI] = useState(0)
+  useEffect(() => { supabase.rpc('featured_now').then(({ data }) => setSlots(data || [])) }, [])
+  useEffect(() => {
+    if (!slots?.length) return
+    supabase.rpc('featured_seen', { p_slot: slots[i % slots.length].id })
+    if (slots.length < 2) return
+    const t = setInterval(() => setI((x) => x + 1), 7000)
+    return () => clearInterval(t)
+  }, [slots, i])
+  if (!slots?.length) return null
+  const f = slots[i % slots.length]
+  const v = f.vendor || {}
+  return (
+    <section className="featured-hero">
+      <div className="fh-media" style={f.image_url ? { backgroundImage: `url(${f.image_url})` } : undefined} aria-hidden />
+      <div className="fh-body">
+        <span className="fh-eyebrow">{f.eyebrow}</span>
+        <h1>{f.headline}</h1>
+        {f.sub && <p>{f.sub}</p>}
+        {v.name && (
+          <span className="fh-vendor">
+            {v.logo ? <img src={v.logo} alt="" /> : <span className="fh-mark">{v.name.slice(0, 1)}</span>}
+            <span>{v.name}{v.trust === 'verified' && <em title="Checked by ZaMarket"><Icon.shield /></em>}</span>
+            {v.rating ? <span className="fh-rating"><Icon.star /> {v.rating}</span> : null}
+          </span>
+        )}
+        <Link to={f.link} className="btn hero-cta" onClick={() => supabase.rpc('featured_click', { p_slot: f.id })}>
+          {f.cta} <Icon.arrow />
+        </Link>
+        {f.product && (
+          <Link to={`/p/${f.product.slug}`} className="fh-product">
+            {f.product.image ? <img src={f.product.image} alt="" /> : <span className="fh-mark"><Icon.box /></span>}
+            <span><em>Featured</em>{f.product.name}<b>{money(f.product.price)}</b></span>
+          </Link>
+        )}
+      </div>
+      {slots.length > 1 && (
+        <div className="fh-dots">{slots.map((s2, k) => <button key={s2.id} className={k === i % slots.length ? 'on' : ''} onClick={() => setI(k)} aria-label={`Show ${s2.headline}`} />)}</div>
+      )}
+    </section>
+  )
+}
+
+function CategoryRail() {
+  const DEPARTMENTS = useDepartments()
+  const stocked = useStockedDepartments(DEPARTMENTS)
+  const [sp] = useSearchParams()
+  const active = sp.get('cat')
+  return (
+    <nav className="cat-rail" aria-label="Categories">
+      <Link to="/search?deals=1" className={`cat ${sp.get('deals') ? 'on' : ''}`}>
+        <span className="cat-icon deals"><Icon.tag /></span>
+        <span>Today's deals</span>
+      </Link>
+      {stocked.slice(0, 5).map((d) => (
+        <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`} className={`cat ${active === d.name ? 'on' : ''}`}>
+          <span className="cat-icon">{d.icon}</span>
+          <span>{d.name}</span>
+        </Link>
+      ))}
+      <Link to="/categories" className="cat">
+        <span className="cat-icon"><Icon.more /></span>
+        <span>More categories</span>
+      </Link>
+    </nav>
+  )
+}
+
+function BottomBar() {
+  const { count } = useCart()
+  const saved = useSaved()
+  const here = useLocation().pathname
+  const items = [
+    { to: '/', label: 'Home', icon: <Icon.house />, end: true },
+    { to: '/categories', label: 'Categories', icon: <Icon.grid /> },
+    { to: '/search?deals=1', label: 'Deals', icon: <Icon.tag /> },
+    { to: '/saved', label: 'My list', icon: <Icon.heart />, badge: saved.count },
+    { to: '/cart', label: 'Cart', icon: <Icon.cart />, badge: count },
+  ]
+  return (
+    <nav className="bottom-bar" aria-label="Main">
+      {items.map((i) => {
+        const on = i.end ? here === '/' : here.startsWith(i.to.split('?')[0])
+        return (
+          <Link key={i.label} to={i.to} className={on ? 'on' : ''}>
+            <span className="bb-icon">{i.icon}{i.badge > 0 && <em>{i.badge}</em>}</span>
+            <span>{i.label}</span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
 export function PublicShell() {
   const DEPARTMENTS = useDepartments()
   const stocked = useStockedDepartments(DEPARTMENTS)
@@ -117,7 +219,9 @@ export function PublicShell() {
         </nav>
       </header>
 
+      <CategoryRail />
       <main className="shop-main"><Outlet /></main>
+      <BottomBar />
 
       <footer className="shop-footer">
         <div className="sf-cols">
@@ -164,6 +268,7 @@ export function ReferralCapture() {
   const { setRef } = useCart()
   const nav = useNavigate()
   useEffect(() => { if (code) setRef(code.toLowerCase()); nav(product ? `/p/${product}` : '/', { replace: true }) }, [code, product])
+    if (code) supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null })
   return null
 }
 
@@ -186,33 +291,10 @@ export function GoLink() {
 const isEntryPage = () => (window.history.state?.idx ?? 0) === 0
 
 // ---------- product card ----------
-function ProductCard({ p, deal, inStore }) {
-  const DEPARTMENTS = useDepartments()
-  const out = isOut(p)
-  const save = p.normal_price && Number(p.normal_price) > Number(p.price) ? Number(p.normal_price) - Number(p.price) : 0
-  return (
-    <Link to={inStore && p.vendor_slug ? `/${p.vendor_slug}/${p.slug}` : `/p/${p.slug || p.id}`} className="pc">
-      <div className="pc-img">
-        {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="pc-ph" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}
-        {deal && <span className="pc-deal">{deal.name}</span>}
-      </div>
-      <div className="pc-body">
-        <div className="pc-name">{p.name}</div>
-        {p.rating ? <div className="pc-rating"><Stars n={p.rating} /><span>{p.review_count}</span></div> : null}
-        <div className="pc-price"><Price value={p.price} />{save > 0 && <s>{money(p.normal_price)}</s>}</div>
-        <div className={`pc-avail ${out ? 'out' : ''}`}>
-          {p.sales_model === 'negotiate' ? 'Open to offers' : p.sales_model === 'enquire' ? 'Enquire for details' : Number(p.package_count) > 1 ? `${p.package_count} packages` : out ? 'Out of stock' : p.fulfilment === 'service' ? `Booking${p.duration_text ? `, ${p.duration_text.toLowerCase()}` : ''}` : p.fulfilment === 'made_to_order' ? `Made to order${p.lead_time_days ? `, ${p.lead_time_days} day${p.lead_time_days > 1 ? 's' : ''} ahead` : ''}` : 'In stock'}
-        </div>
-        {p.vendor_name && <div className="pc-seller">by {p.vendor_name}</div>}
-      </div>
-    </Link>
-  )
-}
-
-function Row({ title, link, children }) {
+function Row({ title, sub, link, children }) {
   return (
     <section className="shelf">
-      <div className="shelf-head"><h2>{title}</h2>{link && <Link to={link}>See all</Link>}</div>
+      <div className="shelf-head"><h2>{title}{sub && <span className="sub">{sub}</span>}</h2>{link && <Link to={link}>See all</Link>}</div>
       <div className="shelf-scroll">{children}</div>
     </section>
   )
@@ -235,55 +317,72 @@ export function Storefront() {
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
   const rated = products.filter((p) => p.rating).sort((a, b) => b.rating - a.rating || b.review_count - a.review_count)
-  const card = (p) => <ProductCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} />
+
+  const services = products.filter((p) => p.fulfilment === 'service' && !['course', 'class'].includes(p.offering_type))
+  const courses = products.filter((p) => ['course', 'class'].includes(p.offering_type))
+  const vehicles = products.filter((p) => p.offering_type === 'vehicle')
+  const events = products.filter((p) => p.offering_type === 'event')
+  const goods = products.filter((p) => !['course', 'class', 'vehicle', 'event'].includes(p.offering_type) && p.fulfilment !== 'service')
+  const featured = deals.length ? deals : products
+  const card = (p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} />
 
   return (
     <div className="home">
-      <section className="hero2">
-        <div className="hero2-copy">
-          <span className="hero2-eyebrow">Lusaka · delivered to your door</span>
-          <h1>Buy from local sellers, without the risk.</h1>
-          <p>We take the order, call you to confirm the price and delivery, then get it to you.</p>
+      <FeaturedHero fallbackProducts={featured} />
+      <section className="hero4 hide-when-featured">
+        <div className="hero4-copy">
+          <h1>Shop local.<br />Support Zambia.</h1>
+          <p>Great products. Checked sellers. Delivered to you.</p>
           <div className="hero-actions">
-            <Link to="/search" className="btn primary">Start shopping</Link>
-            {stocked[0] && <Link to={`/search?cat=${encodeURIComponent(stocked[0].name)}`} className="btn ghost-dark">{stocked[0].name}</Link>}
+            <Link to="/search" className="btn hero-cta">Shop now <Icon.arrow /></Link>
           </div>
-          {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They'll get credit for your order.</p>}
+          {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
         </div>
-        <div className="hero2-art" aria-hidden>
-          {(deals.length ? deals : products).slice(0, 3).map((p, i) => (
-            <span key={p.id} className={`hero2-tile t${i}`}>
-              {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="hero2-ph" />}
+        <div className="hero4-art" aria-hidden>
+          {featured.slice(0, 2).map((p, i) => (
+            <span key={p.id} className={`hero4-tile t${i}`}>
+              {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="hero4-ph"><Icon.box /></span>}
             </span>
           ))}
+          <span className="hero4-script">Zambia<br />Grows<br />Together</span>
         </div>
       </section>
 
-      <ul className="promises" aria-label="How ordering works">
-        <li><strong>Nothing paid upfront</strong><span>We call you first, always</span></li>
-        <li><strong>Confirmed first</strong><span>Price agreed before you pay</span></li>
-        <li><strong>Local sellers</strong><span>Checked before they sell</span></li>
-        <li><strong>Real people</strong><span>Call us any working day</span></li>
-      </ul>
+      <section className="trust-strip" aria-label="Buy with confidence">
+        <ul>
+          <li><span className="ts-icon"><Icon.shield /></span><span><strong>Local sellers</strong>Checked before they sell</span></li>
+          <li><span className="ts-icon"><Icon.truck /></span><span><strong>Convenient delivery</strong>Right to your door</span></li>
+          <li><span className="ts-icon"><Icon.headphones /></span><span><strong>Real people, real support</strong>Call us any working day</span></li>
+        </ul>
+      </section>
 
       {products.length === 0 ? (
         <div className="empty-shop">
-          <h2>The shelves are being stocked</h2>
-          <p>Products from ZaMarket and local sellers will appear here soon. Have something to sell?</p>
+          <h2>Nothing here yet</h2>
+          <p>We're adding sellers and offerings. Have something to sell?</p>
           <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become an affiliate</Link></div>
         </div>
-      ) : products.length <= 8 ? (
-        // A small shop looks better full than spread thin across empty shelves.
-        <section className="shelf">
-          <div className="shelf-head"><h2>What we have right now</h2><Link to="/search">See all</Link></div>
-          <div className="grid-products">{products.map(card)}</div>
-        </section>
       ) : (
         <>
-          {deals.length > 0 && <Row title="Today's deals" link="/search?deals=1">{deals.slice(0, 12).map(card)}</Row>}
-          <Row title="New on ZaMarket" link="/search?sort=new">{products.slice(0, 12).map(card)}</Row>
-          {scheduled.length > 0 && <Row title="Made to order and bookings" link="/search?type=scheduled">{scheduled.slice(0, 12).map(card)}</Row>}
-          {rated.length > 0 && <Row title="Top rated" link="/search?sort=rating">{rated.slice(0, 12).map(card)}</Row>}
+          {deals.length > 0 && <Row title="Featured deals" sub="Live offers, ending when they say" link="/search?deals=1">{deals.slice(0, 12).map(card)}</Row>}
+
+          {vendors?.length > 0 && (
+            <section className="sellers-band">
+              <div className="shelf-head">
+                <h2>The businesses behind ZaMarket</h2>
+                <Link to="/sellers">All sellers</Link>
+              </div>
+              <p className="sub-line">Every order is handled by us, and made or supplied by a local business you can see.</p>
+              <div className="seller-strip">{vendors.slice(0, 6).map((v) => <SellerCard key={v.id} v={v} />)}</div>
+            </section>
+          )}
+
+          {goods.length > 0 && <Row title="Discover on ZaMarket" sub="New and popular right now" link="/search">{goods.slice(0, 12).map(card)}</Row>}
+          {services.length > 0 && <Row title="Services you can book" sub="Booked by date and time, confirmed by phone" link="/search?type=service">{services.slice(0, 12).map(card)}</Row>}
+          {courses.length > 0 && <Row title="Learn something new" sub="Courses and training from local providers" link="/search?type=course">{courses.slice(0, 12).map(card)}</Row>}
+          {vehicles.length > 0 && <Row title="Vehicles for sale" sub="Enquire, view, and agree the price directly" link="/search?type=vehicle">{vehicles.slice(0, 8).map(card)}</Row>}
+          {events.length > 0 && <Row title="What's on" sub="Dates and places near you" link="/search?type=event">{events.slice(0, 8).map(card)}</Row>}
+          {scheduled.length > 0 && <Row title="Made to order" sub="Baked, sewn or built for you — order a few days ahead" link="/search?type=scheduled">{scheduled.slice(0, 10).map(card)}</Row>}
         </>
       )}
 
@@ -299,19 +398,13 @@ export function Storefront() {
         </section>
       )}
 
-      {vendors.length > 0 && (
-        <section className="shelf">
-          <div className="shelf-head"><h2>Shop local sellers</h2><Link to="/sellers">All sellers</Link></div>
-          <div className="seller-grid">{vendors.slice(0, 6).map((v) => <SellerCard key={v.id} v={v} />)}</div>
-        </section>
-      )}
-
       <section className="earn-band">
         <div>
           <h2>Grow with ZaMarket</h2>
-          <p>Sell your products or services to our customers, or earn commission sharing products you believe in.</p>
+          <p><strong>Sellers:</strong> your own shop page, our customers, and payment handled for you.<br />
+             <strong>Affiliates:</strong> share what you like, earn commission on every completed sale.</p>
         </div>
-        <div className="hero-actions">
+        <div className="btn-row">
           <Link to="/apply/vendor" className="btn on-dark">Sell on ZaMarket</Link>
           <Link to="/apply/reseller" className="btn ghost-light">Become an affiliate</Link>
         </div>
@@ -348,11 +441,20 @@ function ListingCard({ p, store }) {
 function SellerCard({ v }) {
   return (
     <Link to={`/${v.slug}`} className="seller">
-      <span className="seller-mark" aria-hidden>{v.business_name.slice(0, 1)}</span>
-      <span className="seller-info">
-        <span className="seller-name">{v.business_name}</span>
-        <span className="seller-meta">{[v.category, v.town].filter(Boolean).join(', ')}</span>
-        <span className="seller-meta">{v.rating ? <><Stars n={v.rating} /> {v.rating}</> : `${v.product_count} product${v.product_count === 1 ? '' : 's'}`}</span>
+      <span className="seller-cover" style={v.cover_url ? { backgroundImage: `url(${v.cover_url})` } : undefined} aria-hidden />
+      <span className="seller-top">
+        {v.logo_url
+          ? <img className="seller-mark" src={v.logo_url} alt="" loading="lazy" />
+          : <span className="seller-mark" aria-hidden>{v.business_name.slice(0, 1)}</span>}
+        <span className="seller-info">
+          <span className="seller-name">{v.business_name}{v.trust_level === 'verified' && <span className="seller-check" title="Checked by ZaMarket"><Icon.shield /></span>}</span>
+          <span className="seller-meta">{[v.category, v.town].filter(Boolean).join(' · ')}</span>
+        </span>
+      </span>
+      {v.tagline && <span className="seller-tag">{v.tagline}</span>}
+      <span className="seller-foot">
+        {v.rating ? <span className="seller-meta"><Stars n={v.rating} /> {v.rating} ({v.review_count})</span> : <span className="seller-meta">New seller</span>}
+        <span className="seller-count">{v.product_count} item{v.product_count === 1 ? '' : 's'}</span>
       </span>
     </Link>
   )
@@ -476,7 +578,7 @@ export function SearchPage() {
             <Link to="/search" className="btn">See all products</Link>
           </div>
         ) : (
-          <div className="grid-products">{results.map((p) => <ProductCard key={p.id} p={p} deal={dealFor(data.offersBy, p.id)} />)}</div>
+          <div className="grid-products">{results.map((p) => <OfferingCard key={p.id} p={p} deal={dealFor(data.offersBy, p.id)} />)}</div>
         )}
       </div>
       {sheet && (
@@ -493,7 +595,11 @@ export function SearchPage() {
 }
 
 // ---------- product page ----------
-function ProductSeo({ p }) { useSeo(productSeo(p)); return null }
+function ProductSeo({ p }) {
+  useSeo(productSeo(p))
+  useEffect(() => { if (p?.id) supabase.rpc('track_hit', { p_kind: 'product_view', p_vendor: p.vendor_id || null, p_product: p.id }) }, [p?.id])
+  return null
+}
 
 // An approved affiliate browsing the shop gets their link and the promotion kit
 // right here, on whatever they are looking at.
@@ -687,7 +793,7 @@ export function ProductPage() {
           </div>
         ))}
       </section>
-      {more.length > 0 && <Row title={p.vendor_id ? `More from ${p.vendor_name}` : 'You may also like'}>{more.map((x) => <ProductCard key={x.id} p={x} inStore={!!storeParam} deal={dealFor(catalogue.offersBy, x.id)} />)}</Row>}
+      {more.length > 0 && <Row title={p.vendor_id ? `More from ${p.vendor_name}` : 'You may also like'}>{more.map((x) => <OfferingCard key={x.id} p={x} inStore={!!storeParam} deal={dealFor(catalogue.offersBy, x.id)} />)}</Row>}
       <p className="small muted pdp-earn">Want to earn by selling this? <Link to="/apply/reseller">Become an affiliate</Link>.</p>
 
       {!out && (
@@ -774,6 +880,7 @@ export function StorePage() {
     })
   }, [slug, legacyId])
   useSeoStore(store)
+  useEffect(() => { if (store?.id) supabase.rpc('track_hit', { p_kind: 'store_view', p_vendor: store.id }) }, [store?.id])
   if (store === null || products === null) return <Loading />
   if (!store) return <div className="empty-shop"><h2>We couldn't find that page</h2><p>Check the link, or browse the marketplace.</p><div className="hero-actions"><Link to="/" className="btn primary">Go to ZaMarket</Link><Link to="/sellers" className="btn">See all sellers</Link></div></div>
   // A shop is laid out by what it sells: cars like a dealership, courses like a college,
@@ -790,14 +897,21 @@ export function StorePage() {
   const plain = [...(byKind.product || []), ...(byKind.other || [])]
   const groups = plain.reduce((m, p) => { const k = p.category || 'Products'; (m[k] = m[k] || []).push(p); return m }, {})
   const kinds = new Set(products.map((p) => p.fulfilment))
-  const featured = [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.review_count || 0) - (a.review_count || 0)).slice(0, products.length > 6 ? 4 : 0)
+  // what the vendor chose to put first; if they chose none, the best reviewed
+  const picked = products.filter((p) => p.featured_in_store)
+  const featured = picked.length
+    ? picked.slice(0, 6)
+    : [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.review_count || 0) - (a.review_count || 0)).slice(0, products.length > 6 ? 4 : 0)
   const note = kinds.has('service') && kinds.size === 1 ? 'Book online. We confirm your booking by phone.' : kinds.has('made_to_order') ? 'Freshly made to order. Order and pay through ZaMarket and we deliver it to you.' : 'Order through ZaMarket and we deliver it to you.'
+  const theme = themeOf(store)
   return (
-    <div className="stack">
+    <div className={`stack store-themed style-${theme.style.key}`} style={themeVars(store)}>
       <div className="crumbs"><Link to="/">Home</Link><Link to="/sellers">Sellers</Link><span>{store.business_name}</span></div>
 
       <header className="store-top">
-        <div className="store-cover" style={store.cover_url ? { backgroundImage: `url(${store.cover_url})` } : undefined} aria-hidden />
+        <div className="store-cover" style={store.cover_url
+          ? { backgroundImage: `url(${store.cover_url})` }
+          : { background: `linear-gradient(120deg, var(--brand-deep), var(--brand))` }} aria-hidden />
         <div className="store-id">
           {store.logo_url
             ? <img className="store-logo" src={store.logo_url} alt="" />
@@ -820,6 +934,13 @@ export function StorePage() {
         </div>
       </header>
 
+      <nav className="store-tabs" aria-label="This store">
+        <a href="#shop" className="on">Products</a>
+        {store.about && <a href="#about">About</a>}
+        <a href="#reviews">Reviews</a>
+        <Link to="/search">Explore ZaMarket</Link>
+      </nav>
+
       {(store.highlights?.length > 0 || store.opening_hours?.length > 0 || store.about) && (
         <div className="store-strip">
           {(store.highlights || []).slice(0, 4).map((h, i) => <span key={i} className="store-point">{h}</span>)}
@@ -827,10 +948,25 @@ export function StorePage() {
         </div>
       )}
 
+      {Object.keys(groups).length > 1 && (
+        <section className="store-cats" aria-label="Categories in this store">
+          <h2>Our categories</h2>
+          <div className="store-cat-row">
+            {Object.entries(groups).map(([cat, list]) => (
+              <a key={cat} href={`#cat-${encodeURIComponent(cat)}`} className="store-cat">
+                <span className="store-cat-img">{list[0]?.images?.[0] ? <img src={list[0].images[0]} alt="" loading="lazy" /> : <Icon.box />}</span>
+                <span>{cat}</span>
+                <em>{list.length}</em>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       {featured.length > 0 && (
         <section className="shelf" id="shop">
-          <div className="shelf-head"><h2>Popular here</h2></div>
-          <div className="grid-products">{featured.map((p) => <ProductCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />)}</div>
+          <div className="shelf-head"><h2>Featured from {store.business_name}</h2></div>
+          <div className="grid-products">{featured.map((p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />)}</div>
         </section>
       )}
 
@@ -840,20 +976,28 @@ export function StorePage() {
           <div className={kind === 'vehicle' ? 'grid-listings' : 'grid-products'}>
             {byKind[kind].map((p) => (kind === 'vehicle'
               ? <ListingCard key={p.id} p={p} store={store.slug} />
-              : <ProductCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
+              : <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
           </div>
         </section>
       ))}
 
       {products.length === 0 ? <div className="empty-shop"><h2>No products yet</h2><p>Check back soon.</p></div> : Object.entries(groups).map(([cat, list]) => (
-        <section key={cat} className="stack-sm" id={cat === Object.keys(groups)[0] ? 'shop' : undefined}>
+        <section key={cat} className="stack-sm" id={`cat-${encodeURIComponent(cat)}`}>
           <h2>{cat}</h2>
-          <div className="grid-products">{list.map((p) => <ProductCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
+          <div className="grid-products">{list.map((p) => <OfferingCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
         </section>
       ))}
 
+      <section className="store-back">
+        <div>
+          <strong>{store.business_name} sells on ZaMarket</strong>
+          <span className="small muted">Your order is taken, confirmed and delivered by ZaMarket, so you are covered either way.</span>
+        </div>
+        <Link to="/" className="btn">Explore more on ZaMarket <Icon.arrow /></Link>
+      </section>
+
       {(store.about || store.description) && (
-        <section className="card store-about">
+        <section className="card store-about" id="about">
           <h2>About {store.business_name}</h2>
           <p>{store.about || store.description}</p>
           <p className="small muted">Everything here is ordered and paid through ZaMarket. We confirm every order by phone and deliver it to you.</p>

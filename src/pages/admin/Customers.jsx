@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
+import { useAuth } from '../../lib/auth'
 import { money, date, datetime, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Tabs } from '../../components/ui'
 
@@ -90,6 +91,7 @@ export function Deliveries() {
 
 function DeliveryModal({ d, onClose, onDone, onOpenOrder }) {
   const toast = useToast()
+  const { settings } = useAuth()
   const [f, setF] = useState({ courier: d.courier || '', delivery_cost: d.delivery_cost, fuel_cost: d.fuel_cost, scheduled_date: d.scheduled_date || '', failure_reason: d.failure_reason || '' })
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v }))
   const submit = async (e) => {
@@ -105,8 +107,13 @@ function DeliveryModal({ d, onClose, onDone, onOpenOrder }) {
         <div className="form-grid">
           <Field label="Courier / who delivers"><Input value={f.courier} onChange={set('courier')} placeholder="Founder, bus, courier name" /></Field>
           <Field label="Scheduled date"><Input type="date" value={f.scheduled_date} onChange={set('scheduled_date')} /></Field>
-          <Field label="Delivery cost to us"><Input money value={f.delivery_cost} onChange={set('delivery_cost')} /></Field>
+          <Field label="Delivery cost to us" hint="What the rider or courier was paid"><Input money value={f.delivery_cost} onChange={set('delivery_cost')} /></Field>
           <Field label="Fuel"><Input money value={f.fuel_cost} onChange={set('fuel_cost')} /></Field>
+          <div className="span small muted">
+            {n(f.delivery_cost) + n(f.fuel_cost) > 0
+              ? <>This order's profit uses <strong>{money(n(f.delivery_cost) + n(f.fuel_cost))}</strong> for delivery.</>
+              : <>Nothing recorded yet, so profit assumes <strong>{money(settings.assumed_delivery_cost ?? 25)}</strong> per delivery. Free delivery for the customer is never free for us — put the real figure here.</>}
+          </div>
           <Field label="Failure reason (if failed)" span><Input value={f.failure_reason} onChange={set('failure_reason')} /></Field>
         </div>
         <p className="tiny muted">Change the order's status (out for delivery, delivered, failed) from the order page.</p>

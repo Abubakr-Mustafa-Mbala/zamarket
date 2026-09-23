@@ -9,6 +9,7 @@ import { Badge, Table, Loading, Modal, Stat, CopyLine, Empty } from '../../compo
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
 import PromoKit from '../../components/PromoKit'
+import AffiliatePlan from '../../components/AffiliatePlan'
 import { ManualSale } from '../admin/Orders'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
 
@@ -131,6 +132,7 @@ export function ResellerCommissions() {
   if (loading) return <Loading />
   return (
     <div className="stack">
+      <AffiliatePlan />
       <PayoutRequest who="reseller" />
       <div className="page-head"><div><h1>Commissions</h1><p>Pending → Verified → Approved → Paid.</p></div></div>
       <Table rows={data} empty="No commissions yet" cols={[

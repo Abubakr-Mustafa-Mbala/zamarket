@@ -37,6 +37,8 @@ const InvitePage = named(growthPages, 'InvitePage')
 const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
 const VendorRefCapture = named(growthPages, 'VendorRefCapture')
+const SavedPage = named(growthPages, 'SavedPage')
+const CategoriesPage = named(growthPages, 'CategoriesPage')
 const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
@@ -126,6 +128,8 @@ export default function App() {
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/rate/:link" element={<RatePage />} />
         <Route path="/about" element={<About />} />
+        <Route path="/saved" element={<SavedPage />} />
+        <Route path="/categories" element={<CategoriesPage />} />
       </Route>
       <Route path="/v/:code" element={<VendorRefCapture />} />
       <Route element={<PublicShell />}>

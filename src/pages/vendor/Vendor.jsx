@@ -9,8 +9,10 @@ import { niceDate } from '../../lib/madeToOrder'
 import { ProductEditor } from '../admin/Products'
 import { PHOTO_TIPS } from '../../lib/photos'
 import PhotoUpload from '../../components/PhotoUpload'
+import { THEMES, STYLES } from '../../lib/storeTheme'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
+import QrCode from '../../components/QrCode'
 
 const useVendor = () => useAuth().profile?.partner || null
 
@@ -46,10 +48,19 @@ export function VendorHome() {
           <p className="small muted">Share it on Instagram, WhatsApp or Facebook. Sales from people who arrive through your link cost you a {data.store.own_fee_pct}% fee instead of {data.store.normal_fee_pct}%. So far: {data.store.own_orders} order{data.store.own_orders === 1 ? '' : 's'}, {money(data.store.own_sales)}.</p>
         </div>
       )}
+      <VendorTraffic />
       <section className="card stack-sm">
         <h3>Your link to ZaMarket</h3>
         <p className="small muted">Share this with anyone. If they buy from your store, you pay our smaller fee of {settings.own_audience_fee_pct}%. If they buy from another seller here, you still earn {settings.vendor_referral_pct}% of what they spend.</p>
         <ShareThis store={v} products={[]} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
+        <div className="store-qr">
+          <QrCode value={`${window.location.origin}/${v.slug}`} size={132} />
+          <div>
+            <strong>Your store's QR code</strong>
+            <p className="small muted">Print it on a card, a flyer or your shop window. Anyone who scans it lands on your store.</p>
+            <p className="tiny muted">{window.location.host}/{v.slug}</p>
+          </div>
+        </div>
         {v.ref_code
           ? <CopyLine text={`${window.location.origin}/v/${v.ref_code}`} />
           : <p className="small muted">Your link appears once your account is fully set up.</p>}
@@ -94,7 +105,17 @@ export function VendorProducts() {
           { key: 'page', label: '', render: (p) => ['draft', 'submitted', 'rejected'].includes(p.status)
             ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a>
             : ['published', 'out_of_stock'].includes(p.status)
-              ? <button className="btn sm" onClick={(e) => { e.stopPropagation(); setAvailability(p) }}>{p.status === 'published' ? 'Mark sold out' : 'Back in stock'}</button>
+              ? <>
+                  <button className={`btn sm ${p.featured_in_store ? 'primary' : ''}`} title="Show this first in my store"
+                    onClick={async (e) => {
+                      e.stopPropagation()
+                      const { error } = await supabase.rpc('vendor_set_featured', { p_product: p.id, p_on: !p.featured_in_store })
+                      if (error) return toast(error.message, true)
+                      toast(p.featured_in_store ? 'Taken off the front of your store' : 'Now shows first in your store')
+                      reload()
+                    }}>{p.featured_in_store ? '★ Featured' : '☆ Feature'}</button>
+                  <button className="btn sm" onClick={(e) => { e.stopPropagation(); setAvailability(p) }}>{p.status === 'published' ? 'Mark sold out' : 'Back in stock'}</button>
+                </>
               : null },
         ]} />
       )}
@@ -103,6 +124,7 @@ export function VendorProducts() {
         <ul className="fc-rules">
           <li><strong>Draft</strong> — only you can see it. Keep editing until you are happy.</li>
           <li><strong>Sent for review</strong> — with the ZaMarket team. We check it and publish it, usually the same day.</li>
+          <li><strong>Feature</strong> — up to six products show first when someone opens your store. Choose the ones you most want to sell.</li>
           <li><strong>Published</strong> — live in the shop. Tap <strong>Mark sold out</strong> any time and it disappears from the shop until you put it back.</li>
           <li><strong>Rejected</strong> — something needed changing. Open it to see why, fix it, and send it again.</li>
         </ul>
@@ -312,6 +334,8 @@ export function VendorStore() {
     logo_url: v?.logo_url || '', cover_url: v?.cover_url || '',
     highlights_text: (v?.highlights || []).join('\n'),
     hours_text: (v?.opening_hours || []).map((h) => `${h.label}: ${h.hours}`).join('\n'),
+    colour: v?.theme?.colour || 'pine',
+    style: v?.theme?.style || 'clean',
   }))
   if (!v) return <Empty title="No vendor profile" />
   const set = (k) => (val) => setF((x) => ({ ...x, [k]: val }))
@@ -322,6 +346,7 @@ export function VendorStore() {
       about: f.about.trim() || null,
       logo_url: f.logo_url || null,
       cover_url: f.cover_url || null,
+      theme: { colour: f.colour, style: f.style },
       highlights: f.highlights_text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 6),
       opening_hours: f.hours_text.split('\n').filter((l) => l.includes(':')).map((l) => {
         const [label, ...rest] = l.split(':')
@@ -370,11 +395,54 @@ export function VendorStore() {
         <Field label="When you work" hint="One per line, e.g. Mon–Fri: 08:00 – 17:00" span>
           <Textarea value={f.hours_text} onChange={set('hours_text')} rows={3} placeholder={'Mon–Fri: 08:00 – 17:00\nSaturday: 09:00 – 13:00'} />
         </Field>
+        <Field label="Your colour" hint="Used across your shop page" span>
+          <div className="swatches">
+            {THEMES.map((t) => (
+              <button type="button" key={t.key} className={`swatch ${f.colour === t.key ? 'on' : ''}`} onClick={() => set('colour')(t.key)} title={t.name}>
+                <span style={{ background: t.brand }} />
+                <span className="tiny">{t.name}</span>
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="Style" span>
+          <div className="chips wrap">
+            {STYLES.map((st) => <button type="button" key={st.key} className={`chip ${f.style === st.key ? 'on' : ''}`} onClick={() => set('style')(st.key)} title={st.note}>{st.name}</button>)}
+          </div>
+          <p className="tiny muted">{(STYLES.find((x) => x.key === f.style) || STYLES[0]).note}</p>
+        </Field>
         <Field label="About your shop" hint="A short paragraph. Who you are, how long you have done this, what you care about." span>
           <Textarea value={f.about} onChange={set('about')} rows={4} />
         </Field>
         <div className="span"><button className="btn primary" onClick={save}>Save my shopfront</button></div>
       </section>
     </div>
+  )
+}
+
+
+// How many people actually looked, and what came of it.
+function VendorTraffic() {
+  const from = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
+  const to = new Date().toISOString().slice(0, 10)
+  const { data, loading } = useData(() => q(supabase.rpc('vendor_traffic', { p_from: from, p_to: to })), [])
+  if (loading || !data || data.hidden) return null
+  const t = data
+  return (
+    <section className="card stack-sm">
+      <h3>Who visited, last 30 days</h3>
+      <div className="mini-stats">
+        <div><b>{t.store_views}</b><span>opened your shop</span></div>
+        <div><b>{t.product_views}</b><span>opened a product</span></div>
+        <div><b>{t.orders}</b><span>ordered</span></div>
+        <div><b>{money(t.sales)}</b><span>completed sales</span></div>
+      </div>
+      {(t.top || []).length > 0 && (
+        <div className="mini-table">
+          {t.top.map((x) => <div key={x.name} className="mini-row"><span className="grow">{x.name}</span><span><b>{x.views}</b> views</span></div>)}
+        </div>
+      )}
+      <p className="tiny muted">Visits are counted per day, without recording anything about the person.</p>
+    </section>
   )
 }

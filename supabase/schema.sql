@@ -82,6 +82,10 @@ insert into settings (key, value, description) values
   ('marketplace_fee_pct', '10', 'Fee charged to vendors on each sale (%)'),
   ('affiliate_click_days', '30', 'How long after clicking an affiliate link a purchase still counts for them'),
   ('affiliate_repeat_bonus', '5', 'Flat thank-you paid to the affiliate when their customer orders again after the full-commission window (K)'),
+  ('assumed_delivery_cost', '25', 'What a delivery really costs you when nobody records the actual amount (K)'),
+  ('monthly_fixed_costs', '0', 'What the business must cover every month before any profit: rent, airtime, transport, data, subscriptions (K)'),
+  ('show_vendor_views', 'false', 'Let vendors see how many people viewed their shop and products'),
+  ('reinvest_pct', '30', 'Share of profit kept in the business before founders take theirs (%)'),
   ('high_value_threshold', '2000', 'Above this price, a vendor must be verified before the item can be published (K)'),
   ('company_phone', '""', 'Customer service number shown publicly'),
   ('company_whatsapp', '""', 'WhatsApp number shown publicly'),
@@ -454,6 +458,8 @@ alter table vendors add column if not exists tagline text;
 alter table vendors add column if not exists about text;
 alter table vendors add column if not exists opening_hours jsonb not null default '[]';
 alter table vendors add column if not exists highlights text[] default '{}';
+-- A vendor's own colours, so their shop feels like theirs.
+alter table vendors add column if not exists theme jsonb not null default '{}';
 alter table orders add column if not exists review_code text;
 
 create table if not exists order_items (
@@ -846,6 +852,67 @@ create table if not exists bonus_credits (
 alter table bonus_credits drop constraint if exists bonus_credits_kind_check;
 alter table bonus_credits add constraint bonus_credits_kind_check check (kind in ('repeat_customer', 'vendor_referral', 'first_sale'));
 
+-- Counting visits: how many people opened a shop, a product, or an affiliate's link.
+-- Stored as one row per thing per day, so it stays small and nobody is tracked personally.
+create table if not exists link_hits (
+  kind text not null check (kind in ('store_view', 'product_view', 'affiliate_click')),
+  day date not null default (now() at time zone 'Africa/Lusaka')::date,
+  vendor_id uuid references vendors(id) on delete cascade,
+  product_id uuid references products(id) on delete cascade,
+  reseller_id uuid references resellers(id) on delete cascade,
+  hits int not null default 0
+);
+-- an earlier version of this table had these columns in the primary key
+alter table link_hits drop constraint if exists link_hits_pkey;
+alter table link_hits alter column vendor_id drop not null;
+alter table link_hits alter column product_id drop not null;
+alter table link_hits alter column reseller_id drop not null;
+-- one row per thing per day; the zero uuid stands in for "not applicable"
+create unique index if not exists link_hits_key on link_hits
+  (kind, day, coalesce(vendor_id, '00000000-0000-0000-0000-000000000000'::uuid),
+   coalesce(product_id, '00000000-0000-0000-0000-000000000000'::uuid),
+   coalesce(reseller_id, '00000000-0000-0000-0000-000000000000'::uuid));
+
+-- Who owns what share of the profit. Founders only; adds up to 100.
+create table if not exists profit_shares (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  share_pct numeric not null default 50 check (share_pct >= 0 and share_pct <= 100),
+  note text,
+  updated_at timestamptz not null default now()
+);
+
+-- The homepage hero is a marketing slot the marketplace controls: one business,
+-- collection or deal at a time, with dates and its own numbers.
+create table if not exists featured_slots (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null default 'business' check (kind in ('business', 'offering', 'collection', 'deal')),
+  vendor_id uuid references vendors(id) on delete cascade,
+  product_id uuid references products(id) on delete cascade,
+  eyebrow text not null default 'Featured business',
+  headline text not null,
+  sub text,
+  image_url text,
+  cta text not null default 'Visit store',
+  link text,
+  starts_on date not null default (now() at time zone 'Africa/Lusaka')::date,
+  ends_on date,
+  sort int not null default 0,
+  status text not null default 'active' check (status in ('draft', 'active', 'ended')),
+  impressions int not null default 0,
+  clicks int not null default 0,
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+
+-- A vendor chooses what shows first in their own store.
+alter table products add column if not exists featured_in_store boolean not null default false;
+
+-- Every order carries a short code. The receipt QR uses it so a scan proves the
+-- scanner is holding the receipt, without putting anything private in the code.
+alter table orders add column if not exists verify_code text;
+alter table orders alter column verify_code set default substr(replace(gen_random_uuid()::text, '-', ''), 1, 8);
+update orders set verify_code = substr(replace(gen_random_uuid()::text, '-', ''), 1, 8) where verify_code is null;
+
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
   user_id uuid,
@@ -1035,7 +1102,7 @@ create trigger trg_no_delete_settlements before delete on settlements for each r
 create or replace function reserved_slug(p text) returns boolean
 language sql immutable as $$
   select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
-    'search','sellers','store','stores','p','r','go','free','invite','rate','about','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+    'search','sellers','store','stores','p','r','go','free','invite','rate','about','saved','categories','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
 $$;
 
 create or replace function make_slug(p text) returns text
@@ -1993,7 +2060,7 @@ end $$;
 -- Public product view (never exposes cost)
 drop view if exists public_products cascade;
 create or replace view public_products as
-select p.id, p.boost_pct, p.boost_until, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
+select p.id, p.boost_pct, p.boost_until, p.featured_in_store, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
        p.status, p.stock_available, p.owner_type, v.business_name as vendor_name,
        (select round(avg(product_rating),1) from reviews r where r.product_id = p.id and r.approved) as rating,
        (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
@@ -2034,7 +2101,9 @@ language sql stable security definer set search_path = public as $$
     'cogs', (select coalesce(sum(unit_cost_snapshot * quantity),0) from items where owner_type = 'founder'),
     'marketplace_fees', (select coalesce(sum(marketplace_fee),0) from settlements s join o on o.id = s.order_id where s.status <> 'cancelled'),
     'commissions', (select coalesce(sum(amount),0) from commissions c join o on o.id = c.order_id where c.status not in ('rejected','reversed')),
-    'delivery_costs', (select coalesce(sum(delivery_cost + fuel_cost),0) from deliveries d join o on o.id = d.order_id),
+    'delivery_costs', (select coalesce(sum(greatest(d.delivery_cost + d.fuel_cost,
+                          case when d.delivery_cost + d.fuel_cost > 0 then 0 else setting_num('assumed_delivery_cost') end)), 0)
+                        from deliveries d join o on o.id = d.order_id),
     'delivery_income', (select coalesce(sum(delivery_fee),0) from o),
     'ad_spend', (select coalesce(sum(amount),0) from marketing_spend where spent_on between p_from and p_to),
     'expenses', (select coalesce(sum(amount),0) from expenses where spent_on between p_from and p_to),
@@ -2123,7 +2192,7 @@ end $$;
 drop view if exists public_vendors cascade;
 create or replace view public_vendors as
 select v.id, v.business_name, v.category, v.description, split_part(coalesce(v.location, ''), ',', 1) as town,
-       v.slug, v.logo_url, v.cover_url, v.tagline, v.about, v.opening_hours, v.highlights, v.trust_level,
+       v.slug, v.logo_url, v.cover_url, v.tagline, v.about, v.opening_hours, v.highlights, v.trust_level, v.theme,
        (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as rating,
        (select count(*) from reviews r where r.vendor_id = v.id and r.approved) as review_count,
        (select count(*) from products p where p.vendor_id = v.id and p.status = 'published') as product_count
@@ -2213,7 +2282,9 @@ language sql stable security definer set search_path = public as $$
                 where oi.order_id = o.id and p.owner_type = 'founder'), 0)
     - coalesce((select sum(net_payable) from settlements st where st.order_id = o.id and st.status <> 'cancelled'), 0)
     - coalesce((select sum(amount) from commissions c where c.order_id = o.id and c.status not in ('rejected','reversed')), 0)
-    - coalesce((select sum(delivery_cost + fuel_cost) from deliveries d where d.order_id = o.id), 0) end
+    - coalesce((select sum(greatest(d.delivery_cost + d.fuel_cost,
+                  case when d.delivery_cost + d.fuel_cost > 0 then 0 else setting_num('assumed_delivery_cost') end))
+                from deliveries d where d.order_id = o.id), 0) end
   from orders o where o.id = p_order;
 $$;
 
@@ -3291,6 +3362,222 @@ begin
   return (select coalesce(jsonb_agg(g), '[]') from jsonb_array_elements(out) g where (g->>'count')::int > 0);
 end $$;
 
+-- Record a visit. Called by the shop itself; no names, no numbers, just a count.
+create or replace function track_hit(p_kind text, p_vendor uuid default null, p_product uuid default null, p_code text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare rid uuid;
+begin
+  if p_kind not in ('store_view', 'product_view', 'affiliate_click') then return; end if;
+  if coalesce(p_code, '') <> '' then select id into rid from resellers where code = lower(p_code); end if;
+  insert into link_hits (kind, day, vendor_id, product_id, reseller_id, hits)
+  values (p_kind, lusaka_date(now()), p_vendor, p_product, rid, 1)
+  on conflict (kind, day, coalesce(vendor_id, '00000000-0000-0000-0000-000000000000'::uuid),
+               coalesce(product_id, '00000000-0000-0000-0000-000000000000'::uuid),
+               coalesce(reseller_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  do update set hits = link_hits.hits + 1;
+end $$;
+
+-- An affiliate's own funnel: opened the link, left a number, ordered, got paid.
+create or replace function affiliate_funnel(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare r uuid := my_reseller_id();
+begin
+  if r is null then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'clicks', (select coalesce(sum(hits), 0) from link_hits where reseller_id = r and kind = 'affiliate_click' and day between p_from and p_to),
+    'leads', (select count(*) from leads where source like 'reseller:%' and lusaka_date(created_at) between p_from and p_to
+               and exists (select 1 from resellers r2 where r2.id = r and leads.source like 'reseller:' || r2.code || '%')),
+    'orders', (select count(*) from orders where reseller_id = r and lusaka_date(created_at) between p_from and p_to and status not in ('cancelled','fraud_review')),
+    'completed', (select count(*) from orders where reseller_id = r and status = 'completed' and lusaka_date(created_at) between p_from and p_to),
+    'sales', (select coalesce(sum(subtotal), 0) from orders where reseller_id = r and status = 'completed' and lusaka_date(created_at) between p_from and p_to),
+    'earned', (select coalesce(sum(amount), 0) from commissions where reseller_id = r and status in ('verified','approved','paid') and lusaka_date(created_at) between p_from and p_to),
+    'waiting', (select coalesce(sum(amount), 0) from commissions where reseller_id = r and status = 'pending'),
+    'avg_commission', (select coalesce(round(avg(amount), 2), 0) from commissions where reseller_id = r and status in ('verified','approved','paid')),
+    'best', (select jsonb_build_object('name', p.name, 'sales', count(*))
+             from order_items i join orders o on o.id = i.order_id join products p on p.id = i.product_id
+             where o.reseller_id = r and o.status not in ('cancelled','fraud_review')
+             group by p.name order by count(*) desc limit 1));
+end $$;
+
+-- What a vendor's shop saw: visits, then what came of them.
+create or replace function vendor_traffic(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v uuid := my_vendor_id();
+begin
+  if v is null then raise exception 'Not allowed'; end if;
+  if not vendor_views_on() then return jsonb_build_object('hidden', true); end if;
+  return jsonb_build_object(
+    'store_views', (select coalesce(sum(hits), 0) from link_hits where vendor_id = v and kind = 'store_view' and day between p_from and p_to),
+    'product_views', (select coalesce(sum(hits), 0) from link_hits where vendor_id = v and kind = 'product_view' and day between p_from and p_to),
+    'orders', (select count(distinct o.id) from orders o join order_items i on i.order_id = o.id
+                where i.vendor_id = v and o.status not in ('cancelled','fraud_review') and lusaka_date(o.created_at) between p_from and p_to),
+    'enquiries', (select count(*) from deals where vendor_id = v and created_at::date between p_from and p_to),
+    'sales', (select coalesce(sum(i.line_total), 0) from orders o join order_items i on i.order_id = o.id
+               where i.vendor_id = v and o.status = 'completed' and lusaka_date(o.created_at) between p_from and p_to),
+    'top', (select coalesce(jsonb_agg(x order by (x->>'views')::int desc), '[]') from (
+              select jsonb_build_object('name', p.name, 'views', sum(h.hits)) x
+              from link_hits h join products p on p.id = h.product_id
+              where h.vendor_id = v and h.kind = 'product_view' and h.day between p_from and p_to
+              group by p.name limit 5) t));
+end $$;
+
+-- Vendors only see visitor numbers once the founders switch it on.
+create or replace function vendor_views_on() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select value #>> '{}' from settings where key = 'show_vendor_views'), 'false') = 'true';
+$$;
+
+-- What the business made, what stays in it, and what each founder's share is.
+create or replace function profit_split(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare profit numeric; reinvest_pct numeric := setting_num('reinvest_pct'); keep numeric; share numeric; total_share numeric;
+begin
+  if not is_founder() then raise exception 'Only a founder can see the split'; end if;
+  select coalesce(sum(earned), 0) into profit from earnings_series('business', null, p_from, p_to, 'month');
+  keep := round(profit * greatest(0, least(100, reinvest_pct)) / 100, 2);
+  share := profit - keep;
+  select coalesce(sum(share_pct), 0) into total_share from profit_shares ps join profiles p on p.id = ps.user_id where p.role = 'founder';
+
+  return jsonb_build_object(
+    'profit', round(profit, 2),
+    'reinvest_pct', reinvest_pct,
+    'reinvested', keep,
+    'to_share', round(share, 2),
+    'shares_total', total_share,
+    'people', coalesce((select jsonb_agg(jsonb_build_object(
+        'user_id', p.id, 'name', coalesce(p.full_name, p.email), 'pct', coalesce(ps.share_pct, 0),
+        'amount', case when total_share > 0 then round(share * coalesce(ps.share_pct, 0) / total_share, 2) else 0 end,
+        'is_me', p.id = auth.uid())
+      order by coalesce(ps.share_pct, 0) desc)
+      from profiles p left join profit_shares ps on ps.user_id = p.id
+      where p.role = 'founder'), '[]'),
+    'withdrawn', coalesce((select jsonb_agg(jsonb_build_object('name', coalesce(p.full_name, p.email), 'amount', x.total))
+      from (select w.founder_id, sum(w.amount) total from founder_withdrawals w
+             where w.withdrawn_on between p_from and p_to group by w.founder_id) x
+      join profiles p on p.id = x.founder_id), '[]'));
+end $$;
+
+create or replace function set_profit_share(p_user uuid, p_pct numeric, p_note text default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_founder() then raise exception 'Only a founder can set the split'; end if;
+  if p_pct < 0 or p_pct > 100 then raise exception 'A share must be between 0 and 100'; end if;
+  if not exists (select 1 from profiles where id = p_user and role = 'founder') then raise exception 'That person is not a founder'; end if;
+  insert into profit_shares (user_id, share_pct, note) values (p_user, p_pct, p_note)
+  on conflict (user_id) do update set share_pct = excluded.share_pct, note = coalesce(excluded.note, profit_shares.note), updated_at = now();
+  perform log_audit('profit.share', 'profiles', p_user, null, jsonb_build_object('pct', p_pct));
+end $$;
+
+-- What the month must cover before anything is really profit.
+create or replace function break_even(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare fixed numeric := setting_num('monthly_fixed_costs'); made numeric; sold int; avg_contribution numeric; spent numeric;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select coalesce(sum(earned), 0) into made from earnings_series('business', null, p_from, p_to, 'month');
+  select count(*) into sold from orders where status = 'completed' and lusaka_date(completed_at) between p_from and p_to;
+  select coalesce(sum(amount), 0) into spent from expenses where spent_on between p_from and p_to;
+  avg_contribution := case when sold > 0 then round((made + spent) / sold, 2) else 0 end;
+
+  return jsonb_build_object(
+    'fixed', fixed,
+    'profit', round(made, 2),
+    'orders', sold,
+    'avg_contribution', avg_contribution,
+    'covered_pct', case when fixed > 0 then round(greatest(0, made * 100 / fixed), 0) else null end,
+    'orders_needed', case when avg_contribution > 0 and fixed > 0 then ceil(fixed / avg_contribution) else null end,
+    'orders_short', case when avg_contribution > 0 and fixed > 0 then greatest(0, ceil(fixed / avg_contribution) - sold) else null end,
+    'expenses', round(spent, 2));
+end $$;
+
+-- Orders that lost money, and the reason they did.
+create or replace function losing_orders(p_from date, p_to date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return coalesce((select jsonb_agg(x order by (x->>'profit')::numeric) from (
+    select jsonb_build_object(
+      'id', o.id, 'order_number', o.order_number, 'date', lusaka_date(o.completed_at),
+      'customer', c.full_name, 'total', o.total, 'profit', round(order_profit(o.id), 2),
+      'delivery_charged', o.delivery_fee,
+      'delivery_cost', coalesce((select sum(greatest(d.delivery_cost + d.fuel_cost,
+                          case when d.delivery_cost + d.fuel_cost > 0 then 0 else setting_num('assumed_delivery_cost') end))
+                        from deliveries d where d.order_id = o.id), 0),
+      'commission', coalesce((select sum(amount) from commissions cm where cm.order_id = o.id and cm.status <> 'rejected'), 0),
+      'discount', greatest(0, coalesce((select sum(i.quantity * coalesce(nullif(p.normal_price, 0), i.unit_price)) - sum(i.line_total)
+                       from order_items i join products p on p.id = i.product_id where i.order_id = o.id), 0))
+    ) as x
+    from orders o left join customers c on c.id = o.customer_id
+    where o.status = 'completed' and lusaka_date(o.completed_at) between p_from and p_to
+      and order_profit(o.id) < 0) t), '[]');
+end $$;
+
+-- What the homepage should feature right now.
+create or replace function featured_now() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'id', f.id, 'kind', f.kind, 'eyebrow', f.eyebrow, 'headline', f.headline, 'sub', f.sub,
+    'image_url', coalesce(f.image_url, v.cover_url, (select p.images[1] from products p where p.id = f.product_id)),
+    'cta', f.cta,
+    'link', coalesce(f.link, case when v.slug is not null then '/' || v.slug when f.product_id is not null then '/p/' || (select slug from products where id = f.product_id) else '/search' end),
+    'vendor', jsonb_build_object('name', v.business_name, 'slug', v.slug, 'logo', v.logo_url, 'rating', v.rating_avg, 'trust', v.trust_level),
+    'product', (select jsonb_build_object('name', p.name, 'slug', p.slug, 'price', p.price, 'image', p.images[1]) from products p where p.id = f.product_id)
+  ) order by f.sort, f.created_at), '[]')
+  from featured_slots f
+  left join (select ve.*, (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = ve.id and r.approved) as rating_avg from vendors ve) v on v.id = f.vendor_id
+  where f.status = 'active'
+    and f.starts_on <= (now() at time zone 'Africa/Lusaka')::date
+    and (f.ends_on is null or f.ends_on >= (now() at time zone 'Africa/Lusaka')::date);
+$$;
+
+create or replace function featured_click(p_slot uuid) returns void
+language sql security definer set search_path = public as $$
+  update featured_slots set clicks = clicks + 1 where id = p_slot;
+$$;
+
+create or replace function featured_seen(p_slot uuid) returns void
+language sql security definer set search_path = public as $$
+  update featured_slots set impressions = impressions + 1 where id = p_slot;
+$$;
+
+-- What a receipt's QR shows: enough to prove the purchase, nothing private.
+create or replace function order_verify(p_number int, p_code text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare o orders%rowtype;
+begin
+  select * into o from orders where order_number = p_number;
+  if not found or o.verify_code is null or lower(coalesce(p_code, '')) <> lower(o.verify_code) then
+    return jsonb_build_object('found', false);
+  end if;
+  return jsonb_build_object(
+    'found', true,
+    'order_number', o.order_number,
+    'placed_on', lusaka_date(o.created_at),
+    'status', o.status,
+    'payment_status', o.payment_status,
+    'total', o.total,
+    'delivery_fee', o.delivery_fee,
+    'items', (select coalesce(jsonb_agg(jsonb_build_object('name', p.name, 'qty', i.quantity, 'line', i.line_total) order by p.name), '[]')
+              from order_items i join products p on p.id = i.product_id where i.order_id = o.id),
+    'seller', (select coalesce(string_agg(distinct v.business_name, ', '), 'ZaMarket')
+               from order_items i left join vendors v on v.id = i.vendor_id where i.order_id = o.id and v.id is not null));
+end $$;
+
+grant execute on function order_verify(int, text) to anon, authenticated;
+
+-- A vendor chooses which of their own products show first in their store.
+create or replace function vendor_set_featured(p_product uuid, p_on boolean) returns void
+language plpgsql security definer set search_path = public as $$
+declare v uuid := my_vendor_id(); owner uuid;
+begin
+  select vendor_id into owner from products where id = p_product;
+  if owner is null or (owner <> v and not is_staff()) then raise exception 'Not allowed'; end if;
+  if p_on and (select count(*) from products where vendor_id = owner and featured_in_store) >= 6 then
+    raise exception 'You can feature up to six products. Take one off first.';
+  end if;
+  update products set featured_in_store = p_on where id = p_product;
+end $$;
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
 alter table staff_invites enable row level security;
@@ -3319,6 +3606,7 @@ alter table deal_events enable row level security;
 alter table lead_activities enable row level security;
 alter table content_posts enable row level security;
 alter table funnels enable row level security;
+alter table featured_slots enable row level security;
 alter table training_progress enable row level security;
 alter table lead_magnets enable row level security;
 alter table marketing_goals enable row level security;
@@ -3329,6 +3617,8 @@ alter table founder_withdrawals enable row level security;
 alter table audit_logs enable row level security;
 alter table payouts enable row level security;
 alter table bonus_credits enable row level security;
+alter table link_hits enable row level security;
+alter table profit_shares enable row level security;
 alter table settings enable row level security;
 alter table provinces enable row level security;
 alter table districts enable row level security;
@@ -3388,6 +3678,7 @@ select ensure_policy('staff_all', 'leads', 'all', 'sees_all_leads() or (can_mark
 select ensure_policy('staff_all', 'lead_activities', 'all', 'exists (select 1 from leads l where l.id = lead_activities.lead_id and (sees_all_leads() or (can_market() and (l.owner_id = auth.uid() or l.owner_id is null))))');
 select ensure_policy('market_all', 'content_posts', 'all', 'can_market()');
 select ensure_policy('market_all', 'funnels', 'all', 'can_market()');
+select ensure_policy('market_featured', 'featured_slots', 'all', 'can_market()');
 select ensure_policy('own_training', 'training_progress', 'all', 'user_id = auth.uid()');
 select ensure_policy('staff_training_read', 'training_progress', 'select', 'is_staff()');
 select ensure_policy('market_all', 'lead_magnets', 'all', 'can_market()');
@@ -3407,6 +3698,8 @@ select ensure_policy('founder_read', 'audit_logs', 'select', 'is_founder()');
 select ensure_policy('staff_all', 'referrals', 'all', 'is_staff() or can_market()');
 select ensure_policy('staff_payouts', 'payouts', 'all', 'is_staff()');
 select ensure_policy('staff_bonuses', 'bonus_credits', 'all', 'is_staff()');
+select ensure_policy('staff_hits', 'link_hits', 'select', 'is_staff() or can_market()');
+select ensure_policy('founder_shares', 'profit_shares', 'all', 'is_founder()');
 select ensure_policy('own_bonuses', 'bonus_credits', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('own_payouts', 'payouts', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('staff_all', 'payments', 'all', 'is_staff()');
@@ -3468,6 +3761,10 @@ grant execute on function claim_magnet(text, text, text, text, text) to anon, au
 grant execute on function view_magnet(text) to anon, authenticated;
 grant execute on function get_invite(text, int) to anon, authenticated;
 grant execute on function invite_info(text) to anon, authenticated;
+grant execute on function track_hit(text, uuid, uuid, text) to anon, authenticated;
+grant execute on function featured_now() to anon, authenticated;
+grant execute on function featured_click(uuid) to anon, authenticated;
+grant execute on function featured_seen(uuid) to anon, authenticated;
 grant select on settings to anon;
 grant execute on function place_order(jsonb) to anon, authenticated;
 grant execute on function booked_slots(uuid, date) to anon, authenticated;

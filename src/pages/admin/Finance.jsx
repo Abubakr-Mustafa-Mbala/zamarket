@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
+import Split from './Split'
+import ProfitGuard from './ProfitGuard'
 import { useAuth } from '../../lib/auth'
 import { money, date, datetime, n, title } from '../../lib/format'
 import { EXPENSE_CATEGORIES } from '../../lib/statuses'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Stat, Tabs } from '../../components/ui'
 
-const TABS = [['owed', 'Who we owe'], ['requests', 'Payout requests'], ['commissions', 'Commissions'], ['settlements', 'Vendor payouts'], ['expenses', 'Expenses'], ['capital', 'Founder money']]
+const TABS = [['owed', 'Who we owe'], ['requests', 'Payout requests'], ['commissions', 'Commissions'], ['settlements', 'Vendor payouts'], ['expenses', 'Expenses'], ['capital', 'Founder money'], ['split', 'Our split'], ['guard', 'Profit guard']]
 
 export default function Finance() {
   const [sp, setSp] = useSearchParams()
@@ -18,6 +20,8 @@ export default function Finance() {
       <Tabs tabs={TABS} value={tab} onChange={(v) => setSp({ tab: v })} />
       {tab === 'owed' && <Owed />}
       {tab === 'requests' && <PayoutRequests />}
+      {tab === 'split' && <Split />}
+      {tab === 'guard' && <ProfitGuard />}
       {tab === 'commissions' && <Commissions />}
       {tab === 'settlements' && <Settlements />}
       {tab === 'expenses' && <Expenses />}

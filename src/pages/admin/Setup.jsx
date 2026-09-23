@@ -220,6 +220,8 @@ const GROUPS = [
     note: 'Many shops build delivery into the price so customers see "Free delivery". If you do that, add the delivery cost per sale when you price a product in "I bought goods".',
     fields: [
       { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
+      { key: 'assumed_delivery_cost', label: 'What a delivery really costs you (K)', type: 'number', help: 'Used for profit when nobody records the actual cost. Free delivery for the customer is never free for you — this keeps profit honest.' },
+      { key: 'monthly_fixed_costs', label: 'What the month must cover (K)', type: 'number', help: 'Rent, airtime, transport, data, subscriptions. Finance → Profit guard shows whether you have covered it.' },
       { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number', help: 'Added automatically. Anywhere else, you set the fee after calling the customer.' },
     ],
   },
@@ -228,6 +230,7 @@ const GROUPS = [
     note: 'The vendor pays the marketplace fee, and the affiliate\'s commission comes out of that fee.',
     fields: [
       { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
+      { key: 'show_vendor_views', label: 'Let vendors see visitor numbers', type: 'switch', help: 'Off while traffic is still small — a low number is discouraging. Turn it on once the shop is busy.' },
       { key: 'high_value_threshold', label: 'Verification needed above (K)', type: 'number', help: 'A brand-new vendor cannot publish an item above this price until someone from your team has met them and seen an ID or PACRA paper.' },
       { key: 'own_audience_fee_pct', label: 'Lower fee when the vendor brought the customer (%)', type: 'number', help: 'When someone buys through the vendor\'s own store link, you take this smaller fee instead.' },
       { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead. Below about 10% on cheap items, resellers earn too little to bother.' },

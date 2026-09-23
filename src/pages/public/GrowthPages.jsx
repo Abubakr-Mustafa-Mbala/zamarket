@@ -3,6 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
 import { useToast, Loading } from '../../components/ui'
+import { useSaved } from '../../lib/saved'
+import { useDepartments } from '../../lib/departments'
+import { useSeo } from '../../lib/seo'
+import OfferingCard from '../../components/OfferingCard'
+import Icon from '../../lib/icons'
 
 const FORMAT_WORD = { guide: 'Free guide', checklist: 'Free checklist', voucher: 'Voucher', quiz: 'Quick quiz', sample: 'Free sample', calculator: 'Free calculator', video: 'Free video', other: 'Free' }
 
@@ -165,4 +170,98 @@ export function VendorRefCapture() {
   const nav = useNavigate()
   useEffect(() => { if (code) setVendorRef(code.toLowerCase()); nav('/', { replace: true }) }, [code])
   return null
+}
+
+// /saved — things the customer tapped the heart on, kept on their own phone.
+export function SavedPage() {
+  const saved = useSaved()
+  const [items, setItems] = useState(null)
+  useSeo({ title: 'My list | ZaMarket', noIndex: true })
+  useEffect(() => {
+    if (!saved.ids.length) return setItems([])
+    supabase.from('public_products').select('*').in('id', saved.ids).then(({ data }) => setItems(data || []))
+  }, [saved.ids.join(',')])
+
+  if (!items) return <Loading />
+  if (!items.length) return (
+    <div className="empty-shop">
+      <h2>Your list is empty</h2>
+      <p>Tap the heart on anything you want to come back to. It stays on this phone.</p>
+      <Link to="/" className="btn primary">Start looking</Link>
+    </div>
+  )
+  return (
+    <div className="stack">
+      <div className="page-head"><div><h1>My list</h1><p>{items.length} saved</p></div>
+        <button className="btn ghost sm" onClick={saved.clear}>Clear the list</button></div>
+      <div className="grid-products">{items.map((p) => <OfferingCard key={p.id} p={p} />)}</div>
+    </div>
+  )
+}
+
+// /categories — the full directory, grouped the way people think.
+export function CategoriesPage() {
+  const departments = useDepartments()
+  const [counts, setCounts] = useState({})
+  useSeo({ title: 'All categories | ZaMarket Lusaka', description: 'Browse everything on ZaMarket: products, services, courses, vehicles and events in Lusaka.' })
+  useEffect(() => {
+    supabase.from('public_products').select('category,offering_type,fulfilment').then(({ data }) => {
+      const m = { _service: 0, _course: 0, _vehicle: 0, _event: 0 }
+      for (const p of data || []) {
+        m[p.category] = (m[p.category] || 0) + 1
+        if (p.offering_type === 'vehicle') m._vehicle++
+        else if (['course', 'class'].includes(p.offering_type)) m._course++
+        else if (p.offering_type === 'event') m._event++
+        else if (p.fulfilment === 'service') m._service++
+      }
+      setCounts(m)
+    })
+  }, [])
+
+  const kinds = [
+    { to: '/search?type=service', label: 'Services', icon: <Icon.wrench />, n: counts._service },
+    { to: '/search?type=course', label: 'Courses and training', icon: <Icon.graduation />, n: counts._course },
+    { to: '/search?type=vehicle', label: 'Vehicles', icon: <Icon.car />, n: counts._vehicle },
+    { to: '/search?type=event', label: 'Events', icon: <Icon.ticket />, n: counts._event },
+  ].filter((k) => k.n > 0)
+
+  return (
+    <div className="stack">
+      <div className="page-head"><div><h1>Explore ZaMarket</h1><p>Everything on the marketplace, by kind.</p></div></div>
+      <section className="stack-sm">
+        <h2>Shop</h2>
+        <div className="cat-grid">
+          {departments.map((d) => (
+            <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`} className={`cat-tile ${counts[d.name] ? '' : 'empty'}`}>
+              <span className="cat-tile-icon">{d.icon}</span>
+              <span>{d.name}</span>
+              <em>{counts[d.name] ? `${counts[d.name]} item${counts[d.name] > 1 ? 's' : ''}` : 'Coming soon'}</em>
+            </Link>
+          ))}
+        </div>
+      </section>
+      {kinds.length > 0 && (
+        <section className="stack-sm">
+          <h2>Book and learn</h2>
+          <div className="cat-grid">
+            {kinds.map((k) => (
+              <Link key={k.label} to={k.to} className="cat-tile">
+                <span className="cat-tile-icon">{k.icon}</span>
+                <span>{k.label}</span>
+                <em>{k.n} listed</em>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      <section className="stack-sm">
+        <h2>More</h2>
+        <div className="cat-grid">
+          <Link to="/sellers" className="cat-tile"><span className="cat-tile-icon"><Icon.briefcase /></span><span>Local businesses</span><em>Browse sellers</em></Link>
+          <Link to="/search?deals=1" className="cat-tile"><span className="cat-tile-icon"><Icon.tag /></span><span>Today's deals</span><em>What's on offer</em></Link>
+          <Link to="/about" className="cat-tile"><span className="cat-tile-icon"><Icon.info /></span><span>About ZaMarket</span><em>Who we are</em></Link>
+        </div>
+      </section>
+    </div>
+  )
 }

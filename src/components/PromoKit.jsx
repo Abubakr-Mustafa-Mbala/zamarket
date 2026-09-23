@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { money } from '../lib/format'
 import { commissionLabel } from '../lib/economics'
-import { buildKit, CHANNELS, IMAGE_LAYOUTS } from '../lib/promoKit'
-import { productCard, offerCard, sharePicture } from '../lib/shareCard'
+import { buildKit, CHANNELS } from '../lib/promoKit'
+import { sharePicture } from '../lib/shareCard'
+import { renderCreative, FORMATS } from '../lib/creative'
+import { approvedFacts, buildHooks, FAMILIES } from '../lib/hooks'
 import { Modal, useToast, Segmented, Badge } from './ui'
 
 // Everything an affiliate needs to promote one product, in one place.
@@ -12,7 +14,8 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const [channel, setChannel] = useState('whatsapp')
   const [variant, setVariant] = useState(0)
   const [intro, setIntro] = useState('')
-  const [layout, setLayout] = useState('product')
+  const [format, setFormat] = useState('portrait')
+  const [hookIndex, setHookIndex] = useState(0)
   const [edited, setEdited] = useState(null)
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
@@ -25,19 +28,18 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
   useEffect(() => { setEdited(null) }, [channel, variant, intro])
 
+  const hooks = useMemo(() => buildHooks(approvedFacts({ product, offer, reviews: product.reviews || [], settings })), [product, offer, settings])
+  const hook = hooks[hookIndex % Math.max(1, hooks.length)]
+
   useEffect(() => {
     let dead = false
-    if (layout === 'none') { setImg(null); setBlob(null); return }
     setBusy(true)
-    const make = layout === 'offer'
-      ? offerCard({ product, link, offerText: offer?.copy })
-      : productCard({ product, link, sellerName: product.vendor_name })
-    make.then((b) => {
-      if (dead || !b) return
-      setBlob(b); setImg(URL.createObjectURL(b))
-    }).catch(() => toast('Could not make the picture', true)).finally(() => !dead && setBusy(false))
+    renderCreative({ product, offer, settings, hook: hook?.text, link, format })
+      .then((b) => { if (!dead && b) { setBlob(b); setImg(URL.createObjectURL(b)) } })
+      .catch(() => toast('Could not make the picture', true))
+      .finally(() => !dead && setBusy(false))
     return () => { dead = true }
-  }, [layout, product, link, offer])
+  }, [product, offer, settings, hook?.text, link, format])
 
   const copy = async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
   const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
@@ -51,6 +53,19 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
     <Modal title={`Promote ${product.name}`} onClose={onClose} wide>
       <div className="kit">
         <div className="kit-main">
+          <div className="stack-sm">
+            <span className="small strong">The line across the picture</span>
+            <div className="hooks">
+              {hooks.map((h, i) => (
+                <button type="button" key={h.text} className={`hook ${i === hookIndex ? 'on' : ''}`} onClick={() => setHookIndex(i)}>
+                  <span className="hook-family">{FAMILIES[h.family] || h.family}</span>
+                  <span>{h.text}</span>
+                </button>
+              ))}
+            </div>
+            <p className="tiny muted">Every line comes from what the seller actually wrote — the benefits, the price, the offer, your real reviews. Nothing is invented.</p>
+          </div>
+
           <div className="kit-row">
             <Segmented options={CHANNELS.map((c) => [c.key, c.label])} value={channel} onChange={(v) => { setChannel(v); setVariant(0) }} />
             <button className="btn sm" onClick={() => setVariant(variant + 1)}>Shuffle wording</button>
@@ -64,11 +79,9 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
           <textarea className="input kit-text" rows={9} value={text} onChange={(e) => setEdited(e.target.value)} />
           <div className="btn-row">
-            {layout === 'none'
-              ? <button className="btn primary" onClick={copy}>Copy the message</button>
-              : canShareFiles
-                ? <button className="btn primary" onClick={share}>Share picture and message</button>
-                : <button className="btn primary" onClick={share}>Download the picture</button>}
+            {canShareFiles
+              ? <button className="btn primary" onClick={share}>Share picture and message</button>
+              : <button className="btn primary" onClick={share}>Download the picture</button>}
             <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
             <button className="btn" onClick={copy}>Copy the message</button>
             {edited !== null && <button className="btn ghost sm" onClick={() => setEdited(null)}>Undo my edits</button>}
@@ -84,8 +97,8 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
             <p className="tiny muted">Paid after the order is delivered and checked. Prices and offers come from the marketplace — if they change, your link always shows the current price.</p>
           </div>
 
-          <Segmented options={IMAGE_LAYOUTS.map((l) => [l.key, l.label])} value={layout} onChange={setLayout} />
-          {layout !== 'none' && (busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt="" />)}
+          <Segmented options={Object.values(FORMATS).map((f) => [f.key, f.label])} value={format} onChange={setFormat} />
+          {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt="" />}
           <p className="tiny muted">Your link is already in the picture and the message: <br /><span className="strong">{link.replace(/^https?:\/\//, '')}</span></p>
         </aside>
       </div>
