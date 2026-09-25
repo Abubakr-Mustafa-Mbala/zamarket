@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { supabase, q } from '../lib/supabase'
 import { useData } from '../lib/useData'
 import { money, num, n } from '../lib/format'
-import { Loading, Field, Input } from './ui'
+import { Loading, Field, Input, Problem } from './ui'
 
 const since = (days) => new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
 const today = () => new Date().toISOString().slice(0, 10)
@@ -10,7 +10,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 // Your own numbers, and what a target would take — based on your results, not promises.
 export default function AffiliatePlan() {
   const [goal, setGoal] = useState('500')
-  const { data, loading } = useData(() => q(supabase.rpc('affiliate_funnel', { p_from: since(30), p_to: today() })), [])
+  const { data, loading, error } = useData(() => q(supabase.rpc('affiliate_funnel', { p_from: since(30), p_to: today() })), [])
   const f = data || {}
 
   const plan = useMemo(() => {
@@ -25,6 +25,7 @@ export default function AffiliatePlan() {
     return { salesNeeded, clicksNeeded, perSale, buyRate }
   }, [goal, f])
 
+  if (error) return <Problem error={error} what="your numbers" />
   if (loading) return <Loading />
   const steps = [
     ['Opened your link', num(f.clicks)],

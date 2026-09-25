@@ -21,6 +21,7 @@ const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const OrdersList = named(adminOrders, 'OrdersList')
 const OrderDetail = named(adminOrders, 'OrderDetail')
 const Products = lazy(() => import('./pages/admin/Products'))
+const StudioPage = lazy(() => import('./pages/admin/Products').then((m) => ({ default: m.StudioPage })))
 const Inventory = named(adminStock, 'Inventory')
 const Purchases = named(adminStock, 'Purchases')
 const Suppliers = named(adminStock, 'Suppliers')
@@ -36,6 +37,8 @@ const MagnetPage = named(growthPages, 'MagnetPage')
 const InvitePage = named(growthPages, 'InvitePage')
 const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
+const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
+const Protection = lazy(() => import('./pages/public/Protection'))
 const VendorRefCapture = named(growthPages, 'VendorRefCapture')
 const SavedPage = named(growthPages, 'SavedPage')
 const CategoriesPage = named(growthPages, 'CategoriesPage')
@@ -50,6 +53,8 @@ const PartnerEarnings = named(earningsPages, 'PartnerEarnings')
 const ResellerEarnings = named(earningsPages, 'ResellerEarnings')
 const VendorEarnings = named(earningsPages, 'VendorEarnings')
 const AddStock = lazy(() => import('./pages/admin/AddStock'))
+const StockCount = lazy(() => import('./pages/admin/StockCount'))
+const MoneyCheck = lazy(() => import('./pages/admin/MoneyCheck'))
 const Reports = named(adminSetup, 'Reports')
 const Team = named(adminSetup, 'Team')
 const Settings = named(adminSetup, 'Settings')
@@ -65,6 +70,7 @@ const VendorProducts = named(vendorPages, 'VendorProducts')
 const VendorOrders = named(vendorPages, 'VendorOrders')
 const VendorPayouts = named(vendorPages, 'VendorPayouts')
 const VendorStore = named(vendorPages, 'VendorStore')
+const VendorStudio = named(vendorPages, 'VendorStudio')
 const VendorMarketing = named(vendorPages, 'VendorMarketing')
 
 const STAFF = ['founder', 'ops', 'finance', 'delivery', 'marketing']
@@ -128,6 +134,8 @@ export default function App() {
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/rate/:link" element={<RatePage />} />
         <Route path="/about" element={<About />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/protection" element={<Protection />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/categories" element={<CategoriesPage />} />
       </Route>
@@ -143,10 +151,13 @@ export default function App() {
       <Route path="/admin" element={<Guard roles={STAFF}><Shell kind="staff" /></Guard>}>
         <Route index element={<StaffHome />} />
         <Route path="add-stock" element={<AddStock />} />
+        <Route path="stock-count" element={<StockCount />} />
+        <Route path="money-check" element={<MoneyCheck />} />
         <Route path="orders" element={<OrdersList />} />
         <Route path="deals" element={<Deals />} />
         <Route path="orders/:id" element={<OrderDetail />} />
         <Route path="products" element={<Products />} />
+        <Route path="studio" element={<StudioPage />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />
@@ -183,6 +194,7 @@ export default function App() {
         <Route index element={<VendorHome />} />
         <Route path="products" element={<VendorProducts />} />
         <Route path="shopfront" element={<VendorStore />} />
+        <Route path="studio" element={<VendorStudio />} />
         <Route path="orders" element={<VendorOrders />} />
         <Route path="payouts" element={<VendorPayouts />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />

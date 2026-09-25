@@ -5,11 +5,12 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
-import { Badge, Table, Loading, Modal, Stat, CopyLine, Empty } from '../../components/ui'
+import { Badge, Table, Loading, Stat, CopyLine, Empty, Field, Input } from '../../components/ui'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
 import PromoKit from '../../components/PromoKit'
 import AffiliatePlan from '../../components/AffiliatePlan'
+import Statement from '../../components/Statement'
 import { ManualSale } from '../admin/Orders'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
 
@@ -127,6 +128,7 @@ export function ResellerNewSale() {
 
 export function ResellerCommissions() {
   const r = useReseller()
+  const [statement, setStatement] = useState(false)
   const { data: bonuses } = useData(() => r ? q(supabase.from('bonus_credits').select('*,order:orders(order_number)').eq('reseller_id', r.id).order('created_at', { ascending: false })) : Promise.resolve([]), [r?.id])
   const { data, loading } = useData(() => r ? q(supabase.from('commissions').select('*,order:orders(order_number,status)').eq('reseller_id', r.id).order('created_at', { ascending: false })) : Promise.resolve([]), [r?.id])
   if (loading) return <Loading />
@@ -134,7 +136,11 @@ export function ResellerCommissions() {
     <div className="stack">
       <AffiliatePlan />
       <PayoutRequest who="reseller" />
-      <div className="page-head"><div><h1>Commissions</h1><p>Pending → Verified → Approved → Paid.</p></div></div>
+      <div className="page-head">
+        <div><h1>Commissions</h1><p>Pending → Verified → Approved → Paid.</p></div>
+        <button className="btn" onClick={() => setStatement(!statement)}>{statement ? 'Back to the list' : 'Statement for a period'}</button>
+      </div>
+      {statement && <AffiliateStatement who={r} rows={data} bonuses={bonuses || []} />}
       <Table rows={data} empty="No commissions yet" cols={[
         { key: 'order', label: 'Order', render: (c) => `#${c.order?.order_number}` },
         { key: 'created_at', label: 'Date', render: (c) => date(c.created_at) },
@@ -143,6 +149,45 @@ export function ResellerCommissions() {
         { key: 'notes', label: 'Note', render: (c) => <span className="tiny muted">{['rejected', 'reversed'].includes(c.status) ? c.notes : c.status === 'paid' ? `Paid ${date(c.paid_at)}` : ''}</span> },
       ]} />
       <p className="tiny muted">Commissions are reversed if an order is cancelled, refunded, returned or flagged as a self-purchase.</p>
+    </div>
+  )
+}
+
+
+// What an affiliate can show anyone who asks what they earned, and when.
+function AffiliateStatement({ who, rows, bonuses }) {
+  const [from, setFrom] = useState(new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10))
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10))
+  const within = (r) => { const d = (r.created_at || '').slice(0, 10); return d >= from && d <= to }
+  const list = (rows || []).filter(within)
+  const extra = (bonuses || []).filter(within)
+  const by = (st) => list.filter((c) => c.status === st).reduce((t, c) => t + Number(c.amount || 0), 0)
+  const bonusTotal = extra.reduce((t, b) => t + Number(b.amount || 0), 0)
+
+  return (
+    <div className="stack">
+      <div className="card form-grid no-print">
+        <Field label="From"><Input type="date" value={from} onChange={setFrom} /></Field>
+        <Field label="To"><Input type="date" value={to} onChange={setTo} /></Field>
+      </div>
+      <Statement
+        kind="affiliate"
+        id={`COM-${from.replace(/-/g, '')}`}
+        who={who?.full_name || 'Affiliate'}
+        period={{ from, to }}
+        status={`${list.filter((c) => c.status === 'paid').length} of ${list.length} paid`}
+        lines={[
+          { label: 'Qualifying sales', sub: `${list.length} completed orders`, amount: by('pending') + by('verified') + by('approved') + by('paid') },
+          ...(bonusTotal > 0 ? [{ label: 'Bonuses', sub: extra.map((b) => b.kind.replace(/_/g, ' ')).join(', '), amount: bonusTotal }] : []),
+        ]}
+        totals={[
+          { label: 'Still being checked', amount: by('pending') },
+          { label: 'Ready to be paid', amount: by('verified') + by('approved') },
+          { label: 'Already paid', amount: by('paid') },
+          { label: 'Earned in this period', amount: by('pending') + by('verified') + by('approved') + by('paid') + bonusTotal, strong: true },
+        ]}
+        note="Commission is earned when an order is completed, and checked before it is paid. Cancelled or returned orders are removed."
+      />
     </div>
   )
 }

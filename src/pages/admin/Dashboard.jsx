@@ -4,7 +4,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, num, pct } from '../../lib/format'
-import { Stat, Loading, Segmented, Breakdown, Table, Badge } from '../../components/ui'
+import { Stat, Loading, Segmented, Breakdown, Table } from '../../components/ui'
 
 const RANGES = { 7: 'This week', 30: '30 days', 90: '90 days', 365: 'This year' }
 

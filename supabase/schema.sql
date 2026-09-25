@@ -907,11 +907,46 @@ create table if not exists featured_slots (
 -- A vendor chooses what shows first in their own store.
 alter table products add column if not exists featured_in_store boolean not null default false;
 
+-- Proof: what the customer actually said, with their permission to repeat it.
+alter table reviews add column if not exists as_described boolean;
+alter table reviews add column if not exists photo_url text;
+alter table reviews add column if not exists may_share boolean not null default false;
+alter table reviews add column if not exists shared_at timestamptz;
+
 -- Every order carries a short code. The receipt QR uses it so a scan proves the
 -- scanner is holding the receipt, without putting anything private in the code.
 alter table orders add column if not exists verify_code text;
 alter table orders alter column verify_code set default substr(replace(gen_random_uuid()::text, '-', ''), 1, 8);
 update orders set verify_code = substr(replace(gen_random_uuid()::text, '-', ''), 1, 8) where verify_code is null;
+
+-- Counting the shelf against the system. Shrinkage looks like profit until you count.
+create table if not exists stock_counts (
+  id uuid primary key default gen_random_uuid(),
+  counted_on date not null default (now() at time zone 'Africa/Lusaka')::date,
+  status text not null default 'open' check (status in ('open', 'finished', 'abandoned')),
+  note text,
+  counted_by uuid references profiles(id),
+  finished_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists stock_count_items (
+  count_id uuid not null references stock_counts(id) on delete cascade,
+  product_id uuid not null references products(id) on delete cascade,
+  expected int not null default 0,
+  counted int,
+  primary key (count_id, product_id)
+);
+
+-- The day's money: what the system says came in, against what is actually in hand.
+create table if not exists money_checks (
+  day date primary key,
+  cash_counted numeric,
+  mobile_counted numeric,
+  note text,
+  checked_by uuid references profiles(id),
+  checked_at timestamptz not null default now()
+);
 
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
@@ -1102,7 +1137,7 @@ create trigger trg_no_delete_settlements before delete on settlements for each r
 create or replace function reserved_slug(p text) returns boolean
 language sql immutable as $$
   select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
-    'search','sellers','store','stores','p','r','go','free','invite','rate','about','saved','categories','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+    'search','sellers','store','stores','p','r','go','free','invite','rate','about','how-it-works','protection','saved','categories','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
 $$;
 
 create or replace function make_slug(p text) returns text
@@ -2036,9 +2071,11 @@ begin
   if exists (select 1 from reviews where order_id = o.id) then raise exception 'This order has already been rated. Thank you!'; end if;
   select * into cust from customers where id = o.customer_id;
   for it in select * from order_items where order_id = o.id loop
-    insert into reviews (order_id, product_id, vendor_id, customer_name, product_rating, vendor_rating, delivery_rating, marketplace_rating, comment, verified)
+    insert into reviews (order_id, product_id, vendor_id, customer_name, product_rating, vendor_rating, delivery_rating, marketplace_rating,
+                         comment, verified, as_described, photo_url, may_share)
     values (o.id, it.product_id, it.vendor_id, coalesce(cust.full_name, 'Customer'), (p_ratings->>'product')::int, (p_ratings->>'vendor')::int,
-            (p_ratings->>'delivery')::int, (p_ratings->>'marketplace')::int, nullif(p_comment, ''), o.status in ('delivered','completed'));
+            (p_ratings->>'delivery')::int, (p_ratings->>'marketplace')::int, nullif(p_comment, ''), o.status in ('delivered','completed'),
+            (p_ratings->>'as_described')::boolean, nullif(p_ratings->>'photo', ''), coalesce((p_ratings->>'may_share')::boolean, false));
   end loop;
 end $$;
 
@@ -3560,7 +3597,8 @@ begin
     'items', (select coalesce(jsonb_agg(jsonb_build_object('name', p.name, 'qty', i.quantity, 'line', i.line_total) order by p.name), '[]')
               from order_items i join products p on p.id = i.product_id where i.order_id = o.id),
     'seller', (select coalesce(string_agg(distinct v.business_name, ', '), 'ZaMarket')
-               from order_items i left join vendors v on v.id = i.vendor_id where i.order_id = o.id and v.id is not null));
+               from order_items i left join vendors v on v.id = i.vendor_id where i.order_id = o.id and v.id is not null),
+    'timeline', order_timeline(o));
 end $$;
 
 grant execute on function order_verify(int, text) to anon, authenticated;
@@ -3577,6 +3615,215 @@ begin
   end if;
   update products set featured_in_store = p_on where id = p_product;
 end $$;
+
+-- Start a count: take a snapshot of what the system thinks is on the shelf.
+create or replace function start_stock_count() returns uuid
+language plpgsql security definer set search_path = public as $$
+declare c uuid;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  if exists (select 1 from stock_counts where status = 'open') then
+    raise exception 'There is already a count open. Finish or abandon it first.';
+  end if;
+  insert into stock_counts (counted_by) values (auth.uid()) returning id into c;
+  insert into stock_count_items (count_id, product_id, expected)
+  select c, p.id, p.stock_available
+  from products p
+  where p.owner_type = 'founder' and p.fulfilment = 'in_stock' and p.status in ('published', 'draft');
+  return c;
+end $$;
+
+create or replace function save_count(p_count uuid, p_product uuid, p_counted int) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  update stock_count_items set counted = p_counted where count_id = p_count and product_id = p_product;
+end $$;
+
+-- What the count found, in units and in money, before anything is changed.
+create or replace function count_result(p_count uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'id', p_count,
+    'status', (select status from stock_counts where id = p_count),
+    'counted_on', (select counted_on from stock_counts where id = p_count),
+    'lines', coalesce((select jsonb_agg(jsonb_build_object(
+        'product_id', i.product_id, 'name', p.name, 'expected', i.expected, 'counted', i.counted,
+        'difference', coalesce(i.counted, i.expected) - i.expected,
+        'value', round((coalesce(i.counted, i.expected) - i.expected) * product_effective_cost(p), 2))
+      order by (case when i.counted is null then 0 else abs(coalesce(i.counted, 0) - i.expected) end) desc, p.name)
+      from stock_count_items i join products p on p.id = i.product_id where i.count_id = p_count), '[]'),
+    'not_counted', (select count(*) from stock_count_items where count_id = p_count and counted is null),
+    'short_value', coalesce((select sum(round((i.counted - i.expected) * product_effective_cost(p), 2))
+       from stock_count_items i join products p on p.id = i.product_id
+       where i.count_id = p_count and i.counted is not null and i.counted < i.expected), 0),
+    'over_value', coalesce((select sum(round((i.counted - i.expected) * product_effective_cost(p), 2))
+       from stock_count_items i join products p on p.id = i.product_id
+       where i.count_id = p_count and i.counted is not null and i.counted > i.expected), 0));
+end $$;
+
+-- Finish it: the shelf becomes the truth, and every change is recorded with a reason.
+create or replace function finish_stock_count(p_count uuid, p_note text default null) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare r record; changed int := 0;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  if (select status from stock_counts where id = p_count) <> 'open' then raise exception 'That count is already finished'; end if;
+
+  for r in select i.product_id, i.expected, i.counted from stock_count_items i
+            where i.count_id = p_count and i.counted is not null and i.counted <> i.expected loop
+    perform apply_movement(r.product_id, 'adjustment', r.counted - r.expected,
+      'Stock count on ' || (select counted_on from stock_counts where id = p_count) || coalesce(': ' || p_note, ''),
+      'stock_count', p_count);
+    changed := changed + 1;
+  end loop;
+
+  update stock_counts set status = 'finished', finished_at = now(), note = coalesce(p_note, note) where id = p_count;
+  return jsonb_build_object('adjusted', changed, 'result', count_result(p_count));
+end $$;
+
+-- The day's money, so a payment recorded but never received cannot hide.
+create or replace function money_day(p_day date) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'day', p_day,
+    'cash_expected', coalesce((select sum(amount) from payments where lusaka_date(created_at) = p_day and method = 'cash'), 0),
+    'mobile_expected', coalesce((select sum(amount) from payments where lusaka_date(created_at) = p_day and method in ('airtel_money', 'mtn_money')), 0),
+    'other_expected', coalesce((select sum(amount) from payments where lusaka_date(created_at) = p_day and method not in ('cash', 'airtel_money', 'mtn_money')), 0),
+    'payments', (select count(*) from payments where lusaka_date(created_at) = p_day),
+    'expenses_cash', coalesce((select sum(amount) from expenses where spent_on = p_day), 0),
+    'check', (select to_jsonb(m) from money_checks m where m.day = p_day));
+end $$;
+
+create or replace function save_money_check(p_day date, p_cash numeric, p_mobile numeric, p_note text default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  insert into money_checks (day, cash_counted, mobile_counted, note, checked_by)
+  values (p_day, p_cash, p_mobile, p_note, auth.uid())
+  on conflict (day) do update set cash_counted = excluded.cash_counted, mobile_counted = excluded.mobile_counted,
+    note = coalesce(excluded.note, money_checks.note), checked_by = auth.uid(), checked_at = now();
+end $$;
+
+-- Evidence, not a badge. Every line here is a fact the marketplace can show,
+-- and it only appears when it is true.
+create or replace function vendor_trust(p_slug text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v vendors%rowtype;
+begin
+  select * into v from vendors where slug = p_slug and status = 'approved';
+  if not found then return jsonb_build_object('found', false); end if;
+  return jsonb_build_object(
+    'found', true,
+    'business_name', v.business_name,
+    'level', v.trust_level,
+    'since', lusaka_date(v.created_at),
+    'checks', jsonb_build_array(
+      jsonb_build_object('label', 'Business name and phone checked', 'done', true),
+      jsonb_build_object('label', 'Area where they work is known', 'done', coalesce(v.location, '') <> ''),
+      jsonb_build_object('label', 'Someone from ZaMarket has met them', 'done', v.trust_level in ('known', 'verified')),
+      jsonb_build_object('label', 'ID or PACRA paper seen in person', 'done', coalesce(v.id_seen, false)),
+      jsonb_build_object('label', 'Registered business number on file', 'done', coalesce(v.business_reg_no, '') <> ''),
+      jsonb_build_object('label', 'Orders handled and paid through ZaMarket', 'done', true)),
+    'completed_orders', (select count(distinct o.id) from orders o join order_items i on i.order_id = o.id
+                          where i.vendor_id = v.id and o.status = 'completed'),
+    'verified_reviews', (select count(*) from reviews r where r.vendor_id = v.id and r.approved and r.verified),
+    'rating', (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved),
+    'on_time', (select count(*) from orders o join order_items i on i.order_id = o.id
+                 where i.vendor_id = v.id and o.status = 'completed'
+                   and (o.needed_by is null or lusaka_date(o.completed_at) <= o.needed_by)));
+end $$;
+
+grant execute on function vendor_trust(text) to anon, authenticated;
+
+-- The marketplace's own record, for anyone who asks "does this thing actually work?"
+-- Every number is counted, never estimated, and shown only once it exists.
+create or replace function marketplace_proof() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'completed_orders', (select count(*) from orders where status = 'completed'),
+    'delivered_orders', (select count(*) from orders where status in ('delivered', 'completed')),
+    'businesses', (select count(*) from vendors where status = 'approved'),
+    'checked_businesses', (select count(*) from vendors where status = 'approved' and trust_level in ('known', 'verified')),
+    'verified_reviews', (select count(*) from reviews where approved and verified),
+    'rating', (select round(avg(marketplace_rating), 1) from reviews where approved),
+    'on_time_pct', (select case when count(*) = 0 then null else
+        round(100.0 * count(*) filter (where o.needed_by is null or lusaka_date(o.completed_at) <= o.needed_by) / count(*), 0) end
+      from orders o where o.status = 'completed'),
+    'since', (select lusaka_date(min(created_at)) from orders));
+$$;
+
+grant execute on function marketplace_proof() to anon, authenticated;
+
+-- The proof library: real customer words, attached to real orders, that the
+-- customer allowed us to repeat. Nothing here is written by us.
+create or replace function proof_library(p_limit int default 40) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() and not can_market() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'counts', jsonb_build_object(
+      'reviews', (select count(*) from reviews where approved and verified),
+      'with_words', (select count(*) from reviews where approved and verified and coalesce(comment, '') <> ''),
+      'with_photos', (select count(*) from reviews where approved and coalesce(photo_url, '') <> ''),
+      'shareable', (select count(*) from reviews where approved and verified and may_share and coalesce(comment, '') <> ''),
+      'waiting', (select count(*) from reviews where not approved)),
+    'items', coalesce((select jsonb_agg(x order by x->>'created_at' desc) from (
+      select jsonb_build_object(
+        'id', r.id, 'name', split_part(r.customer_name, ' ', 1), 'rating', r.product_rating,
+        'comment', r.comment, 'photo', r.photo_url, 'as_described', r.as_described,
+        'may_share', r.may_share, 'approved', r.approved, 'verified', r.verified,
+        'product', p.name, 'vendor', v.business_name, 'created_at', r.created_at) as x
+      from reviews r
+      left join products p on p.id = r.product_id
+      left join vendors v on v.id = r.vendor_id
+      where coalesce(r.comment, '') <> '' or coalesce(r.photo_url, '') <> ''
+      order by r.created_at desc limit p_limit) t), '[]'));
+end $$;
+
+-- Proof anyone may repeat: approved, verified, and the customer said yes.
+create or replace function public_proof(p_limit int default 6) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'name', split_part(r.customer_name, ' ', 1),
+    'rating', r.product_rating,
+    'comment', r.comment,
+    'product', p.name,
+    'vendor', v.business_name,
+    'when', lusaka_date(r.created_at)) order by r.created_at desc), '[]')
+  from reviews r
+  left join products p on p.id = r.product_id
+  left join vendors v on v.id = r.vendor_id
+  where r.approved and r.verified and r.may_share and coalesce(r.comment, '') <> ''
+  limit p_limit;
+$$;
+
+grant execute on function public_proof(int) to anon, authenticated;
+
+-- Where an order has got to, in plain words, with the times that are actually known.
+create or replace function order_timeline(o orders) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with paid as (select min(created_at) as at from payments where order_id = o.id),
+       gone as (select min(created_at) as at from deliveries where order_id = o.id and status in ('out_for_delivery','delivered')),
+       got as (select min(delivered_at) as at from deliveries where order_id = o.id and delivered_at is not null)
+  select jsonb_build_array(
+    jsonb_build_object('label', 'Order placed', 'note', 'We have your order', 'at', o.created_at, 'done', true),
+    jsonb_build_object('label', 'Confirmed with you', 'note', 'We called and agreed the price and delivery',
+      'at', o.confirmed_at, 'done', o.confirmed_at is not null),
+    jsonb_build_object('label', 'Payment confirmed', 'note', 'We have checked the payment',
+      'at', (select at from paid), 'done', o.payment_status = 'paid'),
+    jsonb_build_object('label', 'Being prepared', 'note', 'The seller is getting it ready',
+      'at', null, 'done', o.status in ('processing','ready_for_dispatch','out_for_delivery','delivered','completed')),
+    jsonb_build_object('label', 'On the way', 'note', 'It has left for your address',
+      'at', (select at from gone), 'done', o.status in ('out_for_delivery','delivered','completed')),
+    jsonb_build_object('label', 'Delivered', 'note', 'It reached you',
+      'at', (select at from got), 'done', o.status in ('delivered','completed'))
+  );
+$$;
 
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
@@ -3618,6 +3865,9 @@ alter table audit_logs enable row level security;
 alter table payouts enable row level security;
 alter table bonus_credits enable row level security;
 alter table link_hits enable row level security;
+alter table stock_counts enable row level security;
+alter table stock_count_items enable row level security;
+alter table money_checks enable row level security;
 alter table profit_shares enable row level security;
 alter table settings enable row level security;
 alter table provinces enable row level security;
@@ -3699,6 +3949,9 @@ select ensure_policy('staff_all', 'referrals', 'all', 'is_staff() or can_market(
 select ensure_policy('staff_payouts', 'payouts', 'all', 'is_staff()');
 select ensure_policy('staff_bonuses', 'bonus_credits', 'all', 'is_staff()');
 select ensure_policy('staff_hits', 'link_hits', 'select', 'is_staff() or can_market()');
+select ensure_policy('staff_counts', 'stock_counts', 'all', 'is_staff()');
+select ensure_policy('staff_count_items', 'stock_count_items', 'all', 'is_staff()');
+select ensure_policy('staff_money_checks', 'money_checks', 'all', 'is_staff()');
 select ensure_policy('founder_shares', 'profit_shares', 'all', 'is_founder()');
 select ensure_policy('own_bonuses', 'bonus_credits', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');
 select ensure_policy('own_payouts', 'payouts', 'select', 'reseller_id = my_reseller_id() or vendor_id = my_vendor_id()');

@@ -7,7 +7,7 @@ import ProfitGuard from './ProfitGuard'
 import { useAuth } from '../../lib/auth'
 import { money, date, datetime, n, title } from '../../lib/format'
 import { EXPENSE_CATEGORIES } from '../../lib/statuses'
-import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Stat, Tabs } from '../../components/ui'
+import { Badge, Table, Loading, Modal, Field, Input, Select, useToast, Stat, Tabs } from '../../components/ui'
 
 const TABS = [['owed', 'Who we owe'], ['requests', 'Payout requests'], ['commissions', 'Commissions'], ['settlements', 'Vendor payouts'], ['expenses', 'Expenses'], ['capital', 'Founder money'], ['split', 'Our split'], ['guard', 'Profit guard']]
 

@@ -182,6 +182,52 @@ export function CopyLine({ text }) {
   )
 }
 
-export function Loading() {
-  return <div className="empty muted">Loading…</div>
+// A blank space while data loads looks broken. A shape in the right place looks
+// like the page arriving.
+export function Loading({ shape = 'page' }) {
+  if (shape === 'cards') {
+    return (
+      <div className="grid-products" aria-busy="true" aria-label="Loading">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="sk-card">
+            <span className="sk sk-img" /><span className="sk sk-line w70" /><span className="sk sk-line w40" /><span className="sk sk-btn" />
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (shape === 'rows') {
+    return (
+      <div className="sk-rows" aria-busy="true" aria-label="Loading">
+        {[0, 1, 2, 3, 4].map((i) => <span key={i} className="sk sk-row" />)}
+      </div>
+    )
+  }
+  return (
+    <div className="sk-page" aria-busy="true" aria-label="Loading">
+      <span className="sk sk-line w40 tall" />
+      <span className="sk sk-line w70" />
+      <div className="sk-rows">{[0, 1, 2].map((i) => <span key={i} className="sk sk-row" />)}</div>
+    </div>
+  )
+}
+
+
+// When a page can't load, say what happened and what to do — never a blank screen.
+export function Problem({ error, onRetry, what = 'this page' }) {
+  const text = String(error || '')
+  const needsUpdate = /does not exist|schema cache|column .* does not exist|function .* does not exist/i.test(text)
+  const notAllowed = /permission denied|Not allowed|row-level security/i.test(text)
+  return (
+    <section className="card stack-sm problem">
+      <h3>{needsUpdate ? 'The database needs the latest update' : notAllowed ? 'You don\'t have access to this' : `We couldn't load ${what}`}</h3>
+      {needsUpdate
+        ? <p className="small">This part of ZaMarket is newer than your database. Run <strong>supabase/schema.sql</strong> in Supabase (SQL Editor → paste → Run), then refresh this page. It is safe to run as many times as you like.</p>
+        : notAllowed
+          ? <p className="small">Ask a founder to give your account access, then try again.</p>
+          : <p className="small">Something went wrong on the way to the server. Check your connection and try again.</p>}
+      <details className="small"><summary>What the system said</summary><code className="tiny">{text}</code></details>
+      {onRetry && <button className="btn" onClick={onRetry}>Try again</button>}
+    </section>
+  )
 }

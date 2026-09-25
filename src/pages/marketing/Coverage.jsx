@@ -3,7 +3,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n } from '../../lib/format'
-import { Loading, Empty, useToast, Badge, Field, Input, Modal } from '../../components/ui'
+import { Loading, Empty, useToast, Badge, Field, Input, Modal, Problem } from '../../components/ui'
 
 // Affiliates naturally pile onto two or three easy products. This shows what is
 // being ignored and lets you pay more on it for a while.
@@ -11,7 +11,7 @@ export default function Coverage() {
   const toast = useToast()
   const { settings, isStaff } = useAuth()
   const [boosting, setBoosting] = useState(null)
-  const { data, loading, reload } = useData(() => q(supabase.rpc('product_coverage')), [])
+  const { data, loading, error, reload } = useData(() => q(supabase.rpc('product_coverage')), [])
   const rows = data || []
 
   const groups = useMemo(() => {
@@ -22,7 +22,8 @@ export default function Coverage() {
     return { boosted, never, quiet, working }
   }, [rows])
 
-  if (loading) return <Loading />
+  if (error) return <Problem error={error} what="product coverage" onRetry={typeof reload === 'function' ? reload : undefined} />
+  if (loading) return <Loading shape="rows" />
   if (!rows.length) return <Empty title="No published products yet">Publish something first.</Empty>
 
   const covered = rows.length ? Math.round((groups.working.length / rows.length) * 100) : 0

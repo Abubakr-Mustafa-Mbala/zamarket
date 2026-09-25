@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { money, date, datetime, n, title } from '../../lib/format'
-import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Tabs } from '../../components/ui'
+import { money, date, n, title } from '../../lib/format'
+import { Badge, Table, Loading, Modal, Field, Input, useToast, Tabs } from '../../components/ui'
 
 export function Customers() {
   const nav = useNavigate()

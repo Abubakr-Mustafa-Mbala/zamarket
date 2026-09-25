@@ -13,6 +13,8 @@ import { THEMES, STYLES } from '../../lib/storeTheme'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
 import QrCode from '../../components/QrCode'
+import Statement from '../../components/Statement'
+import CreativeStudio from '../shared/CreativeStudio'
 
 const useVendor = () => useAuth().profile?.partner || null
 
@@ -227,13 +229,18 @@ export function VendorOrders() {
 
 export function VendorPayouts() {
   const v = useVendor()
+  const [statement, setStatement] = useState(false)
   const { data, loading } = useData(() => v ? q(supabase.from('settlements').select('*').eq('vendor_id', v.id).order('created_at', { ascending: false })) : Promise.resolve([]), [v?.id])
   if (!v) return <Empty title="No vendor profile" />
   if (loading) return <Loading />
   return (
     <div className="stack">
       <PayoutRequest who="vendor" />
-      <div className="page-head"><div><h1>Payouts</h1><p>Created when an order is completed. Pending → Eligible → Approved → Paid.</p></div></div>
+      <div className="page-head">
+        <div><h1>Payouts</h1><p>Created when an order is completed. Pending → Eligible → Approved → Paid.</p></div>
+        <button className="btn" onClick={() => setStatement(!statement)}>{statement ? 'Back to the list' : 'Statement for a period'}</button>
+      </div>
+      {statement && <VendorStatement vendor={v} rows={data} />}
       <Table rows={data} empty="No payouts yet" cols={[
         { key: 'order', label: 'Order', render: (s) => `#${s.order_number ?? '—'}` },
         { key: 'gross', label: 'Sale', num: true, render: (s) => money(s.gross) },
@@ -425,8 +432,8 @@ export function VendorStore() {
 function VendorTraffic() {
   const from = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10)
   const to = new Date().toISOString().slice(0, 10)
-  const { data, loading } = useData(() => q(supabase.rpc('vendor_traffic', { p_from: from, p_to: to })), [])
-  if (loading || !data || data.hidden) return null
+  const { data, loading, error } = useData(() => q(supabase.rpc('vendor_traffic', { p_from: from, p_to: to })), [])
+  if (error || loading || !data || data.hidden) return null
   const t = data
   return (
     <section className="card stack-sm">
@@ -444,5 +451,59 @@ function VendorTraffic() {
       )}
       <p className="tiny muted">Visits are counted per day, without recording anything about the person.</p>
     </section>
+  )
+}
+
+
+// What a vendor can hand to their accountant: what sold, what we kept, what they get.
+function VendorStatement({ vendor, rows }) {
+  const [from, setFrom] = useState(new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10))
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10))
+  const inRange = (rows || []).filter((r) => {
+    const d = (r.created_at || '').slice(0, 10)
+    return d >= from && d <= to
+  })
+  const sum = (k) => inRange.reduce((t, r) => t + Number(r[k] || 0), 0)
+  const paid = inRange.filter((r) => r.status === 'paid')
+
+  return (
+    <div className="stack">
+      <div className="card form-grid no-print">
+        <Field label="From"><Input type="date" value={from} onChange={setFrom} /></Field>
+        <Field label="To"><Input type="date" value={to} onChange={setTo} /></Field>
+      </div>
+      <Statement
+        kind="vendor"
+        id={`SET-${from.replace(/-/g, '')}`}
+        who={vendor.business_name}
+        period={{ from, to }}
+        status={inRange.length === 0 ? 'Nothing in this period' : paid.length === inRange.length ? 'All paid' : `${paid.length} of ${inRange.length} paid`}
+        lines={[
+          { label: 'Completed orders', sub: `${inRange.length} in this period`, amount: sum('gross') },
+          { label: 'Marketplace fee', deduct: true, amount: sum('marketplace_fee') },
+          ...(sum('reseller_commission') > 0 ? [{ label: 'Affiliate commission', deduct: true, amount: sum('reseller_commission') }] : []),
+          ...(sum('adjustments') ? [{ label: 'Adjustments', deduct: true, amount: sum('adjustments') }] : []),
+        ]}
+        totals={[
+          { label: 'Already paid to you', amount: paid.reduce((t, r) => t + Number(r.net_payable || 0), 0) },
+          { label: 'Net settlement', amount: sum('net_payable'), strong: true },
+        ]}
+        note="Fees are taken from each completed order. Cancelled and refunded orders are not included. Customer details are never shown on a statement."
+      />
+    </div>
+  )
+}
+
+
+export function VendorStudio() {
+  const v = useVendor()
+  if (!v) return <Empty title="No vendor profile" />
+  return (
+    <div className="stack">
+      <div className="page-head">
+        <div><h1>Creative Studio</h1><p>Make a price list from what you already sell. No typing, no design work.</p></div>
+      </div>
+      <CreativeStudio vendorId={v.id} vendor={v} />
+    </div>
   )
 }

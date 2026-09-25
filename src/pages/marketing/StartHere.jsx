@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
-import { money, num } from '../../lib/format'
+import { money } from '../../lib/format'
 import { Loading, CopyLine } from '../../components/ui'
 
 // A plain explanation of how to get customers, and how this system counts it.

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { money, date, n, title, pct } from '../../lib/format'
+import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, useToast, Tabs, Stat, CopyLine } from '../../components/ui'
 
 function TrustCell({ v, onDone }) {

@@ -3,7 +3,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { date, n } from '../../lib/format'
-import { Loading, Modal, Field, Input, Select, Textarea, useToast, Empty, Badge } from '../../components/ui'
+import { Loading, Modal, Field, Input, Select, useToast, Empty, Badge, Problem } from '../../components/ui'
 import PhotoUpload from '../../components/PhotoUpload'
 
 const KINDS = [['business', 'A business'], ['offering', 'One offering'], ['collection', 'A collection'], ['deal', 'A deal']]
@@ -14,11 +14,12 @@ const today = () => new Date().toISOString().slice(0, 10)
 export default function Featured() {
   const toast = useToast()
   const [edit, setEdit] = useState(null)
-  const { data, loading, reload } = useData(async () => ({
+  const { data, loading, error, reload } = useData(async () => ({
     slots: await q(supabase.from('featured_slots').select('*,vendor:vendors(business_name,slug),product:products(name,slug)').order('sort').order('created_at', { ascending: false })),
     vendors: await q(supabase.from('public_vendors').select('id,business_name,slug').order('business_name')),
     products: await q(supabase.from('public_products').select('id,name,slug,vendor_id').order('name')),
   }), [])
+  if (error) return <Problem error={error} what="the homepage hero" onRetry={typeof reload === 'function' ? reload : undefined} />
   if (loading) return <Loading />
   const slots = data.slots || []
   const live = slots.filter((s) => s.status === 'active' && s.starts_on <= today() && (!s.ends_on || s.ends_on >= today()))

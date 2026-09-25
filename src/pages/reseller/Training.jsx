@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { Loading, useToast, Empty } from '../../components/ui'
+import { Loading, useToast } from '../../components/ui'
 
 // Short, plain lessons. Nothing here promises income.
 export const LESSONS = [

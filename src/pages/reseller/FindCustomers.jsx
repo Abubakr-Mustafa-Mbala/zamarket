@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
@@ -7,6 +7,7 @@ import { money, n } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
 import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
 import ShareThis from '../../components/ShareThis'
+import { trustPosts, POST_KINDS } from '../../lib/trustPosts'
 import { Loading, Empty, CopyLine, useToast, Select, Field } from '../../components/ui'
 
 const wa = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`
@@ -71,6 +72,7 @@ export default function FindCustomers() {
   const [productId, setProductId] = useState('')
   const [way, setWay] = useState('known')
   const { data, loading } = useData(async () => ({
+    vendors: await q(supabase.from('public_vendors').select('id,slug,business_name,town,tagline,description').limit(6)),
     products: await q(supabase.from('public_products').select('id,name,slug,price,normal_price,description,benefits,commission_type,commission_value,vendor_slug,fulfilment,boost_pct,boost_until').eq('status', 'published').order('name')),
     summary: r ? await q(supabase.rpc('reseller_summary', { p_reseller: r.id })) : null,
   }), [r?.id])
@@ -132,7 +134,7 @@ export default function FindCustomers() {
         <ShareThis store={{ business_name: 'ZaMarket', tagline: 'Everything in one place, delivered in Lusaka', category: 'Marketplace', town: 'Lusaka', product_count: (data.products || []).length }}
           products={data.products || []} link={`https://${link}`}
           caption={`Everything I sell is here — phones, home goods, cakes made to order and services. Delivered in Lusaka, we confirm every order by phone first.\nShop here: https://${link}`}
-          className="btn buy" label="Make a picture of the shop" />
+          className="btn buy" label="Create a shop promotion" />
         {product && <CopyLine text={`https://${productLink}`} />}
       </section>
 
@@ -159,6 +161,7 @@ export default function FindCustomers() {
         )}
       </section>
 
+      <TrustContent link={`https://${link}`} vendors={data.vendors || []} />
       <PostIdeas products={data.products || []} code={r.code} settings={settings} />
 
       <section className="card stack-sm">
@@ -219,7 +222,7 @@ function PostIdeas({ products, code, settings }) {
               <ol className="pi-shots">{idea.shots.map((sh, i) => <li key={i}>{sh}</li>)}</ol>
               <div className="share-box">{idea.caption}</div>
               <div className="btn-row">
-                <ShareThis product={idea.product} link={`${window.location.origin}/r/${code}/${idea.product.slug}`} caption={idea.caption} className="btn sm primary" label="Make picture" />
+                <ShareThis product={idea.product} link={`${window.location.origin}/r/${code}/${idea.product.slug}`} caption={idea.caption} className="btn sm primary" label="Create promotion" />
                 <button className="btn sm" onClick={() => copy(idea.caption)}>Copy caption</button>
                 <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(idea.caption)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
               </div>
@@ -228,6 +231,49 @@ function PostIdeas({ products, code, settings }) {
         })}
       </div>
       {shown < ideas.length && <button className="btn" onClick={() => setShown(shown + 6)}>More ideas ({ideas.length - shown} left)</button>}
+    </section>
+  )
+}
+
+
+// Not every post should ask for the sale. These build the reason to click the next one.
+function TrustContent({ link, vendors }) {
+  const toast = useToast()
+  const [proof, setProof] = useState(null)
+  const [quotes, setQuotes] = useState([])
+  const [open, setOpen] = useState(0)
+  useEffect(() => {
+    supabase.rpc('marketplace_proof').then(({ data }) => setProof(data || {}))
+    supabase.rpc('public_proof', { p_limit: 4 }).then(({ data }) => setQuotes(data || []))
+  }, [])
+  const posts = useMemo(() => (proof ? trustPosts({ proof, link, vendors, quotes }) : []), [proof, link, vendors, quotes])
+  if (!posts.length) return null
+  const copy = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copied') } catch { toast('Could not copy', true) } }
+
+  return (
+    <section className="card stack-sm">
+      <h3>Posts that build trust</h3>
+      <p className="small muted">People scroll past adverts. They stop for someone explaining why this is safer than sending money to a stranger. Use these between your product posts — about one in three.</p>
+      <div className="trust-posts">
+        {posts.map((p, i) => (
+          <article key={p.title} className={`tpost ${i === open ? 'on' : ''}`}>
+            <button type="button" className="tpost-head" onClick={() => setOpen(i === open ? -1 : i)}>
+              <span className="tpost-kind">{POST_KINDS[p.kind]}</span>
+              <strong>{p.title}</strong>
+            </button>
+            {i === open && (
+              <div className="stack-sm">
+                <div className="share-box">{p.text}</div>
+                <div className="btn-row">
+                  <button className="btn sm" onClick={() => copy(p.text)}>Copy</button>
+                  <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(p.text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+                </div>
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+      <p className="tiny muted">Every number in these posts is counted by the system. If something hasn't happened yet, the post that needs it isn't offered.</p>
     </section>
   )
 }

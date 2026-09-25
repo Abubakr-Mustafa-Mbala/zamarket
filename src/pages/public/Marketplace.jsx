@@ -15,6 +15,7 @@ import { payLine } from '../../lib/paymentWords'
 import { themeOf, themeVars } from '../../lib/storeTheme'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
+import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { useSeo, productSeo } from '../../lib/seo'
@@ -243,6 +244,8 @@ export function PublicShell() {
           </div>
           <div>
             <h4>ZaMarket</h4>
+          <Link to="/how-it-works">How ZaMarket works</Link>
+          <Link to="/protection">If something goes wrong</Link>
           <Link to="/about">About us and contacts</Link>
           <h4>Your account</h4>
             <Link to={user ? home : '/login'}>{user ? 'Your account' : 'Sign in'}</Link>
@@ -349,6 +352,7 @@ export function Storefront() {
       </section>
 
       <section className="trust-strip" aria-label="Buy with confidence">
+        <div className="between ts-head"><h2>Why buy through ZaMarket?</h2><Link to="/how-it-works" className="small">How it works →</Link></div>
         <ul>
           <li><span className="ts-icon"><Icon.shield /></span><span><strong>Local sellers</strong>Checked before they sell</span></li>
           <li><span className="ts-icon"><Icon.truck /></span><span><strong>Convenient delivery</strong>Right to your door</span></li>
@@ -621,7 +625,7 @@ function AffiliateBar({ p }) {
       <div className="btn-row">
         <span className="aff-earn">You earn {money(earn.perUnit)}</span>
         <button className="btn sm" onClick={copy}>Copy link</button>
-        <button className="btn sm primary" onClick={() => setOpen(true)}>Promote this</button>
+        <button className="btn sm primary" onClick={() => setOpen(true)}>Create promotion</button>
       </div>
       {open && <PromoKit product={p} offer={null} code={code} settings={settings} onClose={() => setOpen(false)} />}
     </div>
@@ -711,6 +715,7 @@ export function ProductPage() {
         </>
       )}
       <ShareThis product={p} link={window.location.href.split('?')[0]} sellerName={p.vendor_name} className="btn block" label="Share this" />
+      {p.vendor_slug && <TrustPanel slug={p.vendor_slug} compact />}
       <div className="bb-meta">
         <div><span>Payment</span><span>After we confirm by phone</span></div>
         <div><span>Sold by</span><span>{p.vendor_name ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : 'ZaMarket'}</span></div>
@@ -881,7 +886,7 @@ export function StorePage() {
   }, [slug, legacyId])
   useSeoStore(store)
   useEffect(() => { if (store?.id) supabase.rpc('track_hit', { p_kind: 'store_view', p_vendor: store.id }) }, [store?.id])
-  if (store === null || products === null) return <Loading />
+  if (store === null || products === null) return <Loading shape="cards" />
   if (!store) return <div className="empty-shop"><h2>We couldn't find that page</h2><p>Check the link, or browse the marketplace.</p><div className="hero-actions"><Link to="/" className="btn primary">Go to ZaMarket</Link><Link to="/sellers" className="btn">See all sellers</Link></div></div>
   // A shop is laid out by what it sells: cars like a dealership, courses like a college,
   // everything else by department.
@@ -933,6 +938,8 @@ export function StorePage() {
           </div>
         </div>
       </header>
+
+      <TrustPanel slug={store.slug} />
 
       <nav className="store-tabs" aria-label="This store">
         <a href="#shop" className="on">Products</a>

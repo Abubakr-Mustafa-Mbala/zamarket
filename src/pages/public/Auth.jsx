@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
-import { Field, Input, Textarea, Select, useToast, Loading } from '../../components/ui'
+import { Field, Input, Select, useToast, Loading } from '../../components/ui'
 import { useDepartments } from '../../lib/departments'
 
 export function homeFor(role) {
@@ -18,6 +18,7 @@ export function Login() {
   const toast = useToast()
   const nav = useNavigate()
   const [mode, setMode] = useState('in')
+  const [withEmail, setWithEmail] = useState(false)
   const [sp] = useSearchParams()
   const next = sp.get('next')
   const [f, setF] = useState({ email: '', password: '', full_name: '', phone: '' })
@@ -25,6 +26,17 @@ export function Login() {
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v }))
 
   useEffect(() => { if (!loading && user && role) nav(next && next.startsWith('/') ? next : homeFor(role), { replace: true }) }, [user, role, loading])
+
+  // Google handles the password. ZaMarket never sees it.
+  const google = async () => {
+    setBusy(true)
+    const back = `${window.location.origin}/login${next ? `?next=${encodeURIComponent(next)}` : ''}`
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: back, queryParams: { prompt: 'select_account' } },
+    })
+    if (error) { setBusy(false); toast(error.message, true) }
+  }
 
   const submit = async (e) => {
     e.preventDefault()
@@ -39,23 +51,54 @@ export function Login() {
 
   return (
     <div className="auth-wrap">
-      <form onSubmit={submit} className="card auth-card stack">
+      <div className="card auth-card stack">
         <Link to="/" className="brand" style={{ color: 'var(--green-deep)', padding: 0 }}>Za<span style={{ color: 'var(--copper)' }}>Market</span></Link>
-        <h1>{mode === 'in' ? 'Sign in' : 'Create an account'}</h1>
-        {mode === 'up' && (
+        <div>
+          <h1>Welcome back</h1>
+          <p className="small muted">Sign in to continue to ZaMarket.</p>
+        </div>
+
+        <button type="button" className="btn google block" onClick={google} disabled={busy}>
+          <GoogleMark />
+          {busy ? 'Opening Google…' : 'Continue with Google'}
+        </button>
+        <p className="tiny muted center">You choose your Google account. Your Google password is never seen or stored by ZaMarket.</p>
+
+        {!withEmail ? (
+          <button type="button" className="btn ghost block" onClick={() => setWithEmail(true)}>Use an email and password instead</button>
+        ) : (
           <>
-            <Field label="Full name"><Input value={f.full_name} onChange={set('full_name')} required /></Field>
-            <Field label="Phone"><Input value={f.phone} onChange={set('phone')} type="tel" required /></Field>
+            <div className="auth-or"><span>or</span></div>
+            <form onSubmit={submit} className="stack-sm">
+              {mode === 'up' && (
+                <>
+                  <Field label="Full name"><Input value={f.full_name} onChange={set('full_name')} required /></Field>
+                  <Field label="Phone"><Input value={f.phone} onChange={set('phone')} type="tel" required /></Field>
+                </>
+              )}
+              <Field label="Email"><Input value={f.email} onChange={set('email')} type="email" required autoComplete="email" /></Field>
+              <Field label="Password"><Input value={f.password} onChange={set('password')} type="password" required minLength={6} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} /></Field>
+              <button className="btn primary block" disabled={busy}>{busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}</button>
+              <button type="button" className="btn ghost block" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
+                {mode === 'in' ? 'New here? Create an account' : 'Already have an account? Sign in'}
+              </button>
+            </form>
           </>
         )}
-        <Field label="Email"><Input value={f.email} onChange={set('email')} type="email" required autoComplete="email" /></Field>
-        <Field label="Password"><Input value={f.password} onChange={set('password')} type="password" required minLength={6} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} /></Field>
-        <button className="btn primary block" disabled={busy}>{busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}</button>
-        <button type="button" className="btn ghost block" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
-          {mode === 'in' ? 'New here? Create an account' : 'Already have an account? Sign in'}
-        </button>
-      </form>
+      </div>
     </div>
+  )
+}
+
+// Google's own mark, drawn so it renders without loading anything.
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.7v3h3.9c2.3-2.1 3.5-5.2 3.5-8.9Z" />
+      <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.2-4 1.2-3.1 0-5.7-2.1-6.6-4.9H1.4v3.1A12 12 0 0 0 12 24Z" />
+      <path fill="#FBBC05" d="M5.4 14.4a7.2 7.2 0 0 1 0-4.6V6.7H1.4a12 12 0 0 0 0 10.7l4-3Z" />
+      <path fill="#EA4335" d="M12 4.7c1.8 0 3.3.6 4.6 1.8l3.4-3.4A12 12 0 0 0 1.4 6.7l4 3.1C6.3 6.9 8.9 4.7 12 4.7Z" />
+    </svg>
   )
 }
 

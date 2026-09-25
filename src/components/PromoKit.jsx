@@ -50,11 +50,11 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   }
 
   return (
-    <Modal title={`Promote ${product.name}`} onClose={onClose} wide>
+    <Modal title={`Create a promotion — ${product.name}`} onClose={onClose} wide>
       <div className="kit">
         <div className="kit-main">
           <div className="stack-sm">
-            <span className="small strong">The line across the picture</span>
+            <span className="small strong">Choose your angle</span>
             <div className="hooks">
               {hooks.map((h, i) => (
                 <button type="button" key={h.text} className={`hook ${i === hookIndex ? 'on' : ''}`} onClick={() => setHookIndex(i)}>
@@ -68,7 +68,7 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
           <div className="kit-row">
             <Segmented options={CHANNELS.map((c) => [c.key, c.label])} value={channel} onChange={(v) => { setChannel(v); setVariant(0) }} />
-            <button className="btn sm" onClick={() => setVariant(variant + 1)}>Shuffle wording</button>
+            <button className="btn sm" onClick={() => setVariant(variant + 1)}>Another version</button>
           </div>
           <p className="tiny muted">{kit.templateName} · version {(variant % kit.variants) + 1} of {kit.variants}</p>
 

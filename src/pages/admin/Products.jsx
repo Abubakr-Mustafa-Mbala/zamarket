@@ -6,8 +6,8 @@ import { money, pct, slugify, n, title } from '../../lib/format'
 import { margin, markup, priceFromMargin, priceFromMarkup, unitEconomics, light } from '../../lib/economics'
 import { useDepartments } from '../../lib/departments'
 import VendorMath from '../../components/VendorMath'
-import { PHOTO_TIPS } from '../../lib/photos'
 import PhotoUpload from '../../components/PhotoUpload'
+import CreativeStudio from '../shared/CreativeStudio'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
 export const effectiveCost = (p) => (p.cost_override != null ? n(p.cost_override) : p.landed_units > 0 ? n(p.landed_cost_total) / p.landed_units : 0)
@@ -282,5 +282,18 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
         </div>
       </form>
     </Modal>
+  )
+}
+
+
+export function StudioPage() {
+  const { settings } = useAuth()
+  return (
+    <div className="stack">
+      <div className="page-head">
+        <div><h1>Creative Studio</h1><p>Price lists and promotions built from the live catalogue, so the prices are never out of date.</p></div>
+      </div>
+      <CreativeStudio vendor={{ business_name: settings.business_name || 'ZaMarket' }} />
+    </div>
   )
 }

@@ -2,7 +2,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n } from '../../lib/format'
-import { Loading, Empty } from '../../components/ui'
+import { Loading, Empty, Problem } from '../../components/ui'
 import { DateBar, useRange } from '../shared/Earnings'
 
 // Two questions this answers: have we covered what the month costs, and is any
@@ -10,10 +10,11 @@ import { DateBar, useRange } from '../shared/Earnings'
 export default function ProfitGuard() {
   const { settings } = useAuth()
   const [range, setRange] = useRange('month')
-  const { data, loading } = useData(async () => ({
+  const { data, loading, error } = useData(async () => ({
     be: await q(supabase.rpc('break_even', { p_from: range.from, p_to: range.to })),
     losers: await q(supabase.rpc('losing_orders', { p_from: range.from, p_to: range.to })),
   }), [range.from, range.to])
+  if (error) return <Problem error={error} what="the profit guard" onRetry={typeof reload === 'function' ? reload : undefined} />
   if (loading || !data) return <><div className="card"><DateBar range={range} setRange={setRange} /></div><Loading /></>
   const b = data.be || {}
   const losers = data.losers || []

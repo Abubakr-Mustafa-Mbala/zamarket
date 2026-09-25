@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
-import { money } from '../../lib/format'
 import { Loading, Empty, CopyLine, Badge } from '../../components/ui'
 
 // Plain checks that decide whether a page can be found and whether anyone clicks it.

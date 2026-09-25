@@ -7,6 +7,7 @@ import { useSaved } from '../../lib/saved'
 import { useDepartments } from '../../lib/departments'
 import { useSeo } from '../../lib/seo'
 import OfferingCard from '../../components/OfferingCard'
+import PhotoUpload from '../../components/PhotoUpload'
 import Icon from '../../lib/icons'
 
 const FORMAT_WORD = { guide: 'Free guide', checklist: 'Free checklist', voucher: 'Voucher', quiz: 'Quick quiz', sample: 'Free sample', calculator: 'Free calculator', video: 'Free video', other: 'Free' }
@@ -105,7 +106,7 @@ export function RatePage() {
   const { link } = useParams()
   const toast = useToast()
   const [info, setInfo] = useState(null)
-  const [r, setR] = useState({ product: 5, vendor: 5, delivery: 5, marketplace: 5 })
+  const [r, setR] = useState({ product: 5, vendor: 5, delivery: 5, marketplace: 5, as_described: null, may_share: false, photo: '' })
   const [comment, setComment] = useState('')
   const [done, setDone] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -138,12 +139,46 @@ export function RatePage() {
       <p className="muted">Order #{info.order_number} · {info.items?.map((i) => i.name).join(', ')}</p>
       <Stars5 label={info.items?.length === 1 ? info.items[0].name : 'The products'} value={r.product} onChange={(v) => setR({ ...r, product: v })} />
       <Stars5 label={vendor ? `${vendor} as a seller` : 'ZaMarket as a seller'} value={r.vendor} onChange={(v) => setR({ ...r, vendor: v })} />
-      <Stars5 label="Delivery" value={r.delivery} onChange={(v) => setR({ ...r, delivery: v })} />
+      <div className="rate-row stack-sm">
+        <span className="rate-label">Was it what the page described?</span>
+        <div className="pick-two">
+          <button type="button" className={r.as_described === true ? 'on yes' : ''} onClick={() => setR({ ...r, as_described: true })}>Yes</button>
+          <button type="button" className={r.as_described === false ? 'on no' : ''} onClick={() => setR({ ...r, as_described: false })}>No</button>
+        </div>
+      </div>
+
+      <div className="rate-row stack-sm">
+        <span className="rate-label">How was the delivery?</span>
+        <div className="pick-three">
+          {[[5, 'Good'], [3, 'Okay'], [1, 'Poor']].map(([v, l]) => (
+            <button type="button" key={l} className={r.delivery === v ? 'on' : ''} onClick={() => setR({ ...r, delivery: v })}>{l}</button>
+          ))}
+        </div>
+      </div>
+
       <Stars5 label="Ordering with us overall" value={r.marketplace} onChange={(v) => setR({ ...r, marketplace: v })} />
+
       <label className="field"><span>Anything you'd like to say? <span className="muted">(optional)</span></span>
         <textarea className="input" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} placeholder="What you liked, or what we should do better" /></label>
-      <button className="btn buy block" disabled={busy}>{busy ? 'Sending…' : 'Send my rating'}</button>
-      <p className="tiny muted">Only your first name is shown with your rating.</p>
+
+      <div className="rate-photo">
+        <span className="rate-label">Add a photo of what you received <span className="muted">(optional)</span></span>
+        <div className="row">
+          {r.photo && <img src={r.photo} alt="" className="rate-shot" />}
+          <PhotoUpload label={r.photo ? 'Change photo' : '📷 Add a photo'} onDone={(url) => setR({ ...r, photo: url })} />
+        </div>
+      </div>
+
+      {(comment.trim() || r.photo) && (
+        <label className="check consent">
+          <input type="checkbox" checked={r.may_share} onChange={(e) => setR({ ...r, may_share: e.target.checked })} />
+          <span>ZaMarket may show what I wrote{r.photo ? ' and my photo' : ''} to other shoppers, with my first name only.</span>
+        </label>
+      )}
+
+      <button className="btn buy block" disabled={busy || r.as_described === null}>{busy ? 'Sending…' : 'Send my rating'}</button>
+      {r.as_described === null && <p className="tiny muted center">Tell us whether it matched the page, then send.</p>}
+      <p className="tiny muted">Only your first name is ever shown. Your rating is marked as a verified purchase because it is attached to a real order.</p>
     </form>
   )
 }

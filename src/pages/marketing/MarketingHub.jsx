@@ -14,17 +14,18 @@ import Funnels from './Funnels'
 import Seo from './Seo'
 import Coverage from './Coverage'
 import Featured from './Featured'
+import Proof from './Proof'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, start: StartHere, featured: Featured, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -34,6 +35,7 @@ export default function MarketingHub() {
           <p>{{
             '': 'What marketing brought in, and where it came from.',
             start: 'New to this? Start here: what to do, in order, and what every number means.',
+            proof: 'Real customer words and photos from completed orders, ready to post.',
             featured: 'Who or what is at the top of the homepage today, and what it brought.',
             coverage: 'Which products affiliates are ignoring, and how to fix it.',
             seo: 'Being found on Google for free, and what each page still needs.',

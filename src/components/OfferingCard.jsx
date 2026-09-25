@@ -128,7 +128,11 @@ export default function OfferingCard({ p, deal, inStore }) {
             : <Chip tone="ok" icon={<Icon.check />}>In stock</Chip>
 
   const buyable = !service && !course && !event && !out && p.sales_model !== 'enquire' && p.sales_model !== 'negotiate' && !Number(p.package_count)
-  const actionWord = service ? 'Book now' : course ? 'View course' : event ? 'View event' : buyable ? 'Add to cart' : 'View details'
+  const actionWord = service ? 'Book now'
+    : course ? 'Enrol'
+      : event ? 'Book'
+        : p.sales_model === 'negotiate' || p.sales_model === 'enquire' ? 'Make enquiry'
+          : buyable ? 'Add to cart' : 'View details'
 
   return (
     <Link to={to} className="oc">

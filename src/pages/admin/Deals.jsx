@@ -3,7 +3,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, date, n, title } from '../../lib/format'
-import { Badge, Loading, Modal, Field, Input, Textarea, useToast, Empty, Stat } from '../../components/ui'
+import { Badge, Loading, Modal, Field, Input, useToast, Empty, Stat } from '../../components/ui'
 
 const TABS = [['open', 'Open'], ['agreed', 'Agreed'], ['closed', 'Closed'], ['lost', 'Lost']]
 const STATUS_WORD = { enquiry: 'New enquiry', negotiating: 'Talking', agreed: 'Price agreed', closed: 'Sold', lost: 'Lost' }

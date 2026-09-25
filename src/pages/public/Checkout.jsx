@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
-import { money, date } from '../../lib/format'
+import { money, date, datetime } from '../../lib/format'
 import { Field, Input, Select, Textarea, useToast, Loading } from '../../components/ui'
 import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
 import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
@@ -349,6 +349,24 @@ function OrderVerify({ number, code }) {
         <div className="between"><span className="muted small">Where it is</span><strong>{STATUS_WORDS[data.status] || data.status}</strong></div>
         <div className="between"><span className="muted small">Payment</span><strong>{data.payment_status === 'paid' ? 'Paid in full' : data.payment_status === 'part_paid' ? 'Part paid' : 'Not yet paid'}</strong></div>
       </div>
+
+      {(data.timeline || []).length > 0 && (
+        <ol className="track">
+          {data.timeline.map((t, i) => {
+            const next = data.timeline.findIndex((x) => !x.done)
+            const now = next === i
+            return (
+              <li key={t.label} className={t.done ? 'done' : now ? 'now' : ''}>
+                <span className="track-dot" aria-hidden />
+                <span className="track-text">
+                  <strong>{t.label}</strong>
+                  <span className="tiny muted">{t.at ? datetime(t.at) : t.note}</span>
+                </span>
+              </li>
+            )
+          })}
+        </ol>
+      )}
 
       <p className="tiny muted">This page shows only what was bought and what it cost. Nothing about you is shown here. If something is wrong, call us with this order number.</p>
       <Link className="btn primary" to="/">Shop on ZaMarket</Link>

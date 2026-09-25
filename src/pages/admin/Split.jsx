@@ -3,7 +3,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n } from '../../lib/format'
-import { Loading, Field, Input, useToast, Empty } from '../../components/ui'
+import { Loading, Field, Input, useToast, Empty, Problem } from '../../components/ui'
 import { DateBar, useRange } from '../shared/Earnings'
 
 // Two founders, one profit. This says what stays in the business and what each
@@ -15,9 +15,10 @@ export default function Split() {
   const [editing, setEditing] = useState(false)
   const [reinvest, setReinvest] = useState(String(settings.reinvest_pct ?? 30))
   const [shares, setShares] = useState({})
-  const { data, loading, reload } = useData(() => q(supabase.rpc('profit_split', { p_from: range.from, p_to: range.to })), [range.from, range.to])
+  const { data, loading, error, reload } = useData(() => q(supabase.rpc('profit_split', { p_from: range.from, p_to: range.to })), [range.from, range.to])
 
   if (!isFounder) return <Empty title="Founders only">This page shows how the founders' profit is split.</Empty>
+  if (error) return <Problem error={error} what="the split" onRetry={typeof reload === 'function' ? reload : undefined} />
   if (loading || !data) return <><div className="card"><DateBar range={range} setRange={setRange} /></div><Loading /></>
 
   const s = data
