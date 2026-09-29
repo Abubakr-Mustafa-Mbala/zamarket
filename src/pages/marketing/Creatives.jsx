@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
-import { Loading, Empty, Problem } from '../../components/ui'
+import { date } from '../../lib/format'
+import { Loading, Empty, Problem, Modal, Field, Input, useToast, Badge } from '../../components/ui'
 
 const NAMES = {
   hero: 'Product first', offer: 'Offer first', editorial: 'Editorial', price: 'Price first', dark: 'Premium',
@@ -11,10 +13,24 @@ const NAMES = {
 // What has been made, and eventually what it produced. Deliberately quiet until
 // there is enough of it to mean something.
 export default function Creatives() {
-  const { data, loading, error, reload } = useData(() => q(supabase.rpc('creative_report')), [])
+  const toast = useToast()
+  const [blocking, setBlocking] = useState(null)
+  const [why, setWhy] = useState('')
+  const { data, loading, error, reload } = useData(async () => ({
+    report: await q(supabase.rpc('creative_report')),
+    recent: await q(supabase.rpc('recent_creatives', { p_limit: 40 })).catch(() => []),
+  }), [])
   if (error) return <Problem error={error} what="the creative record" onRetry={reload} />
   if (loading) return <Loading shape="rows" />
-  const r = data || {}
+  const r = data?.report || {}
+  const recent = data?.recent || []
+
+  const setBlock = async (productId, blocked, note) => {
+    const { error: e } = await supabase.rpc('set_promo_block', { p_product: productId, p_blocked: blocked, p_note: note || null })
+    if (e) return toast(e.message, true)
+    toast(blocked ? 'Nobody can promote this now' : 'Promotion allowed again')
+    setBlocking(null); setWhy(''); reload()
+  }
   if (!r.total) return <Empty title="Nothing made yet">Every advert, price list and promotion is recorded here once someone makes one.</Empty>
 
   const Bar = ({ rows, unit }) => {
@@ -48,6 +64,44 @@ export default function Creatives() {
         <h3>Which advert style gets chosen</h3>
         <Bar rows={r.by_composition || []} />
       </section>
+
+      {recent.length > 0 && (
+        <section className="card stack-sm">
+          <h3>Made lately</h3>
+          <p className="small muted">What is going out, and who made it. Stop anything you cannot stand behind.</p>
+          <div className="mini-table">
+            {recent.slice(0, 20).map((c) => (
+              <div key={c.id} className="mini-row">
+                <span className="grow">
+                  <strong>{c.product || NAMES[c.kind] || c.kind}</strong>
+                  <span className="tiny muted">
+                    {NAMES[c.composition] || NAMES[c.kind] || c.kind}
+                    {c.hook ? ` · “${c.hook.slice(0, 48)}${c.hook.length > 48 ? '…' : ''}”` : ''}
+                    {' · '}{c.made_by}{c.vendor ? ` · ${c.vendor}` : ''} · {date(c.created_at)}
+                  </span>
+                </span>
+                {c.shares > 0 && <span className="tiny muted">{c.shares} shared</span>}
+                {c.blocked && <Badge tone="bad">Blocked</Badge>}
+                {c.product_id && (c.blocked
+                  ? <button className="btn sm" onClick={() => setBlock(c.product_id, false)}>Allow again</button>
+                  : <button className="btn sm ghost" onClick={() => setBlocking(c)}>Stop promotion</button>)}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {blocking && (
+        <Modal title={`Stop promotion of ${blocking.product}`} onClose={() => setBlocking(null)}>
+          <div className="stack">
+            <p className="small">Nobody — affiliates, vendors or the team — will be able to make a promotion for this until you allow it again. The product stays in the shop.</p>
+            <Field label="Why, in a sentence" hint="The seller sees this, so make it something they can act on">
+              <Input value={why} onChange={setWhy} placeholder="e.g. The photo shows an accessory that is not included" />
+            </Field>
+            <button className="btn primary" onClick={() => setBlock(blocking.product_id, true, why)} disabled={!why.trim()}>Stop promotion</button>
+          </div>
+        </Modal>
+      )}
 
       <div className="card explain small">
         {r.enough_to_judge ? (

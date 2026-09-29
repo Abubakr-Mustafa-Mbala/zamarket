@@ -907,6 +907,10 @@ create table if not exists featured_slots (
 
 -- A vendor chooses what shows first in their own store.
 alter table products add column if not exists featured_in_store boolean not null default false;
+-- Some things should not be advertised by anyone, whatever the reason: a dispute,
+-- a claim we cannot stand behind, stock we cannot honour.
+alter table products add column if not exists promo_blocked boolean not null default false;
+alter table products add column if not exists promo_note text;
 
 -- Proof: what the customer actually said, with their permission to repeat it.
 alter table reviews add column if not exists as_described boolean;
@@ -2136,7 +2140,7 @@ end $$;
 -- Public product view (never exposes cost)
 drop view if exists public_products cascade;
 create or replace view public_products as
-select p.id, p.boost_pct, p.boost_until, p.featured_in_store, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
+select p.id, p.boost_pct, p.boost_until, p.featured_in_store, p.promo_blocked, p.name, p.slug, p.category, p.description, p.benefits, p.faqs, p.images, p.price, p.normal_price,
        p.status, p.stock_available, p.owner_type, v.business_name as vendor_name,
        (select round(avg(product_rating),1) from reviews r where r.product_id = p.id and r.approved) as rating,
        (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
@@ -3999,6 +4003,34 @@ begin
         (coalesce(previous.unit_price, 0) > 0 and latest.unit_price > previous.unit_price * 1.05)
         or (p.price - latest.unit_price - coalesce(p.packaging_cost, setting_num('default_packaging_cost'))) / p.price * 100 < floor_pct
       )) t), '[]');
+end $$;
+
+-- Stop or allow promotion of one offering. Founders and the marketing team only.
+create or replace function set_promo_block(p_product uuid, p_blocked boolean, p_note text default null) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_staff() and not can_market() then raise exception 'Not allowed'; end if;
+  if p_blocked and coalesce(p_note, '') = '' then raise exception 'Say why it cannot be promoted, so the seller can fix it'; end if;
+  update products set promo_blocked = p_blocked, promo_note = case when p_blocked then p_note else null end where id = p_product;
+  perform log_audit('product.promo_block', 'products', p_product, null, jsonb_build_object('blocked', p_blocked), p_note);
+end $$;
+
+-- The creatives made lately, so the team can see what is going out.
+create or replace function recent_creatives(p_limit int default 40) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() and not can_market() then raise exception 'Not allowed'; end if;
+  return coalesce((select jsonb_agg(jsonb_build_object(
+      'id', c.id, 'kind', c.kind, 'composition', c.composition, 'hook', c.hook, 'format', c.format,
+      'shares', c.shares, 'created_at', c.created_at,
+      'product_id', c.product_id, 'product', p.name, 'blocked', p.promo_blocked, 'promo_note', p.promo_note,
+      'vendor', v.business_name,
+      'made_by', coalesce(r.full_name, pr.full_name, 'ZaMarket')) order by c.created_at desc)
+    from (select * from creatives order by created_at desc limit p_limit) c
+    left join products p on p.id = c.product_id
+    left join vendors v on v.id = c.vendor_id
+    left join resellers r on r.id = c.reseller_id
+    left join profiles pr on pr.id = c.made_by), '[]');
 end $$;
 
 -- ---------- Row Level Security ----------

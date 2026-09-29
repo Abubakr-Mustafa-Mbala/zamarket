@@ -391,3 +391,46 @@ export async function renderPriceList({
 
 // How many rows fit before the sheet starts to look crowded.
 export const roomFor = (sheet) => (sheet === 'story' ? 30 : sheet === 'a4' ? 40 : sheet === 'square' ? 18 : 26)
+
+
+// ---------- multi-page catalogue ----------
+// Twenty-five products squeezed onto one sheet is unreadable. Past a sensible
+// number we make several pages instead, each with its own footer and page number.
+
+export function pagesFor(products, sheet) {
+  const perPage = sheet === 'a4' ? 26 : sheet === 'story' ? 20 : 16
+  if (products.length <= perPage) return [products]
+  // keep categories together where we can: start a new page on a category break
+  const groups = groupProducts(products)
+  const pages = []
+  let page = []
+  for (const [, list] of groups) {
+    if (page.length && page.length + list.length > perPage) { pages.push(page); page = [] }
+    if (list.length > perPage) {
+      for (let i = 0; i < list.length; i += perPage) {
+        const slice = list.slice(i, i + perPage)
+        if (page.length && page.length + slice.length > perPage) { pages.push(page); page = [] }
+        page = page.concat(slice)
+        if (page.length >= perPage) { pages.push(page); page = [] }
+      }
+    } else {
+      page = page.concat(list)
+    }
+  }
+  if (page.length) pages.push(page)
+  return pages
+}
+
+export async function renderCatalogue(opts) {
+  const pages = pagesFor(opts.products, opts.sheet || 'post')
+  const out = []
+  for (let i = 0; i < pages.length; i++) {
+    out.push(await renderPriceList({
+      ...opts,
+      products: pages[i],
+      title: pages.length > 1 ? `${opts.title || 'Price list'} — page ${i + 1} of ${pages.length}` : opts.title,
+      note: pages.length > 1 && i < pages.length - 1 ? 'Continued on the next page' : opts.note,
+    }))
+  }
+  return out
+}

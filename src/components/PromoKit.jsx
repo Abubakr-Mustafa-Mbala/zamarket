@@ -6,6 +6,7 @@ import { buildKit, CHANNELS } from '../lib/promoKit'
 import { sharePicture } from '../lib/shareCard'
 import { renderPromo, FORMATS, compositionsFor } from '../lib/promoArt'
 import { approvedFacts, buildHooks, FAMILIES } from '../lib/hooks'
+import { checkCreative } from '../lib/creativeCheck'
 import { Modal, useToast, Segmented, Badge } from './ui'
 
 // Everything an affiliate needs to promote one product, in one place.
@@ -55,6 +56,9 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
     return () => { dead = true }
   }, [product, offer, settings, hook?.text, link, format, composition?.key])
 
+  const check = useMemo(() => checkCreative({ product, offer, hook: hook?.text, caption: text, link, settings }),
+    [product, offer, hook?.text, text, link, settings])
+
   const copy = async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
   const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
   const share = async () => {
@@ -93,10 +97,20 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
           </label>
 
           <textarea className="input kit-text" rows={9} value={text} onChange={(e) => setEdited(e.target.value)} />
+          {(!check.ok || check.warnings.length > 0) && (
+            <div className={`check-box ${check.ok ? 'warn' : 'bad'}`}>
+              <strong>{check.ok ? 'Worth a second look' : 'This cannot be shared yet'}</strong>
+              <ul>
+                {check.problems.map((p) => <li key={p} className="bad">{p}</li>)}
+                {check.warnings.map((w) => <li key={w}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+
           <div className="btn-row">
             {canShareFiles
-              ? <button className="btn primary" onClick={share}>Share picture and message</button>
-              : <button className="btn primary" onClick={share}>Download the picture</button>}
+              ? <button className="btn primary" onClick={share} disabled={!check.ok}>Share picture and message</button>
+              : <button className="btn primary" onClick={share} disabled={!check.ok}>Download the picture</button>}
             <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
             <button className="btn" onClick={copy}>Copy the message</button>
             {edited !== null && <button className="btn ghost sm" onClick={() => setEdited(null)}>Undo my edits</button>}

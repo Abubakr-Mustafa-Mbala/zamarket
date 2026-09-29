@@ -4,7 +4,7 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, Empty, Input, Field, useToast, Problem, Segmented } from '../../components/ui'
-import { renderPriceList, SHEET, STYLES, roomFor } from '../../lib/priceList'
+import { renderPriceList, renderCatalogue, pagesFor, SHEET, STYLES, roomFor } from '../../lib/priceList'
 import { renderPromo, renderArrival, renderCollection, renderSpotlight, compositionsFor } from '../../lib/promoArt'
 import { approvedFacts, buildHooks } from '../../lib/hooks'
 import { sharePicture } from '../../lib/shareCard'
@@ -105,6 +105,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
   const [search, setSearch] = useState('')
   const [chosen, setChosen] = useState(null)      // null = everything published
   const [img, setImg] = useState(null)
+  const [pages, setPages] = useState([])
   const [tool, setTool] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -143,12 +144,13 @@ export default function CreativeStudio({ vendorId, vendor }) {
     if (!picked.length) return toast('Choose at least one product', true)
     setBusy(true)
     try {
-      const b = await renderPriceList({
+      const blobs = await renderCatalogue({
         vendor: vendor || { business_name: profile?.full_name || 'ZaMarket' },
         products: picked, style, sheet, title, note: note || undefined,
       })
-      setBlob(b)
-      setImg(URL.createObjectURL(b))
+      setPages(blobs.map((b) => ({ blob: b, url: URL.createObjectURL(b) })))
+      setBlob(blobs[0])
+      setImg(URL.createObjectURL(blobs[0]))
     } catch (e) { toast('Could not make the price list', true) } finally { setBusy(false) }
   }
 
@@ -199,8 +201,8 @@ export default function CreativeStudio({ vendorId, vendor }) {
               )
             })}
           </div>
-          {picked.length > room && (
-            <p className="tiny warn">{picked.length} products on one sheet gets crowded. About {room} reads best on this size — or make one sheet per category.</p>
+          {pagesFor(picked, sheet).length > 1 && (
+            <p className="tiny muted">{picked.length} products will be laid out as <strong>{pagesFor(picked, sheet).length} pages</strong>, kept in their categories. Squeezing them onto one sheet would make it unreadable.</p>
           )}
         </section>
 
@@ -225,9 +227,26 @@ export default function CreativeStudio({ vendorId, vendor }) {
         {img ? (
           <>
             <img className="studio-sheet" src={img} alt="Your price list" />
+            {pages.length > 1 && (
+              <div className="page-strip">
+                {pages.map((p, i) => (
+                  <button key={i} type="button" className={p.url === img ? 'on' : ''}
+                    onClick={() => { setImg(p.url); setBlob(p.blob) }}>Page {i + 1}</button>
+                ))}
+              </div>
+            )}
             <div className="btn-row">
               <button className="btn primary" onClick={share}>Share it</button>
-              <button className="btn" onClick={download}>Download</button>
+              <button className="btn" onClick={download}>Download{pages.length > 1 ? ' this page' : ''}</button>
+              {pages.length > 1 && (
+                <button className="btn" onClick={() => pages.forEach((p, i) => setTimeout(() => {
+                  const url = URL.createObjectURL(p.blob)
+                  const a = document.createElement('a')
+                  a.href = url; a.download = `price-list-${i + 1}.jpg`
+                  document.body.appendChild(a); a.click(); a.remove()
+                  setTimeout(() => URL.revokeObjectURL(url), 2000)
+                }, i * 400))}>Download all {pages.length}</button>
+              )}
               <button className="btn ghost" onClick={make}>Make it again</button>
             </div>
             <p className="tiny muted">Prices come from your catalogue as it is right now. Change a price and make it again — the new price will be on it.</p>
