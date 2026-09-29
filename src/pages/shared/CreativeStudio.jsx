@@ -1,16 +1,100 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, Empty, Input, Field, useToast, Problem, Segmented } from '../../components/ui'
 import { renderPriceList, SHEET, STYLES, roomFor } from '../../lib/priceList'
+import { renderPromo, renderArrival, renderCollection, renderSpotlight, compositionsFor } from '../../lib/promoArt'
+import { approvedFacts, buildHooks } from '../../lib/hooks'
 import { sharePicture } from '../../lib/shareCard'
 import Icon from '../../lib/icons'
 
 // The Creative Studio. A seller shouldn't need to know design to have a price
 // list that looks like a real business made it — and it is built from the live
 // catalogue, so a price change tomorrow is on the next sheet automatically.
+// The first screen is not a form. It shows what the vendor can make, built from
+// their own products, so the tool sells itself before they touch a control.
+function Gallery({ products, vendor, onPick }) {
+  const [shots, setShots] = useState({})
+  const hero = products.find((p) => p.images?.[0]) || products[0]
+
+  useEffect(() => {
+    let dead = false
+    const make = async () => {
+      const out = {}
+      try {
+        out.priceList = URL.createObjectURL(await renderPriceList({
+          vendor, products: products.slice(0, 8), style: 'editorial', sheet: 'post', title: 'Price list',
+        }))
+      } catch { /* ignore */ }
+      try {
+        out.collection = URL.createObjectURL(await renderCollection({
+          products: products.slice(0, 4), vendor, settings: {}, link: `${window.location.host}`, title: 'The collection',
+        }))
+      } catch { /* ignore */ }
+      try {
+        out.spotlight = URL.createObjectURL(await renderSpotlight({
+          vendor, products: products.slice(0, 3), settings: {}, link: `${window.location.host}`,
+        }))
+      } catch { /* ignore */ }
+      if (hero) {
+        try {
+          out.arrival = URL.createObjectURL(await renderArrival({ product: hero, settings: {}, link: `${window.location.host}/p/${hero.slug}` }))
+        } catch { /* ignore */ }
+        const facts = approvedFacts({ product: hero, offer: null, reviews: [], settings: {} })
+        const hook = buildHooks(facts)[0]?.text
+        for (const comp of compositionsFor(hero, null).slice(0, 3)) {
+          try {
+            out[comp.key] = URL.createObjectURL(await renderPromo({
+              product: hero, offer: null, settings: {}, hook, link: `${window.location.host}/p/${hero.slug}`,
+              format: 'portrait', composition: comp.key,
+            }))
+          } catch { /* ignore */ }
+        }
+      }
+      if (!dead) setShots(out)
+    }
+    make()
+    return () => { dead = true }
+  }, [products.length, hero?.id])
+
+  const tiles = [
+    { key: 'priceList', title: 'Price list', note: 'Everything you sell, on one sheet', action: 'Make a price list' },
+    { key: 'collection', title: 'Collection', note: 'Several products in one picture', action: 'Make a collection' },
+    { key: 'spotlight', title: 'Business spotlight', note: 'Your shop, not one item', action: 'Make a spotlight' },
+    { key: 'arrival', title: 'New arrival', note: 'For something you have just added', action: 'Announce it' },
+    { key: 'hero', title: 'Product advert', note: 'One product, made to stop the scroll', action: 'Make an advert' },
+    { key: 'editorial', title: 'Editorial', note: 'For the things worth looking at twice', action: 'Make an advert' },
+    { key: 'offer', title: 'Offer card', note: 'When there is a real saving to shout about', action: 'Make an advert' },
+    { key: 'price', title: 'Price first', note: 'When the price is the reason to buy', action: 'Make an advert' },
+    { key: 'dark', title: 'Premium', note: 'Dark and quiet, for higher-value items', action: 'Make an advert' },
+  ].filter((t) => shots[t.key] || t.key === 'priceList')
+
+  return (
+    <section className="gallery">
+      <div className="gallery-head">
+        <h2>What you can make</h2>
+        <p className="small muted">Made from your own products, not examples. Nothing to design, nothing to type twice.</p>
+      </div>
+      <div className="gallery-grid">
+        {tiles.map((t) => (
+          <button key={t.key} type="button" className="gtile" onClick={() => onPick(t.key)}>
+            <span className="gtile-shot">
+              {shots[t.key] ? <img src={shots[t.key]} alt="" /> : <span className="sk sk-img" />}
+            </span>
+            <span className="gtile-text">
+              <strong>{t.title}</strong>
+              <span className="tiny muted">{t.note}</span>
+              <span className="gtile-go">{t.action} <Icon.arrow /></span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function CreativeStudio({ vendorId, vendor }) {
   const toast = useToast()
   const { profile } = useAuth()
@@ -21,6 +105,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
   const [search, setSearch] = useState('')
   const [chosen, setChosen] = useState(null)      // null = everything published
   const [img, setImg] = useState(null)
+  const [tool, setTool] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -83,8 +168,13 @@ export default function CreativeStudio({ vendorId, vendor }) {
     if (how === 'downloaded') toast('Saved to your downloads')
   }
 
+  if (!tool) return <Gallery products={products} vendor={vendor || { business_name: 'ZaMarket' }} onPick={(k) => { setTool(k); if (k !== 'priceList') setStyle('editorial') }} />
+
   return (
     <div className="studio">
+      <div className="studio-back">
+        <button className="btn sm ghost" onClick={() => setTool(null)}>← Everything you can make</button>
+      </div>
       <div className="studio-pick stack">
         <section className="card stack-sm">
           <div className="between"><h3>What goes on it</h3><span className="small muted">{picked.length} chosen</span></div>

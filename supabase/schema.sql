@@ -84,6 +84,7 @@ insert into settings (key, value, description) values
   ('affiliate_repeat_bonus', '5', 'Flat thank-you paid to the affiliate when their customer orders again after the full-commission window (K)'),
   ('assumed_delivery_cost', '25', 'What a delivery really costs you when nobody records the actual amount (K)'),
   ('monthly_fixed_costs', '0', 'What the business must cover every month before any profit: rent, airtime, transport, data, subscriptions (K)'),
+  ('home_sections', '["deals","just_added","popular","under_100","services","courses","vehicles","events","made_to_order","local_sellers"]', 'Which homepage sections show, and in what order'),
   ('show_vendor_views', 'false', 'Let vendors see how many people viewed their shop and products'),
   ('reinvest_pct', '30', 'Share of profit kept in the business before founders take theirs (%)'),
   ('high_value_threshold', '2000', 'Above this price, a vendor must be verified before the item can be published (K)'),
@@ -947,6 +948,44 @@ create table if not exists money_checks (
   checked_by uuid references profiles(id),
   checked_at timestamptz not null default now()
 );
+
+-- Every uploaded photo keeps its original. If our processing improves next year,
+-- we can redo it from the source instead of reprocessing a processed image.
+create table if not exists media_assets (
+  id uuid primary key default gen_random_uuid(),
+  url text not null unique,
+  original_url text,
+  kind text not null default 'product' check (kind in ('product', 'logo', 'cover', 'review', 'creative')),
+  product_id uuid references products(id) on delete set null,
+  vendor_id uuid references vendors(id) on delete set null,
+  quality jsonb not null default '{}',
+  score int,
+  uploaded_by uuid references profiles(id),
+  created_at timestamptz not null default now()
+);
+create index if not exists media_product on media_assets (product_id);
+
+-- Every creative that gets made: what it was built from, who made it, and later,
+-- what it produced. Nothing is judged until there is enough of it to judge.
+create table if not exists creatives (
+  id uuid primary key default gen_random_uuid(),
+  kind text not null check (kind in ('promotion', 'price_list', 'new_arrival', 'collection', 'bundle', 'vendor_spotlight', 'seasonal', 'share_card')),
+  template text,
+  composition text,
+  hook text,
+  hook_family text,
+  format text,
+  product_id uuid references products(id) on delete set null,
+  vendor_id uuid references vendors(id) on delete set null,
+  reseller_id uuid references resellers(id) on delete set null,
+  campaign_id uuid references campaigns(id) on delete set null,
+  made_by uuid references profiles(id),
+  shares int not null default 0,
+  clicks int not null default 0,
+  orders int not null default 0,
+  created_at timestamptz not null default now()
+);
+create index if not exists creatives_product on creatives (product_id);
 
 create table if not exists audit_logs (
   id uuid primary key default gen_random_uuid(),
@@ -3825,6 +3864,143 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- The homepage, merchandised from real data. A section only exists when there is
+-- enough in it to be worth a heading — never an empty shelf.
+create or replace function home_sections(p_min int default 2) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  wanted jsonb := coalesce((select value from settings where key = 'home_sections'), '[]');
+  out jsonb := '[]';
+  key text;
+  ids uuid[];
+  title text; sub text; link text;
+begin
+  for key in select jsonb_array_elements_text(wanted) loop
+    ids := null;
+    if key = 'deals' then
+      title := 'Today''s deals'; sub := 'Live offers, ending when they say'; link := '/search?deals=1';
+      select array_agg(distinct p.id) into ids from products p join offers o on o.product_id = p.id
+       where p.status = 'published' and offer_is_live(o);
+    elsif key = 'just_added' then
+      title := 'Just added'; sub := 'New on ZaMarket this month'; link := '/search';
+      select array_agg(id) into ids from (select id from products where status = 'published'
+        and created_at > now() - interval '30 days' order by created_at desc limit 12) t;
+    elsif key = 'popular' then
+      title := 'People are buying these'; sub := 'Most ordered in the last 30 days'; link := '/search';
+      select array_agg(pid) into ids from (
+        select i.product_id as pid, count(*) as n from order_items i join orders o on o.id = i.order_id
+         where o.status not in ('cancelled', 'fraud_review') and o.created_at > now() - interval '30 days'
+         group by i.product_id having count(*) >= 2 order by n desc limit 12) t;
+    elsif key = 'under_100' then
+      title := 'Under K100'; sub := 'Small things worth having'; link := '/search';
+      select array_agg(id) into ids from (select id from products where status = 'published' and price > 0 and price <= 100
+        order by price desc limit 12) t;
+    elsif key = 'services' then
+      title := 'Services you can book'; sub := 'Booked by date and time, confirmed by phone'; link := '/search?type=service';
+      select array_agg(id) into ids from products where status = 'published' and fulfilment = 'service'
+        and offering_type not in ('course', 'class');
+    elsif key = 'courses' then
+      title := 'Learn something new'; sub := 'Courses and training from local providers'; link := '/search?type=course';
+      select array_agg(id) into ids from products where status = 'published' and offering_type in ('course', 'class');
+    elsif key = 'vehicles' then
+      title := 'Vehicles for sale'; sub := 'Enquire, view, and agree the price directly'; link := '/search?type=vehicle';
+      select array_agg(id) into ids from products where status = 'published' and offering_type = 'vehicle';
+    elsif key = 'events' then
+      title := 'What''s on'; sub := 'Dates and places near you'; link := '/search?type=event';
+      select array_agg(id) into ids from products where status = 'published' and offering_type = 'event';
+    elsif key = 'made_to_order' then
+      title := 'Made to order'; sub := 'Baked, sewn or built for you — order a few days ahead'; link := '/search';
+      select array_agg(id) into ids from products where status = 'published' and fulfilment = 'made_to_order';
+    elsif key = 'local_sellers' then
+      title := 'The businesses behind ZaMarket'; sub := 'Every order handled by us, supplied by a local business'; link := '/sellers';
+      if (select count(*) from vendors where status = 'approved') >= 1 then
+        out := out || jsonb_build_array(jsonb_build_object('key', key, 'kind', 'vendors', 'title', title, 'sub', sub, 'link', link));
+      end if;
+      continue;
+    else
+      continue;
+    end if;
+
+    if ids is not null and array_length(ids, 1) >= p_min then
+      out := out || jsonb_build_array(jsonb_build_object(
+        'key', key, 'kind', 'products', 'title', title, 'sub', sub, 'link', link,
+        'ids', to_jsonb(ids)));
+    end if;
+  end loop;
+  return out;
+end $$;
+
+grant execute on function home_sections(int) to anon, authenticated;
+
+-- Record a creative when it is made. Anyone who can make one can log one.
+create or replace function log_creative(payload jsonb) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare v uuid;
+begin
+  insert into creatives (kind, template, composition, hook, hook_family, format, product_id, vendor_id, reseller_id, made_by)
+  values (coalesce(payload->>'kind', 'promotion'), payload->>'template', payload->>'composition',
+          left(coalesce(payload->>'hook', ''), 200), payload->>'hook_family', payload->>'format',
+          nullif(payload->>'product_id', '')::uuid, my_vendor_id(), my_reseller_id(), auth.uid())
+  returning id into v;
+  return v;
+end $$;
+
+create or replace function creative_shared(p_id uuid) returns void
+language sql security definer set search_path = public as $$
+  update creatives set shares = shares + 1 where id = p_id;
+$$;
+
+-- What the creatives have produced so far, once there is enough to mean anything.
+create or replace function creative_report() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not is_staff() and not can_market() then raise exception 'Not allowed'; end if;
+  return jsonb_build_object(
+    'total', (select count(*) from creatives),
+    'shared', (select coalesce(sum(shares), 0) from creatives),
+    'by_composition', coalesce((select jsonb_agg(jsonb_build_object('name', composition, 'made', n, 'shared', sh) order by n desc)
+      from (select coalesce(composition, 'unknown') as composition, count(*) n, sum(shares) sh
+            from creatives where kind = 'promotion' group by 1) t), '[]'),
+    'by_kind', coalesce((select jsonb_agg(jsonb_build_object('name', kind, 'made', n) order by n desc)
+      from (select kind, count(*) n from creatives group by 1) t), '[]'),
+    'enough_to_judge', (select count(*) >= 30 from creatives));
+end $$;
+
+grant execute on function log_creative(jsonb) to authenticated;
+grant execute on function creative_shared(uuid) to authenticated;
+
+-- A supplier raising a price is invisible until the margin is already gone.
+-- This compares what you last paid against what you paid before, and against
+-- the price you are still selling at.
+create or replace function cost_creep() returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare floor_pct numeric := setting_num('price_floor_margin_pct');
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  return coalesce((select jsonb_agg(x order by (x->>'margin_now')::numeric) from (
+    select jsonb_build_object(
+      'id', p.id, 'name', p.name, 'price', p.price,
+      'cost_now', round(latest.unit_price, 2),
+      'cost_before', round(previous.unit_price, 2),
+      'rise_pct', case when coalesce(previous.unit_price, 0) > 0
+                       then round((latest.unit_price - previous.unit_price) / previous.unit_price * 100, 1) else null end,
+      'margin_now', case when p.price > 0 then round((p.price - latest.unit_price - coalesce(p.packaging_cost, setting_num('default_packaging_cost'))) / p.price * 100, 1) else -100 end,
+      'floor', floor_pct,
+      'suggested_price', round((latest.unit_price + coalesce(p.packaging_cost, setting_num('default_packaging_cost'))) / (1 - greatest(floor_pct, 1) / 100), 0),
+      'last_bought', latest.order_date
+    ) as x
+    from products p
+    join lateral (select pi.unit_price, pu.order_date from purchase_items pi join purchases pu on pu.id = pi.purchase_id
+                   where pi.product_id = p.id and pu.status = 'received' order by pu.order_date desc, pu.created_at desc limit 1) latest on true
+    left join lateral (select pi.unit_price from purchase_items pi join purchases pu on pu.id = pi.purchase_id
+                   where pi.product_id = p.id and pu.status = 'received' order by pu.order_date desc, pu.created_at desc offset 1 limit 1) previous on true
+    where p.status in ('published', 'out_of_stock') and p.owner_type = 'founder' and p.price > 0
+      and (
+        (coalesce(previous.unit_price, 0) > 0 and latest.unit_price > previous.unit_price * 1.05)
+        or (p.price - latest.unit_price - coalesce(p.packaging_cost, setting_num('default_packaging_cost'))) / p.price * 100 < floor_pct
+      )) t), '[]');
+end $$;
+
 -- ---------- Row Level Security ----------
 alter table profiles enable row level security;
 alter table staff_invites enable row level security;
@@ -3866,6 +4042,8 @@ alter table payouts enable row level security;
 alter table bonus_credits enable row level security;
 alter table link_hits enable row level security;
 alter table stock_counts enable row level security;
+alter table creatives enable row level security;
+alter table media_assets enable row level security;
 alter table stock_count_items enable row level security;
 alter table money_checks enable row level security;
 alter table profit_shares enable row level security;
@@ -3950,6 +4128,10 @@ select ensure_policy('staff_payouts', 'payouts', 'all', 'is_staff()');
 select ensure_policy('staff_bonuses', 'bonus_credits', 'all', 'is_staff()');
 select ensure_policy('staff_hits', 'link_hits', 'select', 'is_staff() or can_market()');
 select ensure_policy('staff_counts', 'stock_counts', 'all', 'is_staff()');
+select ensure_policy('read_creatives', 'creatives', 'select', 'is_staff() or can_market() or made_by = auth.uid()');
+select ensure_policy('read_media', 'media_assets', 'select', 'true');
+select ensure_policy('write_media', 'media_assets', 'insert', 'auth.uid() is not null');
+select ensure_policy('staff_media', 'media_assets', 'update', 'is_staff()');
 select ensure_policy('staff_count_items', 'stock_count_items', 'all', 'is_staff()');
 select ensure_policy('staff_money_checks', 'money_checks', 'all', 'is_staff()');
 select ensure_policy('founder_shares', 'profit_shares', 'all', 'is_founder()');

@@ -15,17 +15,18 @@ import Seo from './Seo'
 import Coverage from './Coverage'
 import Featured from './Featured'
 import Proof from './Proof'
+import Creatives from './Creatives'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -35,6 +36,7 @@ export default function MarketingHub() {
           <p>{{
             '': 'What marketing brought in, and where it came from.',
             start: 'New to this? Start here: what to do, in order, and what every number means.',
+            creatives: 'Every advert and price list made, and which styles get shared.',
             proof: 'Real customer words and photos from completed orders, ready to post.',
             featured: 'Who or what is at the top of the homepage today, and what it brought.',
             coverage: 'Which products affiliates are ignoring, and how to fix it.',

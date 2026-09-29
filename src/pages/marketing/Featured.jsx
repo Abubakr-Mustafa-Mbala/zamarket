@@ -72,6 +72,8 @@ export default function Featured() {
         </section>
       )}
 
+      <HomeSections />
+
       {edit && <SlotEditor slot={edit} refs={data} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload() }} />}
     </div>
   )
@@ -125,5 +127,66 @@ function SlotEditor({ slot, refs, onClose, onDone }) {
         <p className="span tiny muted">Only say what the business actually offers. The hero is measured: you will see how many saw it and how many tapped it.</p>
       </form>
     </Modal>
+  )
+}
+
+
+const SECTION_NAMES = {
+  deals: "Today's deals", just_added: 'Just added', popular: 'People are buying these',
+  under_100: 'Under K100', services: 'Services you can book', courses: 'Learn something new',
+  vehicles: 'Vehicles for sale', events: "What's on", made_to_order: 'Made to order',
+  local_sellers: 'The businesses behind ZaMarket',
+}
+const ALL_SECTIONS = Object.keys(SECTION_NAMES)
+
+// Which shelves the homepage has, and the order they appear in.
+function HomeSections() {
+  const toast = useToast()
+  const { settings, refresh } = useAuth()
+  const [list, setList] = useState(() => {
+    const v = settings.home_sections
+    return Array.isArray(v) ? v : ALL_SECTIONS
+  })
+
+  const save = async (next) => {
+    setList(next)
+    const { error } = await supabase.from('settings').upsert({ key: 'home_sections', value: next })
+    if (error) return toast(error.message, true)
+    await refresh()
+  }
+  const move = (i, dir) => {
+    const next = [...list]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    save(next)
+  }
+  const toggle = (key) => save(list.includes(key) ? list.filter((k) => k !== key) : [...list, key])
+
+  return (
+    <section className="card stack-sm">
+      <h3>Homepage shelves</h3>
+      <p className="small muted">The order people see them in. A shelf only appears when there are at least two things on it, so nothing is ever empty.</p>
+      <div className="mini-table">
+        {list.map((key, i) => (
+          <div key={key} className="mini-row">
+            <span className="grow"><strong>{i + 1}. {SECTION_NAMES[key] || key}</strong></span>
+            <button className="btn sm ghost" onClick={() => move(i, -1)} disabled={i === 0} aria-label="Move up">↑</button>
+            <button className="btn sm ghost" onClick={() => move(i, 1)} disabled={i === list.length - 1} aria-label="Move down">↓</button>
+            <button className="btn sm" onClick={() => toggle(key)}>Hide</button>
+          </div>
+        ))}
+      </div>
+      {ALL_SECTIONS.filter((k) => !list.includes(k)).length > 0 && (
+        <>
+          <p className="small muted">Not showing:</p>
+          <div className="chips wrap">
+            {ALL_SECTIONS.filter((k) => !list.includes(k)).map((k) => (
+              <button key={k} className="chip" onClick={() => toggle(k)}>+ {SECTION_NAMES[k]}</button>
+            ))}
+          </div>
+        </>
+      )}
+    </section>
   )
 }

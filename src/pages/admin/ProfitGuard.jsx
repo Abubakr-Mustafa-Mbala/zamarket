@@ -13,6 +13,7 @@ export default function ProfitGuard() {
   const { data, loading, error } = useData(async () => ({
     be: await q(supabase.rpc('break_even', { p_from: range.from, p_to: range.to })),
     losers: await q(supabase.rpc('losing_orders', { p_from: range.from, p_to: range.to })),
+    creep: await q(supabase.rpc('cost_creep')).catch(() => []),
   }), [range.from, range.to])
   if (error) return <Problem error={error} what="the profit guard" onRetry={typeof reload === 'function' ? reload : undefined} />
   if (loading || !data) return <><div className="card"><DateBar range={range} setRange={setRange} /></div><Loading /></>
@@ -49,6 +50,36 @@ export default function ProfitGuard() {
           </>
         )}
       </section>
+
+      {(data.creep || []).length > 0 && (
+        <section className="card stack-sm warn-card">
+          <div className="between"><h3>Costs that have gone up</h3><span className="small muted">{data.creep.length}</span></div>
+          <p className="small">A supplier raising a price is invisible until the margin is gone. These are still selling at the old price.</p>
+          <div className="mini-table">
+            {data.creep.map((c) => {
+              const tight = n(c.margin_now) < n(c.floor)
+              return (
+                <div key={c.id} className="mini-row">
+                  <span className="grow">
+                    <strong>{c.name}</strong>
+                    <span className="tiny muted">
+                      Now costs {money(c.cost_now)}{c.cost_before ? ` — was ${money(c.cost_before)}` : ''}
+                      {c.rise_pct ? `, up ${c.rise_pct}%` : ''} · bought {date(c.last_bought)}
+                    </span>
+                  </span>
+                  <span className={`right ${tight ? 'bad' : ''}`}>
+                    <strong>{c.margin_now}%</strong>
+                    <span className="tiny muted">margin at {money(c.price)}</span>
+                  </span>
+                  {tight && <span className="tiny strong">Needs {money(c.suggested_price)}</span>}
+                  <a className="btn sm" href={`/admin/products/${c.id}`}>Open</a>
+                </div>
+              )
+            })}
+          </div>
+          <p className="tiny muted">Raising a price is one decision. Selling fifty at the old one is fifty losses.</p>
+        </section>
+      )}
 
       <section className="card stack-sm">
         <div className="between">

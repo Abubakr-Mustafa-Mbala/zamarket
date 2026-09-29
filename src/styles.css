@@ -1790,3 +1790,47 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .studio-blank { display: grid; place-items: center; gap: 10px; padding: 46px 20px; text-align: center; color: var(--muted); font-size: 2rem; }
 .studio-blank p { font-size: 0.9rem; }
 @media (max-width: 900px) { .studio { grid-template-columns: 1fr; } .studio-preview { position: static; } }
+
+/* ---------- Photo quality ---------- */
+.pq { border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border: 1.5px solid var(--line); }
+.pq-green { background: var(--mint); border-color: var(--pine); }
+.pq-yellow { background: #FFF6E4; border-color: var(--marigold); }
+.pq-red { background: #FDECEC; border-color: var(--bad); }
+.pq-head { display: flex; align-items: center; gap: 12px; }
+.pq-score { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; }
+.pq-score em { font-style: normal; font-size: 0.8rem; font-weight: 600; opacity: 0.6; }
+.pq-words { display: flex; flex-direction: column; }
+.pq-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 0.86rem; }
+.pq-notes li.bad { color: var(--bad); }
+.pq-notes li.info { color: var(--muted); }
+
+/* ---------- Creative Studio gallery ---------- */
+.gallery { display: flex; flex-direction: column; gap: 16px; }
+.gallery-head h2 { font-size: var(--step-3); }
+.gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
+.gtile { display: flex; flex-direction: column; gap: 10px; background: #fff; border: 1px solid var(--line); border-radius: 18px;
+  padding: 12px; cursor: pointer; font-family: inherit; text-align: left; transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease; }
+.gtile:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(18,33,46,0.12); border-color: var(--charcoal); }
+.gtile-shot { display: block; aspect-ratio: 4 / 5; border-radius: 12px; overflow: hidden; background: var(--surface-2); }
+.gtile-shot img, .gtile-shot .sk { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 12px; }
+.gtile-text { display: flex; flex-direction: column; gap: 2px; padding: 0 4px 4px; }
+.gtile-go { display: inline-flex; align-items: center; gap: 6px; color: var(--pine); font-weight: 700; font-size: 0.86rem; margin-top: 6px; }
+.studio-back { margin-bottom: 4px; }
+
+/* ---------- Merchandising weight: not everything deserves the same size ---------- */
+@media (min-width: 900px) {
+  .shelf-scroll.weighted { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); }
+  .shelf-scroll.weighted > *:first-child { grid-row: span 2; grid-column: span 2; }
+  .shelf-scroll.weighted > *:first-child .oc-media { aspect-ratio: 4 / 3; }
+  .shelf-scroll.weighted > *:first-child .oc-name { font-size: 1.25rem; }
+  .shelf-scroll.weighted > *:first-child .oc-price b { font-size: 1.9rem; }
+  .shelf-scroll.weighted > *:first-child .oc-desc { font-size: 0.95rem; }
+}
+
+/* ---------- Creative record ---------- */
+.cbar { display: grid; grid-template-columns: 150px 1fr auto; gap: 12px; align-items: center; font-size: 0.9rem; }
+.cbar-name { font-weight: 600; }
+.cbar-track { height: 12px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.cbar-track span { display: block; height: 100%; background: var(--pine); border-radius: 999px; }
+.cbar-n { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+@media (max-width: 620px) { .cbar { grid-template-columns: 1fr auto; } .cbar-track { grid-column: 1 / -1; } }

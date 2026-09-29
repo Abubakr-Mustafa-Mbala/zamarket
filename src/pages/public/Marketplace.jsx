@@ -112,6 +112,62 @@ function FeaturedHero({ fallbackProducts }) {
   )
 }
 
+// What the homepage shows is decided by the marketplace, not hard-coded here.
+// A section only appears when there is enough in it.
+function Merchandised({ products, vendors, offersBy }) {
+  const [sections, setSections] = useState(null)
+  useEffect(() => {
+    supabase.rpc('home_sections', { p_min: 2 })
+      .then(({ data, error }) => setSections(!error && data?.length ? data : fallbackSections(products)))
+      .catch(() => setSections(fallbackSections(products)))
+  }, [products.length])
+  const byId = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products])
+  if (!sections) return <Loading shape="cards" />
+
+  return (
+    <>
+      {sections.map((s) => {
+        if (s.kind === 'vendors') {
+          if (!vendors?.length) return null
+          return (
+            <section key={s.key} className="sellers-band">
+              <div className="shelf-head"><h2>{s.title}<span className="sub">{s.sub}</span></h2><Link to={s.link}>All sellers</Link></div>
+              <div className="seller-strip">{vendors.slice(0, 8).map((v) => <SellerCard key={v.id} v={v} />)}</div>
+            </section>
+          )
+        }
+        const items = (s.ids || []).map((id) => byId[id]).filter(Boolean)
+        if (items.length < 2) return null
+        return (
+          <Row key={s.key} title={s.title} sub={s.sub} link={s.link} weighted={sections.indexOf(s) < 2 && items.length >= 5}>
+            {items.slice(0, 12).map((p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} />)}
+          </Row>
+        )
+      })}
+    </>
+  )
+}
+
+// If the marketplace can't answer — an older database, a dropped connection —
+// the shop still fills itself from what it already has in hand.
+function fallbackSections(products) {
+  const pick = (test) => products.filter(test).map((p) => p.id)
+  const out = [
+    { key: 'just_added', title: 'Just added', sub: 'New on ZaMarket', link: '/search',
+      ids: [...products].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 12).map((p) => p.id) },
+    { key: 'services', title: 'Services you can book', sub: 'Booked by date and time', link: '/search?type=service',
+      ids: pick((p) => p.fulfilment === 'service' && !['course', 'class'].includes(p.offering_type)) },
+    { key: 'courses', title: 'Learn something new', sub: 'Courses and training', link: '/search?type=course',
+      ids: pick((p) => ['course', 'class'].includes(p.offering_type)) },
+    { key: 'vehicles', title: 'Vehicles for sale', sub: 'Enquire and agree the price directly', link: '/search?type=vehicle',
+      ids: pick((p) => p.offering_type === 'vehicle') },
+    { key: 'made_to_order', title: 'Made to order', sub: 'Order a few days ahead', link: '/search',
+      ids: pick((p) => p.fulfilment === 'made_to_order') },
+  ].map((x) => ({ ...x, kind: 'products' })).filter((x) => x.ids.length >= 2)
+  out.push({ key: 'local_sellers', kind: 'vendors', title: 'The businesses behind ZaMarket', sub: 'Every order handled by us, supplied by a local business', link: '/sellers' })
+  return out
+}
+
 function CategoryRail() {
   const DEPARTMENTS = useDepartments()
   const stocked = useStockedDepartments(DEPARTMENTS)
@@ -294,11 +350,11 @@ export function GoLink() {
 const isEntryPage = () => (window.history.state?.idx ?? 0) === 0
 
 // ---------- product card ----------
-function Row({ title, sub, link, children }) {
+function Row({ title, sub, link, weighted, children }) {
   return (
     <section className="shelf">
       <div className="shelf-head"><h2>{title}{sub && <span className="sub">{sub}</span>}</h2>{link && <Link to={link}>See all</Link>}</div>
-      <div className="shelf-scroll">{children}</div>
+      <div className={`shelf-scroll ${weighted ? 'weighted' : ''}`}>{children}</div>
     </section>
   )
 }
@@ -367,27 +423,7 @@ export function Storefront() {
           <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become an affiliate</Link></div>
         </div>
       ) : (
-        <>
-          {deals.length > 0 && <Row title="Featured deals" sub="Live offers, ending when they say" link="/search?deals=1">{deals.slice(0, 12).map(card)}</Row>}
-
-          {vendors?.length > 0 && (
-            <section className="sellers-band">
-              <div className="shelf-head">
-                <h2>The businesses behind ZaMarket</h2>
-                <Link to="/sellers">All sellers</Link>
-              </div>
-              <p className="sub-line">Every order is handled by us, and made or supplied by a local business you can see.</p>
-              <div className="seller-strip">{vendors.slice(0, 6).map((v) => <SellerCard key={v.id} v={v} />)}</div>
-            </section>
-          )}
-
-          {goods.length > 0 && <Row title="Discover on ZaMarket" sub="New and popular right now" link="/search">{goods.slice(0, 12).map(card)}</Row>}
-          {services.length > 0 && <Row title="Services you can book" sub="Booked by date and time, confirmed by phone" link="/search?type=service">{services.slice(0, 12).map(card)}</Row>}
-          {courses.length > 0 && <Row title="Learn something new" sub="Courses and training from local providers" link="/search?type=course">{courses.slice(0, 12).map(card)}</Row>}
-          {vehicles.length > 0 && <Row title="Vehicles for sale" sub="Enquire, view, and agree the price directly" link="/search?type=vehicle">{vehicles.slice(0, 8).map(card)}</Row>}
-          {events.length > 0 && <Row title="What's on" sub="Dates and places near you" link="/search?type=event">{events.slice(0, 8).map(card)}</Row>}
-          {scheduled.length > 0 && <Row title="Made to order" sub="Baked, sewn or built for you — order a few days ahead" link="/search?type=scheduled">{scheduled.slice(0, 10).map(card)}</Row>}
-        </>
+        <Merchandised products={products} vendors={vendors} offersBy={offersBy} />
       )}
 
       {stocked.length > 1 && (

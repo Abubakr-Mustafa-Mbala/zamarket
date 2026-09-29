@@ -100,6 +100,23 @@ export async function uploadPhoto(file) {
   return uploadBlob(blob)
 }
 
+// Keep the original next to the processed version. If our processing improves,
+// we can redo it from the source rather than reprocessing a processed image.
+export async function uploadWithOriginal(file, processed, { kind = 'product', quality, productId, vendorId } = {}) {
+  const [url, originalUrl] = await Promise.all([
+    uploadBlob(processed),
+    uploadBlob(file).catch(() => null),
+  ])
+  try {
+    await supabase.from('media_assets').insert({
+      url, original_url: originalUrl, kind,
+      product_id: productId || null, vendor_id: vendorId || null,
+      quality: quality?.measured || {}, score: quality?.score ?? null,
+    })
+  } catch { /* the photo is uploaded either way; the record is a bonus */ }
+  return url
+}
+
 export const PHOTO_TIPS = [
   'Shoot in daylight: near a window, or outside in shade. Never use the flash.',
   'Put the item on something plain — a white wall, a clean table, a bedsheet.',

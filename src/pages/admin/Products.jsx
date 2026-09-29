@@ -145,7 +145,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
                   <button type="button" className="btn sm" style={{ position: 'absolute', top: -6, right: -6, padding: '0 6px' }} aria-label="Remove photo" onClick={() => set('images_text')(p.images_text.split('\n').filter((x) => x && x !== src).join('\n'))}>✕</button>
                 </div>
               ))}
-              <PhotoUpload multiple onDone={(url) => set('images_text')([...p.images_text.split('\n').filter(Boolean), url].join('\n'))} className="btn" />
+              <PhotoUpload multiple about={{ category: p.category, offeringType: p.offering_type, fulfilment: p.fulfilment }} onDone={(url) => set('images_text')([...p.images_text.split('\n').filter(Boolean), url].join('\n'))} className="btn" />
             </div>
           </Field>
           <Field label="FAQs (one per line: question | answer)" span><Textarea value={p.faqs_text} onChange={set('faqs_text')} rows={2} /></Field>

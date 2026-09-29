@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
 import { commissionLabel } from '../lib/economics'
 import { buildKit, CHANNELS } from '../lib/promoKit'
 import { sharePicture } from '../lib/shareCard'
-import { renderCreative, FORMATS } from '../lib/creative'
+import { renderPromo, FORMATS, compositionsFor } from '../lib/promoArt'
 import { approvedFacts, buildHooks, FAMILIES } from '../lib/hooks'
 import { Modal, useToast, Segmented, Badge } from './ui'
 
@@ -16,10 +17,12 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const [intro, setIntro] = useState('')
   const [format, setFormat] = useState('portrait')
   const [hookIndex, setHookIndex] = useState(0)
+  const [look, setLook] = useState(0)
   const [edited, setEdited] = useState(null)
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
+  const madeId = useRef(null)
 
   const link = `${window.location.origin}/r/${code}/${product.slug}`
   const kit = useMemo(() => buildKit({ product, offer, link, channel, variant, settings, intro }), [product, offer, link, channel, variant, settings, intro])
@@ -31,20 +34,32 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const hooks = useMemo(() => buildHooks(approvedFacts({ product, offer, reviews: product.reviews || [], settings })), [product, offer, settings])
   const hook = hooks[hookIndex % Math.max(1, hooks.length)]
 
+  const looks = useMemo(() => compositionsFor(product, offer), [product, offer])
+  const composition = looks[look % Math.max(1, looks.length)] || looks[0]
+
   useEffect(() => {
     let dead = false
     setBusy(true)
-    renderCreative({ product, offer, settings, hook: hook?.text, link, format })
-      .then((b) => { if (!dead && b) { setBlob(b); setImg(URL.createObjectURL(b)) } })
+    renderPromo({ product, offer, settings, hook: hook?.text, link, format, composition: composition?.key })
+      .then((b) => {
+        if (dead || !b) return
+        setBlob(b)
+        setImg(URL.createObjectURL(b))
+        supabase.rpc('log_creative', { payload: {
+          kind: 'promotion', composition: composition?.key, hook: hook?.text, hook_family: hook?.family,
+          format, product_id: product.id,
+        } }).then(({ data }) => { madeId.current = data }).catch(() => {})
+      })
       .catch(() => toast('Could not make the picture', true))
       .finally(() => !dead && setBusy(false))
     return () => { dead = true }
-  }, [product, offer, settings, hook?.text, link, format])
+  }, [product, offer, settings, hook?.text, link, format, composition?.key])
 
   const copy = async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
   const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
   const share = async () => {
     if (!blob) return copy()
+    if (madeId.current) supabase.rpc('creative_shared', { p_id: madeId.current }).catch(() => {})
     const how = await sharePicture(blob, { caption: text, filename: `${product.slug}.jpg` })
     if (how === 'downloaded') toast('Picture saved to your downloads')
   }
@@ -68,7 +83,7 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
           <div className="kit-row">
             <Segmented options={CHANNELS.map((c) => [c.key, c.label])} value={channel} onChange={(v) => { setChannel(v); setVariant(0) }} />
-            <button className="btn sm" onClick={() => setVariant(variant + 1)}>Another version</button>
+            <button className="btn sm" onClick={() => { setVariant(variant + 1); setLook(look + 1); setHookIndex(hookIndex + 1) }}>Another version</button>
           </div>
           <p className="tiny muted">{kit.templateName} · version {(variant % kit.variants) + 1} of {kit.variants}</p>
 
@@ -98,6 +113,11 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
           </div>
 
           <Segmented options={Object.values(FORMATS).map((f) => [f.key, f.label])} value={format} onChange={setFormat} />
+          <div className="chips wrap">
+            {looks.map((c, i) => (
+              <button key={c.key} className={`chip ${i === look % looks.length ? 'on' : ''}`} onClick={() => setLook(i)} title={c.note}>{c.label}</button>
+            ))}
+          </div>
           {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt="" />}
           <p className="tiny muted">Your link is already in the picture and the message: <br /><span className="strong">{link.replace(/^https?:\/\//, '')}</span></p>
         </aside>
