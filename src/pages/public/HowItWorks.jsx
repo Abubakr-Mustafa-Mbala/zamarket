@@ -6,7 +6,7 @@ import Icon from '../../lib/icons'
 
 const STEPS = [
   { icon: <Icon.search />, title: 'You find it', body: 'Browse products, services, courses and local businesses. Prices are shown in full, with delivery stated before you order.' },
-  { icon: <Icon.shield />, title: 'You check the seller', body: 'Every shop page shows what ZaMarket has checked about that business, how long they have sold here, and reviews from people who actually bought.' },
+  { icon: <Icon.shield />, title: 'You can see who you are buying from', body: 'Every shop page says exactly what ZaMarket knows about that business and what it does not, how long they have sold here, and reviews from people who actually bought. Whatever we have not checked, we do not claim.' },
   { icon: <Icon.cart />, title: 'You order', body: 'No money moves yet. You give a name, a phone number and where to deliver. Nothing else.' },
   { icon: <Icon.phone />, title: 'We call you', body: 'A real person confirms what you ordered, the total and the delivery, before you pay anything.' },
   { icon: <Icon.truck />, title: 'We deliver it', body: 'We collect from the seller and bring it to you. For our own stock you can pay on delivery; for a seller’s goods we take payment first, because we pay them on collection.' },

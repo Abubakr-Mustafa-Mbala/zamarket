@@ -14,15 +14,24 @@ export default async (request) => {
     { loc: `${site}/`, pri: '1.0', freq: 'daily' },
     { loc: `${site}/search`, pri: '0.6', freq: 'daily' },
     { loc: `${site}/sellers`, pri: '0.5', freq: 'weekly' },
+    { loc: `${site}/blog`, pri: '0.7', freq: 'weekly' },
+    { loc: `${site}/how-it-works`, pri: '0.5', freq: 'monthly' },
+    { loc: `${site}/protection`, pri: '0.5', freq: 'monthly' },
     { loc: `${site}/apply/vendor`, pri: '0.4', freq: 'monthly' },
     { loc: `${site}/apply/reseller`, pri: '0.4', freq: 'monthly' },
   ]
   if (SB && KEY) {
-    const [products, vendors, departments] = await Promise.all([
+    const [products, vendors, departments, posts] = await Promise.all([
       get('public_products?select=slug,vendor_slug,created_at&order=created_at.desc&limit=2000'),
       get('public_vendors?select=slug&limit=500'),
       get('settings?key=eq.departments&select=value'),
+      // Articles are the pages most likely to be found by search, so they
+      // belong in the sitemap the moment they are published.
+      get('public_posts?select=slug,published_at&order=published_at.desc&limit=1000'),
     ])
+    for (const b of posts) {
+      if (b.slug) urls.push({ loc: `${site}/blog/${b.slug}`, pri: '0.75', freq: 'monthly', lastmod: b.published_at })
+    }
     for (const p of products) {
       if (!p.slug) continue
       urls.push({ loc: p.vendor_slug ? `${site}/${p.vendor_slug}/${p.slug}` : `${site}/p/${p.slug}`, pri: '0.8', freq: 'weekly', lastmod: p.created_at })

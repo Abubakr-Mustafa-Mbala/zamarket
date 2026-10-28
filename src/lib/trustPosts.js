@@ -62,11 +62,18 @@ Worth knowing before you buy.
 
 ${link}`)
 
+  // "Checked by the team" is only a claim we can make while verification is a
+  // real process. With it off, marketplace_proof() leaves checked_businesses
+  // out entirely, so the line becomes the plain count of sellers instead.
+  const sellerLine = p.checked_businesses != null
+    ? `${p.checked_businesses} local business${p.checked_businesses === 1 ? '' : 'es'} checked by the team`
+    : `${p.businesses} local business${p.businesses === 1 ? '' : 'es'} selling here`
+
   add('proof', 'The numbers so far',
 `Some honest numbers from ZaMarket:
 
 ${p.completed_orders} order${p.completed_orders === 1 ? '' : 's'} completed and delivered
-${p.checked_businesses} local business${p.checked_businesses === 1 ? '' : 'es'} checked by the team${p.verified_reviews > 0 ? `\n${p.verified_reviews} review${p.verified_reviews === 1 ? '' : 's'} from people who actually bought` : ''}
+${sellerLine}${p.verified_reviews > 0 ? `\n${p.verified_reviews} review${p.verified_reviews === 1 ? '' : 's'} from people who actually bought` : ''}
 
 Small numbers, real ones. Every order is recorded.
 

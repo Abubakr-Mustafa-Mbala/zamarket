@@ -56,7 +56,11 @@ export function AuthProvider({ children }) {
       if (!alive) return
       setSession(data.session)
       await loadProfile(data.session?.user?.id)
-      if (data.session) await loadSettings()
+      // Settings load for everyone, signed in or not. Row security decides what
+      // a shopper may see (currency, delivery, whether verification is live);
+      // without this an anonymous shopper gets none of it and the shop falls
+      // back to the wrong delivery wording.
+      await loadSettings()
       setLoading(false)
     })
     const { data: sub } = supabase.auth.onAuthStateChange(async (event, s) => {
@@ -72,7 +76,9 @@ export function AuthProvider({ children }) {
         await loadProfile(s?.user?.id)
       }
       if (event === 'TOKEN_REFRESHED') setExpired(false)
-      if (event === 'SIGNED_OUT') { profileId.current = null; setProfile(null); setSettings({}); setExpired(false) }
+      // On sign-out the private settings must go, but the public ones are
+      // reloaded so the shop keeps working for the now-anonymous visitor.
+      if (event === 'SIGNED_OUT') { profileId.current = null; setProfile(null); setSettings({}); setExpired(false); loadSettings() }
     })
     return () => { alive = false; sub.subscription.unsubscribe() }
   }, [loadProfile, loadSettings])

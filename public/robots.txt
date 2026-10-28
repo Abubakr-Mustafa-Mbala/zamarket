@@ -12,4 +12,5 @@ Disallow: /go
 Disallow: /r/
 Disallow: /invite
 
-Sitemap: /sitemap.xml
+# Replace the host below with your real domain once you have one.
+Sitemap: https://zamarket.netlify.app/sitemap.xml

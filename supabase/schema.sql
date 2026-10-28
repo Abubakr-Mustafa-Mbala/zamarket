@@ -1180,7 +1180,7 @@ create trigger trg_no_delete_settlements before delete on settlements for each r
 create or replace function reserved_slug(p text) returns boolean
 language sql immutable as $$
   select p = any (array['admin','sell','vendor','vendors','login','logout','account','apply','cart','checkout','order','orders','review','reviews',
-    'search','sellers','store','stores','p','r','go','free','invite','rate','about','how-it-works','protection','saved','categories','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
+    'search','sellers','store','stores','p','r','go','free','invite','rate','about','how-it-works','protection','saved','blog','journal','categories','v','a','api','help','about','terms','privacy','contact','zamarket','deals','marketing','settings','assets','static']);
 $$;
 
 create or replace function make_slug(p text) returns text
@@ -4281,3 +4281,528 @@ where not exists (select 1 from quotes);
 update vendors v set trust_level = 'known'
  where v.trust_level = 'new' and v.status = 'approved'
    and exists (select 1 from settlements st where st.vendor_id = v.id);
+
+-- ---------- Public views: row security, not owner privilege ----------
+-- These five views are what a shopper sees. They used to run with the owner's
+-- rights, which meant the underlying tables' row security did not apply — the
+-- kind of thing that is fine until the day it is not. Instead they now run as
+-- the caller, with explicit policies for what the public may read and
+-- column grants so private columns (cost, commission, stock value) stay private.
+
+alter view public_products set (security_invoker = on);
+alter view public_vendors set (security_invoker = on);
+alter view public_offers set (security_invoker = on);
+alter view public_magnets set (security_invoker = on);
+alter view public_packages set (security_invoker = on);
+
+-- rows anyone may see
+select ensure_policy('anon_read_products', 'products', 'select', $p$status in ('published', 'out_of_stock')$p$);
+select ensure_policy('anon_read_vendors', 'vendors', 'select', $p$status = 'approved'$p$);
+select ensure_policy('anon_read_offers', 'offers', 'select', $p$status = 'active' and (start_at is null or start_at <= now()) and (end_at is null or end_at >= now())$p$);
+select ensure_policy('anon_read_magnets', 'lead_magnets', 'select', $p$status = 'live'$p$);
+select ensure_policy('anon_read_packages', 'product_packages', 'select', $p$active and exists (select 1 from products p where p.id = product_packages.product_id and p.status in ('published', 'out_of_stock'))$p$);
+select ensure_policy('anon_read_reviews', 'reviews', 'select', $p$approved$p$);
+
+-- Columns anyone may see — exactly what the five public views read, and nothing
+-- else. Cost, landed cost, packaging, stock movements and every private column
+-- stay unreadable even to a direct query.
+do $$
+begin
+  revoke select on products, vendors, offers, lead_magnets, product_packages, reviews from anon;
+  grant select (benefits, boost_pct, boost_until, category, commission_type, commission_value, created_at,
+                daily_limit, description, duration_text, faqs, featured_for_resellers, featured_in_store,
+                fulfilment, id, images, lead_time_days, name, normal_price, note_label, offering_type, options,
+                order_days, owner_type, page, price, promo_blocked, sales_model, service_location, slot_capacity,
+                slug, status, stock_available, time_slots, vendor_id) on products to anon;
+  grant select (about, business_name, category, cover_url, description, highlights, id, location, logo_url,
+                opening_hours, slug, status, tagline, theme, trust_level) on vendors to anon;
+  grant select (category, config, end_at, id, inventory_limit, name, product_id, start_at, status, terms, type,
+                units_used) on offers to anon;
+  grant select (audience, bullets, cta_text, delivery_type, description, format, headline, id, name, product_id,
+                slug, status, vendor_id) on lead_magnets to anon;
+  grant select (active, featured, id, items, name, normal_price, price, product_id, sort, subtitle) on product_packages to anon;
+  grant select (approved, comment, created_at, customer_name, delivery_rating, marketplace_rating, product_id,
+                product_rating, vendor_id, vendor_rating, verified) on reviews to anon;
+exception when others then
+  raise notice 'Column grants skipped: %', sqlerrm;
+end $$;
+
+-- ============================================================================
+-- VERIFICATION SWITCH
+-- ----------------------------------------------------------------------------
+-- The marketplace is not registered yet and there is no background-check
+-- process behind it, so claiming that sellers have been "verified" would be a
+-- claim we cannot stand behind. This switch turns the whole verification layer
+-- off: the high-value publishing block, the identity checks in the trust panel
+-- and the "checked businesses" count all disappear.
+--
+-- Nothing is deleted. The columns, the staff control and the audit history all
+-- stay where they are, so when ZaMarket is registered and real checks exist,
+-- flipping this setting to 'on' brings the layer back exactly as it was.
+-- ============================================================================
+
+insert into settings (key, value, description) values
+  ('verification_on', '"off"', 'Seller verification layer. Keep "off" until ZaMarket is registered and real background checks exist; "on" restores identity checks, the high-value publishing block and the verified-seller count.')
+on conflict (key) do nothing;
+
+create or replace function verification_on() returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce(setting_text('verification_on'), 'off') = 'on';
+$$;
+grant execute on function verification_on() to anon, authenticated;
+
+-- Expensive items are only gated while verification actually means something.
+create or replace function guard_high_value() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v vendors%rowtype; limit_price numeric := setting_num('high_value_threshold');
+begin
+  if not verification_on() then return new; end if;
+  if new.status = 'published' and new.vendor_id is not null and limit_price > 0 and new.price > limit_price then
+    select * into v from vendors where id = new.vendor_id;
+    if v.trust_level = 'new' then
+      raise exception 'Items above K% need a verified seller. Complete verification with the ZaMarket team first.', limit_price;
+    end if;
+  end if;
+  return new;
+end $$;
+
+-- Evidence, not a badge. With verification off, the panel shows only what the
+-- marketplace can actually observe: trading history, paid orders and reviews
+-- from real customers. No identity claims at all.
+create or replace function vendor_trust(p_slug text) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare v vendors%rowtype; checks jsonb;
+begin
+  select * into v from vendors where slug = p_slug and status = 'approved';
+  if not found then return jsonb_build_object('found', false); end if;
+
+  checks := jsonb_build_array(
+    jsonb_build_object('label', 'Business name and phone checked', 'done', true),
+    jsonb_build_object('label', 'Area where they work is known', 'done', coalesce(v.location, '') <> ''),
+    jsonb_build_object('label', 'Orders handled and paid through ZaMarket', 'done', true));
+
+  if verification_on() then
+    checks := jsonb_build_array(
+      jsonb_build_object('label', 'Business name and phone checked', 'done', true),
+      jsonb_build_object('label', 'Area where they work is known', 'done', coalesce(v.location, '') <> ''),
+      jsonb_build_object('label', 'Someone from ZaMarket has met them', 'done', v.trust_level in ('known', 'verified')),
+      jsonb_build_object('label', 'ID or PACRA paper seen in person', 'done', coalesce(v.id_seen, false)),
+      jsonb_build_object('label', 'Registered business number on file', 'done', coalesce(v.business_reg_no, '') <> ''),
+      jsonb_build_object('label', 'Orders handled and paid through ZaMarket', 'done', true));
+  end if;
+
+  return jsonb_build_object(
+    'found', true,
+    'business_name', v.business_name,
+    'verification', verification_on(),
+    'level', case when verification_on() then v.trust_level else null end,
+    'since', lusaka_date(v.created_at),
+    'checks', checks,
+    'completed_orders', (select count(distinct o.id) from orders o join order_items i on i.order_id = o.id
+                          where i.vendor_id = v.id and o.status = 'completed'),
+    'verified_reviews', (select count(*) from reviews r where r.vendor_id = v.id and r.approved and r.verified),
+    'rating', (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved),
+    'on_time', (select count(*) from orders o join order_items i on i.order_id = o.id
+                 where i.vendor_id = v.id and o.status = 'completed'
+                   and (o.needed_by is null or lusaka_date(o.completed_at) <= o.needed_by)));
+end $$;
+
+-- The marketplace's own record. The checked-business count is left out entirely
+-- while verification is off, rather than reported as zero.
+create or replace function marketplace_proof() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_strip_nulls(jsonb_build_object(
+    'completed_orders', (select count(*) from orders where status = 'completed'),
+    'delivered_orders', (select count(*) from orders where status in ('delivered', 'completed')),
+    'businesses', (select count(*) from vendors where status = 'approved'),
+    'verification', verification_on(),
+    'checked_businesses', case when verification_on()
+      then (select count(*) from vendors where status = 'approved' and trust_level in ('known', 'verified'))
+      else null end,
+    'verified_reviews', (select count(*) from reviews where approved and verified),
+    'rating', (select round(avg(marketplace_rating), 1) from reviews where approved),
+    'on_time_pct', (select case when count(*) = 0 then null else
+        round(100.0 * count(*) filter (where o.needed_by is null or lusaka_date(o.completed_at) <= o.needed_by) / count(*), 0) end
+      from orders o where o.status = 'completed'),
+    'since', (select lusaka_date(min(created_at)) from orders)));
+$$;
+
+-- Staff can only move a seller's trust level while the layer is live, so no
+-- verification record can be written during a period when it would mean nothing.
+create or replace function set_vendor_trust(p_vendor uuid, p_level text, p_id_seen boolean, p_note text, p_reg_no text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare v vendors%rowtype;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  if not verification_on() then
+    raise exception 'Verification is switched off until ZaMarket is registered. Turn on verification_on in Setup first.';
+  end if;
+  select * into v from vendors where id = p_vendor;
+  if not found then raise exception 'Seller not found'; end if;
+  if p_level not in ('new', 'known', 'verified') then raise exception 'Unknown trust level %', p_level; end if;
+  if p_level = 'verified' and not coalesce(p_id_seen, false) then
+    raise exception 'A seller cannot be marked verified until their ID or PACRA paper has been seen in person.';
+  end if;
+  update vendors set
+    trust_level = p_level,
+    id_seen = coalesce(p_id_seen, id_seen),
+    id_seen_note = case when coalesce(p_id_seen, false) then coalesce(p_note, id_seen_note) else id_seen_note end,
+    id_seen_by = case when coalesce(p_id_seen, false) and not id_seen then auth.uid() else id_seen_by end,
+    id_seen_at = case when coalesce(p_id_seen, false) and not id_seen then now() else id_seen_at end,
+    business_reg_no = coalesce(nullif(p_reg_no, ''), business_reg_no)
+  where id = p_vendor;
+  perform log_audit('vendor.trust', 'vendors', p_vendor,
+    jsonb_build_object('trust_level', v.trust_level, 'id_seen', v.id_seen),
+    jsonb_build_object('trust_level', p_level, 'id_seen', p_id_seen));
+end $$;
+
+-- The verification switch has to be readable by a shopper, because the product
+-- card and the trust panel both decide what to show from it. It says nothing
+-- private: only whether this layer is live.
+select ensure_policy('read_settings', 'settings', 'select',
+  'key like ''company_%'' or key like ''social_%'' or key in (''local_delivery_fee'',''currency'',''delivery_included'',''departments'',''reseller_terms'',''vendor_terms'',''verification_on'') or (auth.uid() is not null and key <> ''founder_emails'') or is_founder()');
+
+-- ============================================================================
+-- GOING LIVE: CLEAR THE TEST DATA
+-- ----------------------------------------------------------------------------
+-- The original reset cleared trading records but left the test sellers, the
+-- creatives, the stock counts and the homepage slots behind. Going live means
+-- all of it goes, so p_keep_sellers lets the founder choose: keep the real
+-- businesses already onboarded, or wipe the demo ones too.
+--
+-- Settings, staff accounts and the audit trail of the reset itself survive.
+-- ============================================================================
+
+-- The old two-argument version has to go, or it stays callable alongside this
+-- one and a reset could silently run the version that spares the test sellers.
+drop function if exists reset_test_data(text, boolean);
+
+create or replace function reset_test_data(p_confirm text, p_keep_products boolean default true,
+                                           p_keep_sellers boolean default true) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare counts jsonb;
+begin
+  if not is_founder() then raise exception 'Only a founder can clear test data'; end if;
+  if p_confirm <> 'DELETE' then raise exception 'Type DELETE to confirm'; end if;
+  perform set_config('zm.reset', 'on', true);
+
+  select jsonb_build_object(
+    'orders', (select count(*) from orders), 'customers', (select count(*) from customers),
+    'leads', (select count(*) from leads), 'products', (select count(*) from products),
+    'sellers', (select count(*) from vendors), 'affiliates', (select count(*) from resellers),
+    'reviews', (select count(*) from reviews), 'creatives', (select count(*) from creatives)) into counts;
+
+  delete from lead_activities; delete from leads;
+  delete from referrals; delete from reviews; delete from bonus_credits; delete from payouts;
+  delete from commissions; delete from settlements; delete from payments; delete from deliveries;
+  delete from deal_events; delete from deals;
+  delete from order_items; delete from orders;
+  delete from customers; delete from stock_requests;
+  delete from inventory_movements; delete from purchase_items; delete from purchases;
+  delete from expenses; delete from marketing_spend; delete from content_posts;
+  delete from funnels; delete from lead_magnets; delete from ad_requests; delete from campaigns;
+  delete from founder_contributions; delete from founder_withdrawals;
+  delete from offers;
+
+  -- everything built since the first reset was written
+  begin delete from stock_count_items; delete from stock_counts; exception when undefined_table then null; end;
+  begin delete from money_checks; exception when undefined_table then null; end;
+  begin delete from creatives; exception when undefined_table then null; end;
+  begin delete from media_assets; exception when undefined_table then null; end;
+  begin delete from featured_slots; exception when undefined_table then null; end;
+
+  if not p_keep_products then
+    delete from product_packages; delete from products; delete from suppliers;
+  else
+    update products set stock_available = 0, stock_reserved = 0, stock_sold = 0, stock_returned = 0,
+      stock_damaged = 0, stock_lost = 0, landed_cost_total = 0, landed_units = 0,
+      featured_in_store = false;
+  end if;
+
+  -- Demo sellers and affiliates. Their products go first or the delete is refused;
+  -- the people's own login accounts are left alone, only the business record goes.
+  if not p_keep_sellers then
+    delete from product_packages where product_id in (select id from products where vendor_id is not null);
+    delete from products where vendor_id is not null;
+    delete from vendors;
+    delete from resellers;
+  end if;
+
+  delete from audit_logs;
+  perform setval('order_number_seq', 1000, true);
+  perform set_config('zm.reset', 'off', true);
+  perform log_audit('data.reset', 'settings', null, counts,
+    jsonb_build_object('kept_products', p_keep_products, 'kept_sellers', p_keep_sellers));
+  return counts;
+end $$;
+
+-- ============================================================================
+-- THE HOMEPAGE HERO: VENDOR-PICKED PRODUCTS
+-- ----------------------------------------------------------------------------
+-- The hero is the most valuable space on the site, and it belongs to the
+-- sellers. Each vendor picks up to six products to feature (vendor_set_featured),
+-- and the hero rotates through them.
+--
+-- One product per vendor, so the slot spreads across businesses instead of
+-- being filled by whoever featured the most. Sellers already trading come
+-- first, because a shelf that has actually sold is the better shop window.
+--
+-- With nothing picked yet the hero still fills itself from the best published
+-- products, so a new marketplace never shows an empty stage.
+--
+-- The founder's own featured_slots still exist and still win when one is live;
+-- this is what the hero shows the rest of the time.
+-- ============================================================================
+
+create or replace function storefront_hero(p_limit int default 6) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with live as (
+    select p.id, p.name, p.slug, p.price, p.normal_price, p.images, p.category,
+           p.offering_type, p.fulfilment, p.sales_model, p.created_at,
+           p.featured_in_store as chosen, p.vendor_id,
+           v.business_name, v.slug as vendor_slug, v.logo_url, v.cover_url,
+           v.tagline, split_part(coalesce(v.location, ''), ',', 1) as town,
+           (select round(avg(r.product_rating), 1) from reviews r where r.product_id = p.id and r.approved) as rating,
+           (select count(*) from reviews r where r.product_id = p.id and r.approved) as review_count,
+           (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as vendor_rating,
+           (select count(distinct o.id) from order_items oi join orders o on o.id = oi.order_id
+             where oi.vendor_id = v.id and o.status = 'completed') as vendor_orders
+    from products p
+    join vendors v on v.id = p.vendor_id
+    where p.status = 'published' and v.status = 'approved'
+      and coalesce(array_length(p.images, 1), 0) > 0
+  ),
+  -- One product per vendor, so the hero spreads across businesses instead of
+  -- being filled by whoever featured the most.
+  picked as (
+    select distinct on (vendor_id) * from live where chosen
+    order by vendor_id, rating desc nulls last, review_count desc nulls last, created_at desc
+  ),
+  -- Nothing picked yet: stand up the best of what is published so a new
+  -- marketplace never shows an empty stage.
+  standby as (
+    select distinct on (vendor_id) * from live
+    order by vendor_id, rating desc nulls last, review_count desc nulls last, created_at desc
+  ),
+  chosen as (
+    select * from (
+      select * from picked
+      union all
+      select * from standby where not exists (select 1 from picked)
+    ) s
+    order by s.chosen desc, s.vendor_orders desc, s.rating desc nulls last,
+             s.review_count desc nulls last, s.created_at desc
+    limit greatest(coalesce(p_limit, 6), 1)
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'product_id', c.id,
+    'name', c.name,
+    'slug', c.slug,
+    'price', c.price,
+    'normal_price', case when c.normal_price > c.price then c.normal_price else null end,
+    'image', c.images[1],
+    'category', c.category,
+    'offering_type', c.offering_type,
+    'fulfilment', c.fulfilment,
+    'sales_model', c.sales_model,
+    'rating', c.rating,
+    'review_count', c.review_count,
+    'chosen_by_vendor', c.chosen,
+    'vendor', jsonb_build_object(
+      'name', c.business_name, 'slug', c.vendor_slug, 'logo', c.logo_url,
+      'cover', c.cover_url, 'town', nullif(c.town, ''), 'tagline', c.tagline,
+      'rating', c.vendor_rating, 'completed_orders', c.vendor_orders)
+  ) order by c.chosen desc, c.vendor_orders desc, c.created_at desc), '[]'::jsonb) from chosen c;
+$$;
+grant execute on function storefront_hero(int) to anon, authenticated;
+
+-- A vendor's product on the front page is real exposure, so it is counted the
+-- same way the rest of the site is counted and shows up in their own numbers.
+create or replace function hero_seen(p_product uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v uuid;
+begin
+  select vendor_id into v from products where id = p_product and status = 'published';
+  if v is null then return; end if;
+  perform track_hit('hero_view', v, p_product, null);
+end $$;
+grant execute on function hero_seen(uuid) to anon, authenticated;
+
+create or replace function hero_click(p_product uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare v uuid;
+begin
+  select vendor_id into v from products where id = p_product and status = 'published';
+  if v is null then return; end if;
+  perform track_hit('hero_click', v, p_product, null);
+end $$;
+grant execute on function hero_click(uuid) to anon, authenticated;
+
+-- ============================================================================
+-- THE BLOG
+-- ----------------------------------------------------------------------------
+-- Articles that answer what someone in Lusaka actually types into Google —
+-- "where to buy packed lunches in Lusaka", "inflatable bed pump price Zambia" —
+-- and put the real offering, with its real price, in front of them.
+--
+-- A post is tied to the offerings it talks about, so the article is never a
+-- dead end: the reader lands on a buy button, not on a contact form. And
+-- because the link is a row rather than a pasted URL, a post can never point at
+-- something unpublished or withdrawn.
+-- ============================================================================
+
+create table if not exists posts (
+  id uuid primary key default gen_random_uuid(),
+  slug text unique,
+  title text not null,
+  excerpt text,
+  body text not null default '',
+  cover_url text,
+  category text,
+  -- what this post is trying to rank for; kept so the editor can score drafts
+  -- and so nobody forgets what a post was written to do
+  keyword text,
+  secondary_keywords text[] not null default '{}',
+  meta_title text,
+  meta_description text,
+  status text not null default 'draft' check (status in ('draft', 'published', 'archived')),
+  published_at timestamptz,
+  author_id uuid references profiles(id),
+  -- Resolved once, when the post is saved. The public view runs as the reader,
+  -- and a reader cannot read profiles, so joining it there would fail.
+  author_name text,
+  views int not null default 0,
+  seo_score int,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists posts_status_idx on posts (status, published_at desc);
+create index if not exists posts_slug_idx on posts (slug);
+
+-- Which offerings a post is about. Ordered, so the writer controls what the
+-- reader sees first.
+create table if not exists post_products (
+  post_id uuid not null references posts(id) on delete cascade,
+  product_id uuid not null references products(id) on delete cascade,
+  sort int not null default 0,
+  primary key (post_id, product_id)
+);
+
+do $$ begin
+  alter table posts enable row level security;
+  alter table post_products enable row level security;
+exception when others then null; end $$;
+
+-- A post gets its slug from its title, the same way products and stores do.
+create or replace function posts_slugify() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare base text; try text; n int := 1;
+begin
+  if new.slug is null or new.slug = '' then
+    base := make_slug(new.title);
+    if base is null or base = '' then base := 'post'; end if;
+    try := base;
+    while exists (select 1 from posts p where p.slug = try and p.id <> new.id) loop
+      n := n + 1; try := base || '-' || n;
+    end loop;
+    new.slug := try;
+  end if;
+  new.updated_at := now();
+  if new.status = 'published' and new.published_at is null then new.published_at := now(); end if;
+  if new.author_id is not null and coalesce(new.author_name, '') = '' then
+    select full_name into new.author_name from profiles where id = new.author_id;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_posts_slug on posts;
+create trigger trg_posts_slug before insert or update on posts
+  for each row execute function posts_slugify();
+
+-- What a reader may see: published posts only, and only the public columns.
+drop view if exists public_posts cascade;
+create or replace view public_posts as
+select p.id, p.slug, p.title, p.excerpt, p.body, p.cover_url, p.category,
+       p.meta_title, p.meta_description, p.published_at, p.views,
+       coalesce(nullif(p.author_name, ''), 'ZaMarket') as author
+from posts p
+where p.status = 'published';
+
+alter view public_posts set (security_invoker = on);
+grant select on public_posts to anon, authenticated;
+
+select ensure_policy('anon_read_posts', 'posts', 'select', $p$status = 'published'$p$);
+select ensure_policy('staff_posts_all', 'posts', 'all', 'is_staff()');
+select ensure_policy('anon_read_post_products', 'post_products', 'select',
+  $p$exists (select 1 from posts p where p.id = post_id and p.status = 'published')$p$);
+select ensure_policy('staff_post_products_all', 'post_products', 'all', 'is_staff()');
+
+do $$ begin
+  revoke select on posts from anon;
+  grant select (id, slug, title, excerpt, body, cover_url, category, meta_title,
+                meta_description, published_at, views, author_name, status) on posts to anon;
+exception when others then raise notice 'Post grants skipped: %', sqlerrm; end $$;
+
+-- One post with the offerings it talks about, priced and in stock as of now.
+create or replace function post_page(p_slug text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when p.id is null then jsonb_build_object('found', false) else jsonb_build_object(
+    'found', true,
+    'id', p.id, 'slug', p.slug, 'title', p.title, 'excerpt', p.excerpt, 'body', p.body,
+    'cover_url', p.cover_url, 'category', p.category, 'author', p.author,
+    'meta_title', p.meta_title, 'meta_description', p.meta_description,
+    'published_at', p.published_at,
+    'offerings', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', pp.id, 'name', pp.name, 'slug', pp.slug, 'price', pp.price,
+        'normal_price', pp.normal_price, 'image', pp.images[1],
+        'vendor_name', pp.vendor_name, 'vendor_slug', pp.vendor_slug,
+        'fulfilment', pp.fulfilment, 'offering_type', pp.offering_type,
+        'sales_model', pp.sales_model) order by l.sort)
+      from post_products l
+      join public_products pp on pp.id = l.product_id
+      where l.post_id = p.id), '[]'::jsonb)) end
+  from (select * from public_posts where slug = p_slug) p;
+$$;
+grant execute on function post_page(text) to anon, authenticated;
+
+-- The index. Body is left out: a listing does not need the whole article.
+create or replace function blog_index(p_limit int default 24, p_offset int default 0) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'slug', b.slug, 'title', b.title, 'excerpt', b.excerpt, 'cover_url', b.cover_url,
+    'category', b.category, 'author', b.author, 'published_at', b.published_at,
+    'offerings', b.n) order by b.published_at desc), '[]'::jsonb)
+  from (
+    select pp.*, (select count(*) from post_products l where l.post_id = pp.id) as n
+    from public_posts pp
+    order by pp.published_at desc
+    limit greatest(coalesce(p_limit, 24), 1) offset greatest(coalesce(p_offset, 0), 0)
+  ) b;
+$$;
+grant execute on function blog_index(int, int) to anon, authenticated;
+
+-- Counted once per reader per post, so the number means something.
+create or replace function post_read(p_slug text) returns void
+language sql security definer set search_path = public as $$
+  update posts set views = views + 1 where slug = p_slug and status = 'published';
+$$;
+grant execute on function post_read(text) to anon, authenticated;
+
+-- What the marketing side needs: how each post is doing, and what it was
+-- written to rank for.
+create or replace function blog_report() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not is_staff() then null else jsonb_build_object(
+    'published', (select count(*) from posts where status = 'published'),
+    'drafts', (select count(*) from posts where status = 'draft'),
+    'views', (select coalesce(sum(views), 0) from posts),
+    'posts', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', p.id, 'slug', p.slug, 'title', p.title, 'status', p.status,
+        'keyword', p.keyword, 'seo_score', p.seo_score, 'views', p.views,
+        'offerings', (select count(*) from post_products l where l.post_id = p.id),
+        'published_at', p.published_at, 'updated_at', p.updated_at)
+      order by p.updated_at desc) from posts p), '[]'::jsonb)) end;
+$$;
+grant execute on function blog_report() to authenticated;

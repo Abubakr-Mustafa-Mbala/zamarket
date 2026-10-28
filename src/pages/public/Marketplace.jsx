@@ -65,12 +65,130 @@ function Price({ value, size }) {
 }
 
 // ---------- shell ----------
-// The homepage hero is a marketing slot: today it might be a business, tomorrow a
-// deal or a collection. Set by the marketplace, never random.
-function FeaturedHero({ fallbackProducts }) {
+// The hero belongs to the sellers. Each vendor picks up to six products to
+// feature from their own store, and this rotates through them — one product per
+// seller, so the front page spreads across businesses. The shopper sees the
+// product, the price and whose shop it comes from, and goes straight there.
+//
+// The founder's own marketing slots still take the stage when one is live
+// (FounderHero below); this is what the homepage shows the rest of the time.
+function VendorHero() {
+  const [slides, setSlides] = useState(null)
+  const [i, setI] = useState(0)
+  const [paused, setPaused] = useState(false)
+
+  useEffect(() => {
+    supabase.rpc('storefront_hero', { p_limit: 6 })
+      .then(({ data, error }) => setSlides(!error && Array.isArray(data) ? data : []))
+      .catch(() => setSlides([]))
+  }, [])
+
+  const n = slides?.length || 0
+  const at = n ? i % n : 0
+
+  // Count the exposure so the vendor sees it in their own numbers.
+  useEffect(() => {
+    if (!n) return
+    const id = slides[at]?.product_id
+    if (id) supabase.rpc('hero_seen', { p_product: id })
+  }, [slides, at, n])
+
+  useEffect(() => {
+    if (n < 2 || paused) return
+    const t = setInterval(() => setI((x) => x + 1), 6500)
+    return () => clearInterval(t)
+  }, [n, paused])
+
+  if (slides === null) return <div className="vhero vhero-wait" aria-hidden />
+  if (!n) return null
+
+  const s = slides[at]
+  const v = s.vendor || {}
+  const to = v.slug && s.slug ? `/${v.slug}/${s.slug}` : `/p/${s.slug}`
+  const enquire = s.sales_model === 'negotiate' || s.sales_model === 'enquire' || s.offering_type === 'vehicle'
+  const book = s.fulfilment === 'service' || s.offering_type === 'event'
+  const cta = enquire ? 'Enquire' : book ? 'See times' : 'View this'
+  const save = s.normal_price ? Number(s.normal_price) - Number(s.price) : 0
+
+  return (
+    <section
+      className="vhero"
+      aria-label="Featured by our sellers"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
+      <Link
+        to={to}
+        className="vhero-stage"
+        onClick={() => supabase.rpc('hero_click', { p_product: s.product_id })}
+      >
+        <span className="vhero-photo">
+          {s.image
+            ? <img src={s.image} alt={s.name} key={s.product_id} />
+            : <span className="vhero-ph" aria-hidden><Icon.box /></span>}
+          {save > 0 && <span className="vhero-save">Save {money(save)}</span>}
+        </span>
+
+        <span className="vhero-copy">
+          <span className="vhero-eyebrow">
+            {s.chosen_by_vendor ? 'Chosen by the seller' : 'On ZaMarket now'}
+            {s.category ? <em> · {s.category}</em> : null}
+          </span>
+          <span className="vhero-name">{s.name}</span>
+          <span className="vhero-price">
+            <Price value={s.price} size="lg" />
+            {s.normal_price && <span className="vhero-was">{money(s.normal_price)}</span>}
+            {enquire && <span className="vhero-asking">asking</span>}
+          </span>
+          {s.rating ? (
+            <span className="vhero-rating"><Stars n={s.rating} /> {s.rating} ({s.review_count})</span>
+          ) : null}
+          <span className="vhero-cta btn primary">{cta} <Icon.arrow /></span>
+        </span>
+      </Link>
+
+      {v.name && (
+        <Link to={`/${v.slug}`} className="vhero-seller" onClick={(e) => e.stopPropagation()}>
+          {v.logo
+            ? <img src={v.logo} alt="" />
+            : <span className="vhero-mark" aria-hidden>{v.name.slice(0, 1)}</span>}
+          <span className="vhero-seller-text">
+            <b>{v.name}</b>
+            <em>
+              {[v.town, v.completed_orders > 0 && `${v.completed_orders} order${v.completed_orders === 1 ? '' : 's'} delivered`]
+                .filter(Boolean).join(' · ') || 'Selling on ZaMarket'}
+            </em>
+          </span>
+          <span className="vhero-visit">Visit shop <Icon.arrow /></span>
+        </Link>
+      )}
+
+      {n > 1 && (
+        <div className="vhero-dots" role="tablist" aria-label="Featured products">
+          {slides.map((x, k) => (
+            <button
+              key={x.product_id}
+              role="tab"
+              aria-selected={k === at}
+              className={k === at ? 'on' : ''}
+              onClick={() => { setI(k); setPaused(true) }}
+              aria-label={`${x.name}${x.vendor?.name ? ` from ${x.vendor.name}` : ''}`}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// The founder's own marketing slot. It only appears when one has been set, and
+// when it does it replaces the vendor rotation for as long as it runs.
+function FounderHero() {
   const [slots, setSlots] = useState(null)
   const [i, setI] = useState(0)
-  useEffect(() => { supabase.rpc('featured_now').then(({ data }) => setSlots(data || [])) }, [])
+  useEffect(() => { supabase.rpc('featured_now').then(({ data }) => setSlots(data || [])).catch(() => setSlots([])) }, [])
   useEffect(() => {
     if (!slots?.length) return
     supabase.rpc('featured_seen', { p_slot: slots[i % slots.length].id })
@@ -78,7 +196,8 @@ function FeaturedHero({ fallbackProducts }) {
     const t = setInterval(() => setI((x) => x + 1), 7000)
     return () => clearInterval(t)
   }, [slots, i])
-  if (!slots?.length) return null
+  if (slots === null) return null
+  if (!slots.length) return <VendorHero />
   const f = slots[i % slots.length]
   const v = f.vendor || {}
   return (
@@ -91,7 +210,7 @@ function FeaturedHero({ fallbackProducts }) {
         {v.name && (
           <span className="fh-vendor">
             {v.logo ? <img src={v.logo} alt="" /> : <span className="fh-mark">{v.name.slice(0, 1)}</span>}
-            <span>{v.name}{v.trust === 'verified' && <em title="Checked by ZaMarket"><Icon.shield /></em>}</span>
+            <span>{v.name}</span>
             {v.rating ? <span className="fh-rating"><Icon.star /> {v.rating}</span> : null}
           </span>
         )}
@@ -114,6 +233,45 @@ function FeaturedHero({ fallbackProducts }) {
 
 // What the homepage shows is decided by the marketplace, not hard-coded here.
 // A section only appears when there is enough in it.
+// Somewhere to reach a person. The number and links come from Settings, so the
+// founder's own phone never has to be hard-coded, and each one only appears
+// once it has actually been filled in.
+export function HelpStrip({ compact = false }) {
+  const { settings } = useAuth()
+  const phone = (settings?.company_phone || '').trim()
+  const whatsapp = (settings?.company_whatsapp || '').trim()
+  const instagram = (settings?.social_instagram || '').trim()
+  if (!phone && !whatsapp && !instagram) return null
+
+  const waLink = whatsapp && `https://wa.me/${whatsapp.replace(/[^\d]/g, '')}`
+  const igLink = instagram && (instagram.startsWith('http')
+    ? instagram
+    : `https://instagram.com/${instagram.replace(/^@/, '')}`)
+
+  return (
+    <section className={`help-strip ${compact ? 'compact' : ''}`} aria-label="Contact ZaMarket">
+      {!compact && (
+        <p className="hs-lead">
+          <strong>Something wrong with an order?</strong>
+          <span>Talk to a person at ZaMarket — not to the seller.</span>
+        </p>
+      )}
+      <div className="hs-links">
+        {phone && <a href={`tel:${phone.replace(/\s/g, '')}`} className="hs-link"><Icon.phone /> {phone}</a>}
+        {waLink && <a href={waLink} className="hs-link" target="_blank" rel="noreferrer"><Icon.message /> WhatsApp</a>}
+        {igLink && <a href={igLink} className="hs-link" target="_blank" rel="noreferrer"><Icon.camera /> Instagram</a>}
+      </div>
+    </section>
+  )
+}
+
+// A seller's own products, so a seller card can show its real shelf.
+function byVendor(products) {
+  const m = {}
+  for (const p of products) if (p.vendor_id) (m[p.vendor_id] = m[p.vendor_id] || []).push(p)
+  return m
+}
+
 function Merchandised({ products, vendors, offersBy }) {
   const [sections, setSections] = useState(null)
   useEffect(() => {
@@ -122,6 +280,7 @@ function Merchandised({ products, vendors, offersBy }) {
       .catch(() => setSections(fallbackSections(products)))
   }, [products.length])
   const byId = useMemo(() => Object.fromEntries(products.map((p) => [p.id, p])), [products])
+  const shelves = useMemo(() => byVendor(products), [products])
   if (!sections) return <Loading shape="cards" />
 
   return (
@@ -132,7 +291,9 @@ function Merchandised({ products, vendors, offersBy }) {
           return (
             <section key={s.key} className="sellers-band">
               <div className="shelf-head"><h2>{s.title}<span className="sub">{s.sub}</span></h2><Link to={s.link}>All sellers</Link></div>
-              <div className="seller-strip">{vendors.slice(0, 8).map((v) => <SellerCard key={v.id} v={v} />)}</div>
+              <div className="seller-strip">
+                {vendors.slice(0, 8).map((v) => <SellerCard key={v.id} v={v} shelf={shelves[v.id] || []} />)}
+              </div>
             </section>
           )
         }
@@ -190,6 +351,57 @@ function CategoryRail() {
         <span>More categories</span>
       </Link>
     </nav>
+  )
+}
+
+// The old footer was four full columns of links, which on a phone filled almost
+// the whole screen. Now it is one compact bar — the links sit in groups that are
+// collapsed on a phone and open on a wide screen — and it is the only place on
+// the site that asks anyone to sell or to become an affiliate.
+function FooterGroup({ title, children }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className={`sf-group ${open ? 'open' : ''}`}>
+      <button type="button" className="sf-title" onClick={() => setOpen(!open)} aria-expanded={open}>
+        {title}<span className="sf-caret" aria-hidden>{open ? '−' : '+'}</span>
+      </button>
+      <div className="sf-links">{children}</div>
+    </div>
+  )
+}
+
+function ShopFooter({ user, home }) {
+  return (
+    <footer className="shop-footer">
+      <div className="sf-groups">
+        <FooterGroup title="Shop">
+          <Link to="/search">All products</Link>
+          <Link to="/search?deals=1">Today's deals</Link>
+          <Link to="/sellers">Sellers</Link>
+          <Link to="/review">Rate an order</Link>
+        </FooterGroup>
+        <FooterGroup title="ZaMarket">
+          <Link to="/how-it-works">How ZaMarket works</Link>
+          <Link to="/protection">If something goes wrong</Link>
+          <Link to="/about">About us and contacts</Link>
+        </FooterGroup>
+        <FooterGroup title="Your account">
+          <Link to={user ? home : '/login'}>{user ? 'Your account' : 'Sign in'}</Link>
+          <Link to="/cart">Cart</Link>
+          <Link to="/saved">Saved items</Link>
+        </FooterGroup>
+        {/* The only recruitment on the site. A shopper is not asked twice. */}
+        <FooterGroup title="Work with us">
+          <Link to="/apply/vendor">Sell on ZaMarket</Link>
+          <Link to="/apply/reseller">Become an affiliate</Link>
+        </FooterGroup>
+      </div>
+      <HelpStrip compact />
+      <div className="sf-base">
+        <span className="wordmark on-mint">ZaMarket</span>
+        <span>© {new Date().getFullYear()} · Lusaka, Zambia</span>
+      </div>
+    </footer>
   )
 }
 
@@ -280,36 +492,7 @@ export function PublicShell() {
       <main className="shop-main"><Outlet /></main>
       <BottomBar />
 
-      <footer className="shop-footer">
-        <div className="sf-cols">
-          <div>
-            <div className="wordmark on-mint">ZaMarket</div>
-            <p>Lusaka's marketplace for products, made-to-order goods and local services. Order online, we confirm by phone, then you pay and receive.</p>
-          </div>
-          <div>
-            <h4>Shop</h4>
-            <Link to="/search">All products</Link>
-            <Link to="/search?deals=1">Today's deals</Link>
-            <Link to="/sellers">Sellers</Link>
-            <Link to="/review">Rate an order</Link>
-          </div>
-          <div>
-            <h4>Earn with us</h4>
-            <Link to="/apply/vendor">Sell on ZaMarket</Link>
-            <Link to="/apply/reseller">Become an affiliate</Link>
-          </div>
-          <div>
-            <h4>ZaMarket</h4>
-          <Link to="/how-it-works">How ZaMarket works</Link>
-          <Link to="/protection">If something goes wrong</Link>
-          <Link to="/about">About us and contacts</Link>
-          <h4>Your account</h4>
-            <Link to={user ? home : '/login'}>{user ? 'Your account' : 'Sign in'}</Link>
-            <Link to="/cart">Cart</Link>
-          </div>
-        </div>
-        <div className="sf-base">© {new Date().getFullYear()} ZaMarket, Lusaka</div>
-      </footer>
+      <ShopFooter user={user} home={home} />
 
       {showBar && (
         <div className="cart-bar">
@@ -387,42 +570,23 @@ export function Storefront() {
 
   return (
     <div className="home">
-      <FeaturedHero fallbackProducts={featured} />
-      <section className="hero4 hide-when-featured">
-        <div className="hero4-copy">
-          <h1>Shop local.<br />Support Zambia.</h1>
-          <p>Great products. Checked sellers. Delivered to you.</p>
-          <div className="hero-actions">
-            <Link to="/search" className="btn hero-cta">Shop now <Icon.arrow /></Link>
-          </div>
-          {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
-        </div>
-        <div className="hero4-art" aria-hidden>
-          {featured.slice(0, 2).map((p, i) => (
-            <span key={p.id} className={`hero4-tile t${i}`}>
-              {p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="hero4-ph"><Icon.box /></span>}
-            </span>
-          ))}
-          <span className="hero4-script">Zambia<br />Grows<br />Together</span>
-        </div>
-      </section>
+      <FounderHero />
+      {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
+      <HelpStrip />
 
+      {/* Three things that are true whether or not we check sellers: the order
+          is ours, it is confirmed before money changes hands, and someone picks
+          up the phone. No verification claims. */}
       <section className="trust-strip" aria-label="Buy with confidence">
         <div className="between ts-head"><h2>Why buy through ZaMarket?</h2><Link to="/how-it-works" className="small">How it works →</Link></div>
         <ul>
-          <li><span className="ts-icon"><Icon.shield /></span><span><strong>Local sellers</strong>Checked before they sell</span></li>
-          <li><span className="ts-icon"><Icon.truck /></span><span><strong>Convenient delivery</strong>Right to your door</span></li>
-          <li><span className="ts-icon"><Icon.headphones /></span><span><strong>Real people, real support</strong>Call us any working day</span></li>
+          <li><span className="ts-icon"><Icon.phone /></span><span><strong>Confirmed before you pay</strong>We call you with the final price</span></li>
+          <li><span className="ts-icon"><Icon.truck /></span><span><strong>Delivered to you</strong>We arrange it, not a stranger</span></li>
+          <li><span className="ts-icon"><Icon.headphones /></span><span><strong>If it goes wrong, come to us</strong>Call us any working day</span></li>
         </ul>
       </section>
 
-      {products.length === 0 ? (
-        <div className="empty-shop">
-          <h2>Nothing here yet</h2>
-          <p>We're adding sellers and offerings. Have something to sell?</p>
-          <div className="hero-actions"><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link><Link to="/apply/reseller" className="btn">Become an affiliate</Link></div>
-        </div>
-      ) : (
+      {products.length === 0 ? <OpeningSoon /> : (
         <Merchandised products={products} vendors={vendors} offersBy={offersBy} />
       )}
 
@@ -438,18 +602,42 @@ export function Storefront() {
         </section>
       )}
 
-      <section className="earn-band">
-        <div>
-          <h2>Grow with ZaMarket</h2>
-          <p><strong>Sellers:</strong> your own shop page, our customers, and payment handled for you.<br />
-             <strong>Affiliates:</strong> share what you like, earn commission on every completed sale.</p>
-        </div>
-        <div className="btn-row">
-          <Link to="/apply/vendor" className="btn on-dark">Sell on ZaMarket</Link>
-          <Link to="/apply/reseller" className="btn ghost-light">Become an affiliate</Link>
-        </div>
-      </section>
+      {/* "Grow with ZaMarket" used to sit here as well as in the footer. A
+          shopper does not need to be recruited twice on one page, so the
+          recruitment lives in the footer only. */}
     </div>
+  )
+}
+
+// What a shopper sees before the first seller is live. It is a shop that hasn't
+// opened, not a recruitment page: say when, say what's coming, and give them one
+// thing to do — leave a number so we can tell them. The "sell with us" pitch is
+// in the footer, where it belongs.
+function OpeningSoon() {
+  const stocked = useStockedDepartments(useDepartments())
+  const coming = (stocked.length ? stocked : useDepartments()).slice(0, 6)
+  return (
+    <section className="opening">
+      <div className="opening-head">
+        <span className="opening-eyebrow">Lusaka</span>
+        <h2>The shop opens as soon as the first sellers are live.</h2>
+        <p>
+          We're signing up bakers, tailors, phone shops and service providers around Lusaka right now.
+          The moment there's something to buy, it appears here.
+        </p>
+        <div className="btn-row">
+          <Link to="/how-it-works" className="btn primary">How ZaMarket will work</Link>
+          <Link to="/sellers" className="btn">See who's joined</Link>
+        </div>
+      </div>
+      {coming.length > 0 && (
+        <ul className="opening-depts" aria-label="What is coming">
+          {coming.map((d) => (
+            <li key={d.name}><span aria-hidden>{d.icon}</span>{d.name}</li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 
@@ -478,23 +666,49 @@ function ListingCard({ p, store }) {
   )
 }
 
-function SellerCard({ v }) {
+// A seller card is a shop window, so it shows what is actually on the shelf
+// rather than a cover photo and a rating they may not have yet. Three real
+// product photos tell a shopper more than any badge.
+//
+// The verified tick only appears while seller verification is a real process
+// (verification_on in settings); otherwise the card makes no claim about them.
+function SellerCard({ v, shelf = [] }) {
+  const { settings } = useAuth()
+  const verifying = settings?.verification_on === 'on'
+  const pics = shelf.filter((p) => p.images?.[0]).slice(0, 3)
+  const count = v.product_count ?? shelf.length
+
   return (
     <Link to={`/${v.slug}`} className="seller">
-      <span className="seller-cover" style={v.cover_url ? { backgroundImage: `url(${v.cover_url})` } : undefined} aria-hidden />
       <span className="seller-top">
         {v.logo_url
           ? <img className="seller-mark" src={v.logo_url} alt="" loading="lazy" />
           : <span className="seller-mark" aria-hidden>{v.business_name.slice(0, 1)}</span>}
         <span className="seller-info">
-          <span className="seller-name">{v.business_name}{v.trust_level === 'verified' && <span className="seller-check" title="Checked by ZaMarket"><Icon.shield /></span>}</span>
-          <span className="seller-meta">{[v.category, v.town].filter(Boolean).join(' · ')}</span>
+          <span className="seller-name">
+            {v.business_name}
+            {verifying && v.trust_level === 'verified' && (
+              <span className="seller-check" title="Checked by ZaMarket"><Icon.shield /></span>
+            )}
+          </span>
+          <span className="seller-meta">{[v.category, v.town].filter(Boolean).join(' · ') || 'On ZaMarket'}</span>
         </span>
       </span>
-      {v.tagline && <span className="seller-tag">{v.tagline}</span>}
+
+      {pics.length > 0 ? (
+        <span className="seller-shelf" aria-hidden>
+          {pics.map((p) => <span key={p.id} className="ss-pic"><img src={p.images[0]} alt="" loading="lazy" /></span>)}
+          {count > pics.length && <span className="ss-more">+{count - pics.length}</span>}
+        </span>
+      ) : v.tagline ? (
+        <span className="seller-tag">{v.tagline}</span>
+      ) : null}
+
       <span className="seller-foot">
-        {v.rating ? <span className="seller-meta"><Stars n={v.rating} /> {v.rating} ({v.review_count})</span> : <span className="seller-meta">New seller</span>}
-        <span className="seller-count">{v.product_count} item{v.product_count === 1 ? '' : 's'}</span>
+        {v.rating
+          ? <span className="seller-meta"><Stars n={v.rating} /> {v.rating} ({v.review_count})</span>
+          : <span className="seller-meta">{count > 0 ? `${count} item${count === 1 ? '' : 's'} on sale` : 'Setting up their shop'}</span>}
+        <span className="seller-count">Visit shop <Icon.arrow /></span>
       </span>
     </Link>
   )
@@ -503,13 +717,23 @@ function SellerCard({ v }) {
 export function SellersPage() {
   useSeo({ title: 'Sellers on ZaMarket — local businesses in Lusaka', description: 'Browse the shops, bakers, tailors and services selling on ZaMarket in Lusaka, Zambia.' })
   const data = useCatalogue()
+  const shelves = useMemo(() => byVendor(data?.products || []), [data])
   if (!data) return <Loading />
   return (
     <div className="stack">
       <div className="crumbs"><Link to="/">Home</Link><span>Sellers</span></div>
       <h1>Sellers on ZaMarket</h1>
-      {data.vendors.length === 0 ? <div className="empty-shop"><h2>No sellers yet</h2><p>Be one of the first.</p><Link to="/apply/vendor" className="btn primary">Sell on ZaMarket</Link></div>
-        : <div className="seller-grid">{data.vendors.map((v) => <SellerCard key={v.id} v={v} />)}</div>}
+      {data.vendors.length === 0 ? (
+        <div className="empty-shop">
+          <h2>No shops are live yet</h2>
+          <p>We're signing up local businesses around Lusaka. As each one is ready, their shop appears on this page.</p>
+          <Link to="/how-it-works" className="btn">How ZaMarket works</Link>
+        </div>
+      ) : (
+        <div className="seller-grid">
+          {data.vendors.map((v) => <SellerCard key={v.id} v={v} shelf={shelves[v.id] || []} />)}
+        </div>
+      )}
     </div>
   )
 }
@@ -835,7 +1059,8 @@ export function ProductPage() {
         ))}
       </section>
       {more.length > 0 && <Row title={p.vendor_id ? `More from ${p.vendor_name}` : 'You may also like'}>{more.map((x) => <OfferingCard key={x.id} p={x} inStore={!!storeParam} deal={dealFor(catalogue.offersBy, x.id)} />)}</Row>}
-      <p className="small muted pdp-earn">Want to earn by selling this? <Link to="/apply/reseller">Become an affiliate</Link>.</p>
+      {/* The affiliate pitch used to sit here too. A shopper reading a product
+          page is not being recruited; the footer carries it. */}
 
       {!out && (
         <div className="mobile-buybar">
@@ -903,6 +1128,7 @@ function NotifyModal({ product, onClose }) {
 export function StorePage() {
   const { store: slug, id: legacyId } = useParams()
   const { setStoreRef } = useCart()
+  const { settings } = useAuth()
   const nav = useNavigate()
   const [store, setStore] = useState(null)
   const [products, setProducts] = useState(null)
@@ -961,7 +1187,9 @@ export function StorePage() {
             <h1>{store.business_name}</h1>
             <p className="store-tag">{store.tagline || [store.category, store.town].filter(Boolean).join(' · ')}</p>
             <div className="store-facts">
-              {store.trust_level === 'verified' && <span className="verified-badge" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified seller</span>}
+              {settings?.verification_on === 'on' && store.trust_level === 'verified' && (
+                <span className="verified-badge" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified seller</span>
+              )}
               {store.rating ? <span><Stars n={store.rating} /> {store.rating} ({store.review_count})</span> : <span className="muted">New seller</span>}
               <span>{products.length} {products.length === 1 ? 'item' : 'items'}</span>
               {store.town && <span>{store.town}</span>}

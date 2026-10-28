@@ -16,17 +16,18 @@ import Coverage from './Coverage'
 import Featured from './Featured'
 import Proof from './Proof'
 import Creatives from './Creatives'
+import Blog from './Blog'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['blog', 'Blog'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -40,6 +41,7 @@ export default function MarketingHub() {
             proof: 'Real customer words and photos from completed orders, ready to post.',
             featured: 'Who or what is at the top of the homepage today, and what it brought.',
             coverage: 'Which products affiliates are ignoring, and how to fix it.',
+            blog: 'Articles that answer what people search for, each one ending at something they can buy.',
             seo: 'Being found on Google for free, and what each page still needs.',
             funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
             today: 'Your checklist for today. Do the work, watch the numbers move.',

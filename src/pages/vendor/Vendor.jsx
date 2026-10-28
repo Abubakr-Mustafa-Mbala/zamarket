@@ -9,7 +9,7 @@ import { niceDate } from '../../lib/madeToOrder'
 import { ProductEditor } from '../admin/Products'
 import { PHOTO_TIPS } from '../../lib/photos'
 import PhotoUpload from '../../components/PhotoUpload'
-import { THEMES, STYLES } from '../../lib/storeTheme'
+import { THEMES, STYLES, themeVars, readableOn } from '../../lib/storeTheme'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
 import QrCode from '../../components/QrCode'
@@ -108,12 +108,15 @@ export function VendorProducts() {
             ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a>
             : ['published', 'out_of_stock'].includes(p.status)
               ? <>
-                  <button className={`btn sm ${p.featured_in_store ? 'primary' : ''}`} title="Show this first in my store"
+                  <button className={`btn sm ${p.featured_in_store ? 'primary' : ''}`}
+                    title="Show this first in my store, and offer it for the ZaMarket front page"
                     onClick={async (e) => {
                       e.stopPropagation()
                       const { error } = await supabase.rpc('vendor_set_featured', { p_product: p.id, p_on: !p.featured_in_store })
                       if (error) return toast(error.message, true)
-                      toast(p.featured_in_store ? 'Taken off the front of your store' : 'Now shows first in your store')
+                      toast(p.featured_in_store
+                        ? 'Taken off the front of your store'
+                        : 'Shows first in your store, and can appear on the ZaMarket front page')
                       reload()
                     }}>{p.featured_in_store ? '★ Featured' : '☆ Feature'}</button>
                   <button className="btn sm" onClick={(e) => { e.stopPropagation(); setAvailability(p) }}>{p.status === 'published' ? 'Mark sold out' : 'Back in stock'}</button>
@@ -126,7 +129,7 @@ export function VendorProducts() {
         <ul className="fc-rules">
           <li><strong>Draft</strong> — only you can see it. Keep editing until you are happy.</li>
           <li><strong>Sent for review</strong> — with the ZaMarket team. We check it and publish it, usually the same day.</li>
-          <li><strong>Feature</strong> — up to six products show first when someone opens your store. Choose the ones you most want to sell.</li>
+          <li><strong>Feature</strong> — up to six products show first when someone opens your store, and they are the ones ZaMarket puts on the front page. The homepage rotates through featured products from every shop, so choose the ones you most want to sell.</li>
           <li><strong>Published</strong> — live in the shop. Tap <strong>Mark sold out</strong> any time and it disappears from the shop until you put it back.</li>
           <li><strong>Rejected</strong> — something needed changing. Open it to see why, fix it, and send it again.</li>
         </ul>
@@ -253,6 +256,34 @@ export function VendorPayouts() {
   )
 }
 
+
+// The real colours, applied to a miniature of the shop, so a vendor can see
+// what they are choosing instead of guessing from a square of colour.
+function ShopPreview({ colour, style, name }) {
+  const vars = themeVars({ theme: { colour, style } })
+  return (
+    <div className="shop-preview" style={vars}>
+      <div className="sp-head">
+        <span className="sp-logo">{(name || 'S').slice(0, 1)}</span>
+        <span className="sp-name">
+          <b>{name}</b>
+          <em>Lusaka · Open today</em>
+        </span>
+        <span className="sp-btn">Visit</span>
+      </div>
+      <div className="sp-grid">
+        {[['Your product', 'K450'], ['Another one', 'K180'], ['And this', 'K990']].map(([t, pr]) => (
+          <span className="sp-card" key={t}>
+            <span className="sp-pic" />
+            <span className="sp-t">{t}</span>
+            <span className="sp-p">{pr}</span>
+            <span className="sp-cta">Add to cart</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 export function VendorMarketing() {
   const v = useVendor()
@@ -402,21 +433,35 @@ export function VendorStore() {
         <Field label="When you work" hint="One per line, e.g. Mon–Fri: 08:00 – 17:00" span>
           <Textarea value={f.hours_text} onChange={set('hours_text')} rows={3} placeholder={'Mon–Fri: 08:00 – 17:00\nSaturday: 09:00 – 13:00'} />
         </Field>
-        <Field label="Your colour" hint="Used across your shop page" span>
-          <div className="swatches">
-            {THEMES.map((t) => (
-              <button type="button" key={t.key} className={`swatch ${f.colour === t.key ? 'on' : ''}`} onClick={() => set('colour')(t.key)} title={t.name}>
-                <span style={{ background: t.brand }} />
-                <span className="tiny">{t.name}</span>
-              </button>
-            ))}
-          </div>
+
+        <Field label="Your colour" hint="This is the background of your whole shop page. The writing and prices are adjusted automatically so they stay easy to read on whichever you pick." span>
+          {['Dark', 'Light'].map((group) => (
+            <div key={group} className="theme-group">
+              <span className="tiny muted">{group}</span>
+              <div className="swatches">
+                {THEMES.filter((t) => t.group === group).map((t) => (
+                  <button type="button" key={t.key} className={`swatch ${f.colour === t.key ? 'on' : ''}`}
+                    onClick={() => set('colour')(t.key)} title={t.note}>
+                    <span className="sw-view" style={{ background: t.bg }}>
+                      <em style={{ background: t.brand }} />
+                      <i style={{ background: readableOn(t.bg), opacity: 0.55 }} />
+                      <i style={{ background: readableOn(t.bg), opacity: 0.3, width: '58%' }} />
+                    </span>
+                    <span className="tiny">{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
         </Field>
-        <Field label="Style" span>
+        <Field label="How much colour" span>
           <div className="chips wrap">
             {STYLES.map((st) => <button type="button" key={st.key} className={`chip ${f.style === st.key ? 'on' : ''}`} onClick={() => set('style')(st.key)} title={st.note}>{st.name}</button>)}
           </div>
           <p className="tiny muted">{(STYLES.find((x) => x.key === f.style) || STYLES[0]).note}</p>
+        </Field>
+        <Field label="How it will look" span>
+          <ShopPreview colour={f.colour} style={f.style} name={f.business_name || 'Your shop'} />
         </Field>
         <Field label="About your shop" hint="A short paragraph. Who you are, how long you have done this, what you care about." span>
           <Textarea value={f.about} onChange={set('about')} rows={4} />

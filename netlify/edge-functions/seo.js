@@ -14,7 +14,7 @@ const clip = (s, n = 155) => {
 
 const money = (v) => `K${Number(v || 0).toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-const RESERVED = new Set(['p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review', 'login', 'account', 'apply', 'admin', 'sell', 'vendor', 'go', 'r', 'free', 'invite', 'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml'])
+const RESERVED = new Set(['p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review', 'login', 'account', 'apply', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'free', 'invite', 'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml'])
 
 async function api(path, url, key) {
   try {

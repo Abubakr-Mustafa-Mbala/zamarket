@@ -193,13 +193,13 @@ const GROUPS = [
       { key: 'business_name', label: 'Business name', type: 'text', help: 'Printed at the top of every receipt.' },
       { key: 'business_phone', label: 'Business phone', type: 'text', help: 'So customers can reach you from the receipt.' },
       { key: 'receipt_footer', label: 'Thank-you line on receipts', type: 'text', help: 'e.g. Thank you for shopping with us!' },
-      { key: 'company_phone', label: 'Customer service number', type: 'text', help: 'Shown publicly so people can check you are real.' },
-      { key: 'company_whatsapp', label: 'WhatsApp number', type: 'text', help: 'Shown publicly. The number most people will actually use.' },
+      { key: 'company_phone', label: 'Support number customers can call', type: 'text', help: 'Shown on the homepage and in the footer, for anyone whose order did not go as planned. Use a work number, not your personal one.' },
+      { key: 'company_whatsapp', label: 'WhatsApp number', type: 'text', help: 'Shown next to the support number. The one most people will actually use.' },
       { key: 'company_email', label: 'Email', type: 'text' },
       { key: 'company_address', label: 'Where you can be found', type: 'text', help: 'An area is enough at first, e.g. "Kabwata, Lusaka". A real place builds trust.' },
       { key: 'company_registration', label: 'PACRA registration', type: 'text', help: 'Put "Registration in progress" until it comes through. Never claim what is not true.' },
       { key: 'social_facebook', label: 'Facebook page', type: 'text' },
-      { key: 'social_instagram', label: 'Instagram', type: 'text' },
+      { key: 'social_instagram', label: 'Instagram', type: 'text', help: 'A username or a full link. Shown as a way to reach you for questions.' },
       { key: 'social_tiktok', label: 'TikTok', type: 'text' },
     ],
   },
@@ -219,7 +219,7 @@ const GROUPS = [
     title: 'Delivery',
     note: 'Many shops build delivery into the price so customers see "Free delivery". If you do that, add the delivery cost per sale when you price a product in "I bought goods".',
     fields: [
-      { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
+      { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', words: [['no', 'No, charge delivery'], ['yes', 'Yes, it is included']], help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
       { key: 'assumed_delivery_cost', label: 'What a delivery really costs you (K)', type: 'number', help: 'Used for profit when nobody records the actual cost. Free delivery for the customer is never free for you — this keeps profit honest.' },
       { key: 'monthly_fixed_costs', label: 'What the month must cover (K)', type: 'number', help: 'Rent, airtime, transport, data, subscriptions. Finance → Profit guard shows whether you have covered it.' },
       { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number', help: 'Added automatically. Anywhere else, you set the fee after calling the customer.' },
@@ -230,8 +230,9 @@ const GROUPS = [
     note: 'The vendor pays the marketplace fee, and the affiliate\'s commission comes out of that fee.',
     fields: [
       { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
-      { key: 'show_vendor_views', label: 'Let vendors see visitor numbers', type: 'switch', help: 'Off while traffic is still small — a low number is discouraging. Turn it on once the shop is busy.' },
-      { key: 'high_value_threshold', label: 'Verification needed above (K)', type: 'number', help: 'A brand-new vendor cannot publish an item above this price until someone from your team has met them and seen an ID or PACRA paper.' },
+      { key: 'show_vendor_views', label: 'Let vendors see visitor numbers', type: 'switch', words: [['no', 'Keep them hidden'], ['yes', 'Show vendors the numbers']], help: 'Off while traffic is still small — a low number is discouraging. Turn it on once the shop is busy.' },
+      { key: 'verification_on', label: 'Seller verification', type: 'choice', options: [['off', 'Off'], ['on', 'On']], help: 'Keep this off until ZaMarket is registered and you are really checking sellers. While it is off, the site makes no claim about who a seller is, the price limit below does not apply, and nobody can be marked verified. Turning it on brings all of it back.' },
+      { key: 'high_value_threshold', label: 'Verification needed above (K)', type: 'number', help: 'Only applies while seller verification is on. A brand-new vendor cannot publish an item above this price until someone from your team has met them and seen an ID or PACRA paper.' },
       { key: 'own_audience_fee_pct', label: 'Lower fee when the vendor brought the customer (%)', type: 'number', help: 'When someone buys through the vendor\'s own store link, you take this smaller fee instead.' },
       { key: 'default_commission_pct', label: 'Reseller commission (%)', type: 'number', help: 'Paid on completed sales. A product can have its own rate instead. Below about 10% on cheap items, resellers earn too little to bother.' },
       { key: 'affiliate_click_days', label: 'A click counts for (days)', type: 'number', help: 'Someone opens an affiliate link but buys later. Within this many days, the affiliate still gets the sale.' },
@@ -250,22 +251,30 @@ function ResetData() {
   const [open, setOpen] = useState(false)
   const [word, setWord] = useState('')
   const [keep, setKeep] = useState(true)
+  const [keepSellers, setKeepSellers] = useState(true)
   const [busy, setBusy] = useState(false)
   const run = async () => {
     setBusy(true)
-    const { data, error } = await supabase.rpc('reset_test_data', { p_confirm: word, p_keep_products: keep })
+    const { data, error } = await supabase.rpc('reset_test_data', {
+      p_confirm: word, p_keep_products: keep, p_keep_sellers: keepSellers,
+    })
     setBusy(false)
     if (error) return toast(error.message, true)
-    toast(`Cleared ${data.orders} orders and ${data.customers} customers`)
+    const bits = [`${data.orders} orders`, `${data.customers} customers`]
+    if (!keepSellers) bits.push(`${data.sellers} sellers`)
+    if (!keep) bits.push(`${data.products} offerings`)
+    toast(`Cleared ${bits.join(', ')}`)
     setOpen(false); setWord('')
   }
   return (
     <section className="card stack-sm" style={{ borderColor: 'var(--bad)' }}>
       <h3>Start fresh before you go live</h3>
-      <p className="small muted">Deletes every test order, customer, lead, campaign, review and money record, and sets order numbers back to 1001. Your team accounts and settings stay. This cannot be undone.</p>
+      <p className="small muted">Deletes every test order, customer, lead, campaign, review, creative, stock count and money record, and sets order numbers back to 1001. Your team accounts and settings stay. This cannot be undone.</p>
       {!open ? <button className="btn danger" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>Clear test data</button> : (
         <div className="stack-sm">
           <label className="check"><input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} /> Keep my products and suppliers (stock counts reset to zero)</label>
+          <label className="check"><input type="checkbox" checked={keepSellers} onChange={(e) => setKeepSellers(e.target.checked)} /> Keep the sellers and affiliates already signed up</label>
+          {!keepSellers && <p className="tiny" style={{ color: 'var(--bad)' }}>Every seller and affiliate record goes, along with their offerings. Their login accounts stay, so anyone real has to be signed up again.</p>}
           <Field label="Type DELETE to confirm"><Input value={word} onChange={setWord} placeholder="DELETE" /></Field>
           <div className="btn-row">
             <button className="btn danger" disabled={busy || word !== 'DELETE'} onClick={run}>{busy ? 'Clearing…' : 'Yes, clear everything'}</button>
@@ -322,8 +331,10 @@ export function Settings() {
           <div className="settings-grid">
             {g.fields.map((fld) => (
               <Field key={fld.key} label={fld.label} hint={fld.help}>
-                {fld.type === 'switch'
-                  ? <Segmented options={[['no', 'No, charge delivery'], ['yes', 'Yes, it is included']]} value={(f[fld.key] === true || f[fld.key] === 'true') ? 'yes' : 'no'} onChange={(v) => set(fld.key)(v === 'yes')} />
+                {fld.type === 'choice'
+                  ? <Segmented options={fld.options} value={f[fld.key] ?? fld.options[0][0]} onChange={set(fld.key)} />
+                  : fld.type === 'switch'
+                  ? <Segmented options={fld.words || [['no', 'No'], ['yes', 'Yes']]} value={(f[fld.key] === true || f[fld.key] === 'true') ? 'yes' : 'no'} onChange={(v) => set(fld.key)(v === 'yes')} />
                   : <Input type={fld.type === 'number' ? 'number' : 'text'} value={f[fld.key] ?? ''} onChange={set(fld.key)} />}
               </Field>
             ))}

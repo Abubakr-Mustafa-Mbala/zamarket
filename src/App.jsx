@@ -39,6 +39,8 @@ const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
 const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
+const BlogIndex = named(() => import('./pages/public/Blog'), 'BlogIndex')
+const BlogPost = named(() => import('./pages/public/Blog'), 'BlogPost')
 const VendorRefCapture = named(growthPages, 'VendorRefCapture')
 const SavedPage = named(growthPages, 'SavedPage')
 const CategoriesPage = named(growthPages, 'CategoriesPage')
@@ -136,6 +138,8 @@ export default function App() {
         <Route path="/about" element={<About />} />
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/protection" element={<Protection />} />
+        <Route path="/blog" element={<BlogIndex />} />
+        <Route path="/blog/:slug" element={<BlogPost />} />
         <Route path="/saved" element={<SavedPage />} />
         <Route path="/categories" element={<CategoriesPage />} />
       </Route>

@@ -112,8 +112,15 @@ export function trustPoints(facts, product, settings) {
   const points = []
   points.push({ icon: 'truck', label: facts.freeDelivery ? 'Free delivery\nin Lusaka' : 'Delivered\nin Lusaka' })
   points.push({ icon: 'phone', label: 'Confirmed\nby phone' })
-  if (product?.trust_level === 'verified' || product?.vendor_trust === 'verified') points.push({ icon: 'shield', label: 'Verified\nZaMarket seller' })
-  else points.push({ icon: 'shield', label: 'Listed on\nZaMarket' })
+  // Seller verification only exists as a claim while the layer is switched on
+  // (verification_on). Until ZaMarket is registered and real checks happen, the
+  // shield says what is actually true: the order runs through ZaMarket.
+  const verifying = settings?.verification_on === 'on'
+  if (verifying && (product?.trust_level === 'verified' || product?.vendor_trust === 'verified')) {
+    points.push({ icon: 'shield', label: 'Verified\nZaMarket seller' })
+  } else {
+    points.push({ icon: 'shield', label: 'Ordered through\nZaMarket' })
+  }
   return points
 }
 

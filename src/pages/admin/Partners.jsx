@@ -6,7 +6,7 @@ import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, useToast, Tabs, Stat, CopyLine } from '../../components/ui'
 
-function TrustCell({ v, onDone }) {
+function TrustCell({ v, onDone, verifying }) {
   const toast = useToast()
   const [open, setOpen] = useState(false)
   const [f, setF] = useState({ level: v.trust_level || 'new', id_seen: !!v.id_seen, note: v.id_seen_note || '', reg: v.business_reg_no || '' })
@@ -15,6 +15,11 @@ function TrustCell({ v, onDone }) {
     if (error) return toast(error.message, true)
     toast('Saved'); setOpen(false); onDone()
   }
+
+  // Verification is switched off until ZaMarket is registered. The column still
+  // shows, so the history stays visible, but nothing new can be recorded.
+  if (!verifying) return <span className="tiny muted">Not in use</span>
+
   const label = { new: 'Not checked', known: 'Met them', verified: 'Verified' }[v.trust_level || 'new']
   return (
     <>
@@ -79,7 +84,11 @@ export function Vendors() {
       {loading ? <Loading /> : (
         <Table rows={rows} onRow={setOpen} empty={tab === 'pending' ? 'No applications waiting' : 'No vendors here'} cols={[
           { key: 'business_name', label: 'Vendor', render: (v) => <div><div className="strong">{v.business_name}</div><div className="tiny muted">{v.category} · {v.location}</div></div> },
-          { key: 'trust_level', label: 'Checked', render: (v) => <TrustCell v={v} onDone={reload} /> },
+          // Verification is off until ZaMarket is registered, so the column is
+          // not shown at all rather than sitting there doing nothing.
+          ...(settings?.verification_on === 'on'
+            ? [{ key: 'trust_level', label: 'Checked', render: (v) => <TrustCell v={v} onDone={reload} verifying /> }]
+            : []),
           { key: 'status', label: 'Status', render: (v) => <span className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</span> },
           { key: 'live', label: 'Live products', num: true },
           { key: 'sales', label: 'Sales', num: true, render: (v) => money(v.sales) },

@@ -3,6 +3,7 @@ import { money } from '../lib/format'
 import { Stars } from './ui'
 import { useSaved } from '../lib/saved'
 import { useCart } from '../lib/cart'
+import { useAuth } from '../lib/auth'
 import Icon from '../lib/icons'
 
 // The price, written the way a shop writes it: big kwacha, small ngwee.
@@ -73,11 +74,14 @@ function Chip({ icon, children, tone }) {
   return <span className={`oc-chip ${tone || ''}`}>{icon}{children}</span>
 }
 
-function Seller({ p }) {
+// The verified tick only appears while seller verification is a real process
+// (verification_on in settings). Otherwise the card names the seller and makes
+// no claim about them.
+function Seller({ p, verifying }) {
   if (!p.vendor_name) return null
   return (
     <span className="oc-seller">
-      {p.vendor_trust === 'verified' && <span className="oc-verified"><Icon.shield /> Verified</span>}
+      {verifying && p.vendor_trust === 'verified' && <span className="oc-verified"><Icon.shield /> Verified</span>}
       <span>by {p.vendor_name}</span>
     </span>
   )
@@ -86,6 +90,7 @@ function Seller({ p }) {
 export default function OfferingCard({ p, deal, inStore }) {
   const nav = useNavigate()
   const { add } = useCart()
+  const { settings } = useAuth()
   const to = inStore && p.vendor_slug ? `/${p.vendor_slug}/${p.slug}` : `/p/${p.slug || p.id}`
   const save = p.normal_price && Number(p.normal_price) > Number(p.price) ? Number(p.normal_price) - Number(p.price) : 0
   const savePct = save > 0 ? Math.round((save / Number(p.normal_price)) * 100) : 0
@@ -142,7 +147,7 @@ export default function OfferingCard({ p, deal, inStore }) {
         {desc && <span className="oc-desc">{desc}</span>}
         {p.rating ? <span className="oc-rating"><Stars n={p.rating} /><em>{p.review_count}</em></span> : null}
         <span className="oc-row"><Price value={p.price} was={save > 0 ? p.normal_price : null} />{chip}</span>
-        <Seller p={p} />
+        <Seller p={p} verifying={settings?.verification_on === 'on'} />
         <button type="button" className="oc-action-btn"
           onClick={(e) => {
             e.preventDefault()
