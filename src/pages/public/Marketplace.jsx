@@ -14,6 +14,7 @@ import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
 import { themeOf, themeVars } from '../../lib/storeTheme'
 import { commissionLabel } from '../../lib/economics'
+import ErrorBoundary from '../../components/ErrorBoundary'
 import PromoKit from '../../components/PromoKit'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
@@ -493,7 +494,9 @@ export function PublicShell() {
       <CategoryRail />
       <main className="shop-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
-        <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+        <ErrorBoundary home="/">
+          <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+        </ErrorBoundary>
       </main>
       <BottomBar />
 
@@ -618,8 +621,13 @@ export function Storefront() {
 // thing to do — leave a number so we can tell them. The "sell with us" pitch is
 // in the footer, where it belongs.
 function OpeningSoon() {
-  const stocked = useStockedDepartments(useDepartments())
-  const coming = (stocked.length ? stocked : useDepartments()).slice(0, 6)
+  // Call the hook once and reuse it. Calling it again inside the fallback meant
+  // the hook only ran when nothing was stocked, so the hook count changed
+  // between renders and React blanked the page — on the empty state, which is
+  // exactly the state a brand-new marketplace is in.
+  const departments = useDepartments()
+  const stocked = useStockedDepartments(departments)
+  const coming = (stocked.length ? stocked : departments).slice(0, 6)
   return (
     <section className="opening">
       <div className="opening-head">
