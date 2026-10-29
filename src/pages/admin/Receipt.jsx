@@ -14,9 +14,19 @@ export default function Receipt() {
   const [size, setSize] = useState(() => localStorage.getItem('zm-receipt-size') || '80')
   const [printing, setPrinting] = useState(false)
   const toast = useToast()
-  const { data: o, loading } = useData(() => q(
+  const { data: o, loading, error } = useData(() => q(
     supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,choices,note,product:products(name,normal_price,price),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
   ), [id])
+  // Never spin forever: if the order cannot be loaded, say so and offer a way back.
+  if (!loading && (error || !o)) return (
+    <div className="boundary">
+      <div className="card stack-sm boundary-card">
+        <h2>This receipt could not be opened</h2>
+        <p className="small">{error || 'That order no longer exists, or it is not one you can see.'}</p>
+        <div className="btn-row"><Link className="btn primary" to="/admin/orders">Back to orders</Link></div>
+      </div>
+    </div>
+  )
   if (loading || !o) return <Loading />
 
   const paid = o.payments.reduce((t, p) => t + n(p.amount), 0)
