@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
@@ -79,6 +79,13 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   // When the marketplace prices from the vendor's take-home, the vendor types
   // what they want to earn rather than what the shopper pays.
   const takeHomePricing = useAuth().settings?.pricing_mode !== 'shelf'
+  // The seller's own shelf sections, so a product can be filed where it belongs.
+  const [sections, setSections] = useState([])
+  useEffect(() => {
+    if (!vendorMode) return
+    supabase.from('store_sections').select('id,name,sort').eq('vendor_id', vendorMode).order('sort')
+      .then(({ data }) => setSections(data || []))
+  }, [vendorMode])
   const { profile: me } = useAuth()
   const vendorProfile = me?.partner || null
   const DEPARTMENTS = useDepartments()
@@ -108,6 +115,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       faqs: p.faqs_text.split('\n').filter((l) => l.includes('|')).map((l) => { const [qq, a] = l.split('|'); return { q: qq.trim(), a: (a || '').trim() } }),
       price: n(p.price), normal_price: p.normal_price === '' || p.normal_price == null ? null : n(p.normal_price),
       vendor_price: p.vendor_price === '' || p.vendor_price == null ? null : n(p.vendor_price),
+      section_id: p.section_id || null,
       cost_override: p.cost_override === '' || p.cost_override == null ? null : n(p.cost_override),
       packaging_cost: p.packaging_cost === '' || p.packaging_cost == null ? null : n(p.packaging_cost),
       commission_type: p.commission_type || null, commission_value: p.commission_type ? n(p.commission_value) : null,
@@ -136,7 +144,15 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       <form onSubmit={(e) => { e.preventDefault(); save() }} className="stack">
         <div className="form-grid">
           <Field label="Name" span><Input value={p.name} onChange={set('name')} required /></Field>
-          <Field label="Category"><Select value={p.category} onChange={set('category')} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" /></Field>
+          <Field label="Department" hint="Where it appears when people browse ZaMarket">
+            <Select value={p.category} onChange={set('category')} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" />
+          </Field>
+          {vendorMode && (
+            <Field label="Section in your shop" hint={sections.length ? 'Your own grouping' : 'Add sections on your shopfront page first'}>
+              <Select value={p.section_id || ''} onChange={set('section_id')} placeholder="Not in a section"
+                options={sections.map((x) => [x.id, x.name])} />
+            </Field>
+          )}
           <Field label="Status">{vendorMode ? <Badge status={p.status} /> : <Select value={p.status} onChange={set('status')} options={['draft', 'submitted', 'approved', 'published', 'rejected', 'out_of_stock', 'suspended']} />}</Field>
           {vendorMode && takeHomePricing ? (
             <Field label="What you want to receive" span

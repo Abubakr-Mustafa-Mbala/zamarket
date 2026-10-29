@@ -118,7 +118,6 @@ export default function App() {
     )
   }
   return (
-    <Suspense fallback={<Loading />}>
     <Routes>
       <Route element={<PublicShell />}>
         <Route path="/" element={<Storefront />} />
@@ -212,6 +211,5 @@ export default function App() {
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </Suspense>
   )
 }

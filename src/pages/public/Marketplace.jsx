@@ -1,5 +1,5 @@
 import { OfferingPage } from './Offering'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
@@ -378,6 +378,7 @@ function ShopFooter({ user, home }) {
           <Link to="/search">All products</Link>
           <Link to="/search?deals=1">Today's deals</Link>
           <Link to="/sellers">Sellers</Link>
+          <Link to="/blog">Journal</Link>
           <Link to="/review">Rate an order</Link>
         </FooterGroup>
         <FooterGroup title="ZaMarket">
@@ -485,11 +486,15 @@ export function PublicShell() {
           <Link to="/search?deals=1">Today's deals</Link>
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Sellers</Link>
+          <Link to="/blog">Journal</Link>
         </nav>
       </header>
 
       <CategoryRail />
-      <main className="shop-main"><Outlet /></main>
+      <main className="shop-main">
+        {/* Only the page swaps; the header, search and nav stay put. */}
+        <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+      </main>
       <BottomBar />
 
       <ShopFooter user={user} home={home} />
@@ -574,21 +579,20 @@ export function Storefront() {
       {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
       <HelpStrip />
 
-      {/* Three things that are true whether or not we check sellers: the order
-          is ours, it is confirmed before money changes hands, and someone picks
-          up the phone. No verification claims. */}
-      <section className="trust-strip" aria-label="Buy with confidence">
-        <div className="between ts-head"><h2>Why buy through ZaMarket?</h2><Link to="/how-it-works" className="small">How it works →</Link></div>
-        <ul>
-          <li><span className="ts-icon"><Icon.phone /></span><span><strong>Confirmed before you pay</strong>We call you with the final price</span></li>
-          <li><span className="ts-icon"><Icon.truck /></span><span><strong>Delivered to you</strong>We arrange it, not a stranger</span></li>
-          <li><span className="ts-icon"><Icon.headphones /></span><span><strong>If it goes wrong, come to us</strong>Call us any working day</span></li>
-        </ul>
-      </section>
-
       {products.length === 0 ? <OpeningSoon /> : (
         <Merchandised products={products} vendors={vendors} offersBy={offersBy} />
       )}
+
+      {/* One quiet line rather than a block of reassurance above the shelves.
+          The full version lives on its own page for anyone who wants it. */}
+      <Link to="/how-it-works" className="trust-line">
+        <span className="tl-icon" aria-hidden><Icon.shield /></span>
+        <span>
+          <strong>Confirmed by phone before you pay, delivered by us</strong>
+          <em>If something goes wrong you come to ZaMarket, not to the seller — here's how that works</em>
+        </span>
+        <Icon.arrow />
+      </Link>
 
       {stocked.length > 1 && (
         <section className="depts" aria-label="Shop by department">
@@ -1133,6 +1137,8 @@ export function StorePage() {
   const [store, setStore] = useState(null)
   const [products, setProducts] = useState(null)
   const [offersBy, setOffersBy] = useState({})
+  // The seller's own sections, in the order they arranged them.
+  const [sections, setSections] = useState([])
   useEffect(() => {
     const q1 = supabase.from('public_vendors').select('*')
     ;(slug ? q1.eq('slug', slug) : q1.eq('id', legacyId)).maybeSingle().then(({ data }) => {
@@ -1141,6 +1147,8 @@ export function StorePage() {
       if (legacyId) return nav(`/${data.slug}`, { replace: true })
       if (isEntryPage()) setStoreRef(data.slug)
       supabase.from('public_products').select('*').eq('vendor_id', data.id).order('category').order('name').then(({ data: rows }) => setProducts(rows || []))
+      supabase.from('store_sections').select('id,name,sort').eq('vendor_id', data.id).order('sort')
+        .then(({ data: rows }) => setSections(rows || []))
     })
     supabase.from('public_offers').select('id,product_id,type,name').then(({ data }) => {
       const m = {}; for (const x of data || []) (m[x.product_id] = m[x.product_id] || []).push(x); setOffersBy(m)
@@ -1162,7 +1170,18 @@ export function StorePage() {
   const byKind = products.reduce((m, p) => { const k = p.offering_type || 'product'; (m[k] = m[k] || []).push(p); return m }, {})
   const special = SECTIONS.filter(([k]) => byKind[k]?.length)
   const plain = [...(byKind.product || []), ...(byKind.other || [])]
-  const groups = plain.reduce((m, p) => { const k = p.category || 'Products'; (m[k] = m[k] || []).push(p); return m }, {})
+  const sectionName = (p) => sections.find((x) => x.id === p.section_id)?.name
+  const groups = plain.reduce((m, p) => {
+    const k = sectionName(p) || (sections.length ? 'More from this shop' : (p.category || 'Products'))
+    ;(m[k] = m[k] || []).push(p)
+    return m
+  }, {})
+  // Keep the seller's chosen order, with anything unfiled last.
+  const groupOrder = Object.keys(groups).sort((a, b) => {
+    const ia = sections.findIndex((x) => x.name === a)
+    const ib = sections.findIndex((x) => x.name === b)
+    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
+  })
   const kinds = new Set(products.map((p) => p.fulfilment))
   // what the vendor chose to put first; if they chose none, the best reviewed
   const picked = products.filter((p) => p.featured_in_store)
@@ -1217,11 +1236,11 @@ export function StorePage() {
         </div>
       )}
 
-      {Object.keys(groups).length > 1 && (
-        <section className="store-cats" aria-label="Categories in this store">
-          <h2>Our categories</h2>
+      {groupOrder.length > 1 && (
+        <section className="store-cats" aria-label="Sections in this store">
+          <h2>Browse this shop</h2>
           <div className="store-cat-row">
-            {Object.entries(groups).map(([cat, list]) => (
+            {groupOrder.map((cat) => [cat, groups[cat]]).map(([cat, list]) => (
               <a key={cat} href={`#cat-${encodeURIComponent(cat)}`} className="store-cat">
                 <span className="store-cat-img">{list[0]?.images?.[0] ? <img src={list[0].images[0]} alt="" loading="lazy" /> : <Icon.box />}</span>
                 <span>{cat}</span>
@@ -1250,14 +1269,12 @@ export function StorePage() {
         </section>
       ))}
 
-      {products.length === 0 ? <div className="empty-shop"><h2>No products yet</h2><p>Check back soon.</p></div> : Object.entries(groups).map(([cat, list]) => (
+      {products.length === 0 ? <div className="empty-shop"><h2>No products yet</h2><p>Check back soon.</p></div> : groupOrder.map((cat) => [cat, groups[cat]]).map(([cat, list]) => (
         <section key={cat} className="stack-sm" id={`cat-${encodeURIComponent(cat)}`}>
           <h2>{cat}</h2>
           <div className="grid-products">{list.map((p) => <OfferingCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
         </section>
       ))}
-
-      <TrustPanel slug={store.slug} compact />
 
       <section className="store-back">
         <div>

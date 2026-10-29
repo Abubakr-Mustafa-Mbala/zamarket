@@ -907,6 +907,9 @@ create table if not exists featured_slots (
 
 -- A vendor chooses what shows first in their own store.
 alter table products add column if not exists featured_in_store boolean not null default false;
+-- Which of the SELLER'S OWN sections this sits in (Cakes, Shirts…). The
+-- marketplace department lives in `category` and is a different thing.
+alter table products add column if not exists section_id uuid;
 -- Some things should not be advertised by anyone, whatever the reason: a dispute,
 -- a claim we cannot stand behind, stock we cannot honour.
 alter table products add column if not exists promo_blocked boolean not null default false;
@@ -2223,6 +2226,7 @@ select p.id, p.boost_pct, p.boost_until, p.featured_in_store, p.promo_blocked, p
        p.vendor_id, p.fulfilment, p.lead_time_days, p.order_days, p.daily_limit, p.options, p.note_label, p.created_at,
        p.service_location, p.duration_text, p.time_slots, p.slot_capacity, v.slug as vendor_slug,
        p.offering_type, p.sales_model, p.page, p.commission_type, p.commission_value, p.featured_for_resellers,
+       p.section_id,
        (select count(*) from product_packages pk where pk.product_id = p.id and pk.active) as package_count
 from products p left join vendors v on v.id = p.vendor_id
 where p.status in ('published','out_of_stock') and (p.vendor_id is null or v.status = 'approved');
@@ -4389,7 +4393,7 @@ begin
                 daily_limit, description, duration_text, faqs, featured_for_resellers, featured_in_store,
                 fulfilment, id, images, lead_time_days, name, normal_price, note_label, offering_type, options,
                 order_days, owner_type, page, price, promo_blocked, sales_model, service_location, slot_capacity,
-                slug, status, stock_available, time_slots, vendor_id) on products to anon;
+                section_id, slug, status, stock_available, time_slots, vendor_id) on products to anon;
   grant select (about, business_name, category, cover_url, description, highlights, id, location, logo_url,
                 opening_hours, slug, status, tagline, theme, trust_level) on vendors to anon;
   grant select (category, config, end_at, id, inventory_limit, name, product_id, start_at, status, terms, type,
@@ -5342,3 +5346,98 @@ language sql stable security definer set search_path = public as $$
     where is_staff() or c.vendor_id = my_vendor_id()), '[]'::jsonb) end;
 $$;
 grant execute on function coupon_report() to authenticated;
+
+-- ============================================================================
+-- A SELLER'S OWN CATEGORIES
+-- ----------------------------------------------------------------------------
+-- Until now a shop's products were grouped by the MARKETPLACE's department —
+-- "Food & drink", "Fashion" — which is how a shopper browses ZaMarket but not
+-- how a baker thinks about their own shelf. They have Cakes, Samosas and
+-- Savouries; a clothes shop has Shirts, Shoes and Chitenge.
+--
+-- So a shop now has its own sections, named by the seller, independent of the
+-- department the marketplace files them under. A product keeps both: the
+-- department decides where it shows up in search, the shop section decides
+-- where it sits inside that seller's own page.
+--
+-- Shoppers still see everything in the shop by default and narrow down only if
+-- they want to, which is how a market stall works.
+-- ============================================================================
+
+create table if not exists store_sections (
+  id uuid primary key default gen_random_uuid(),
+  vendor_id uuid not null references vendors(id) on delete cascade,
+  name text not null,
+  sort int not null default 0,
+  created_at timestamptz not null default now(),
+  unique (vendor_id, name)
+);
+
+create index if not exists store_sections_vendor on store_sections (vendor_id, sort);
+
+do $$ begin
+  alter table products add constraint products_section_fk
+    foreign key (section_id) references store_sections(id) on delete set null;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
+do $$ begin alter table store_sections enable row level security; exception when others then null; end $$;
+
+select ensure_policy('anon_read_sections', 'store_sections', 'select',
+  $p$exists (select 1 from vendors v where v.id = vendor_id and v.status = 'approved')$p$);
+select ensure_policy('vendor_own_sections', 'store_sections', 'all',
+  $p$vendor_id = my_vendor_id()$p$);
+select ensure_policy('staff_sections', 'store_sections', 'all', 'is_staff()');
+
+grant select on store_sections to anon, authenticated;
+
+-- A seller manages their own shelf. Staff can do it for them while onboarding,
+-- which is when most of these get created.
+create or replace function save_sections(p_vendor uuid, p_names jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v uuid := coalesce(p_vendor, my_vendor_id()); nm text; i int := 0;
+begin
+  if v is null then raise exception 'Which shop?'; end if;
+  if not (is_staff() or v = my_vendor_id()) then raise exception 'Not allowed'; end if;
+
+  -- Anything the seller removed loses its products' section rather than the
+  -- products themselves: a tidy-up must never hide stock.
+  delete from store_sections s
+   where s.vendor_id = v
+     and not exists (select 1 from jsonb_array_elements_text(p_names) n where trim(n) = s.name);
+
+  for nm in select trim(n) from jsonb_array_elements_text(p_names) n loop
+    if nm <> '' then
+      insert into store_sections (vendor_id, name, sort) values (v, nm, i)
+      on conflict (vendor_id, name) do update set sort = excluded.sort;
+      i := i + 1;
+    end if;
+  end loop;
+
+  return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'name', name, 'sort', sort) order by sort)
+                     from store_sections where vendor_id = v), '[]'::jsonb);
+end $$;
+grant execute on function save_sections(uuid, jsonb) to authenticated;
+
+-- What a shop page needs: the seller's own sections, each with its products,
+-- plus anything they have not filed yet so nothing is ever hidden by accident.
+create or replace function store_shelf(p_slug text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with v as (select id, business_name from vendors where slug = p_slug and status = 'approved'),
+       items as (
+         select p.id, p.name, p.slug, p.price, p.normal_price, p.images, p.section_id,
+                p.offering_type, p.fulfilment, p.sales_model, p.category, p.created_at
+         from public_products p
+         join v on v.id = p.vendor_id)
+  select case when (select id from v) is null then jsonb_build_object('found', false) else jsonb_build_object(
+    'found', true,
+    'sections', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', s.id, 'name', s.name,
+        'count', (select count(*) from items i where i.section_id = s.id))
+        order by s.sort)
+      from store_sections s
+      where s.vendor_id = (select id from v)
+        and exists (select 1 from items i where i.section_id = s.id)), '[]'::jsonb),
+    'unfiled', (select count(*) from items where section_id is null)) end;
+$$;
+grant execute on function store_shelf(text) to anon, authenticated;

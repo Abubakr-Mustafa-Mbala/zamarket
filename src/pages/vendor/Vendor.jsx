@@ -9,6 +9,8 @@ import { niceDate } from '../../lib/madeToOrder'
 import { ProductEditor } from '../admin/Products'
 import { PHOTO_TIPS } from '../../lib/photos'
 import PhotoUpload from '../../components/PhotoUpload'
+import BigActions from '../../components/BigActions'
+import Icon from '../../lib/icons'
 import { THEMES, STYLES, themeVars, readableOn } from '../../lib/storeTheme'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
@@ -35,8 +37,30 @@ export function VendorHome() {
   const fees = data.setts.filter((s) => s.status !== 'cancelled').reduce((t, s) => t + n(s.marketplace_fee), 0)
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>{v.business_name}</h1><p>Marketplace fee: {v.fee_pct_override ?? settings.marketplace_fee_pct}% per sale</p></div></div>
-      {sum.to_make > 0 && <Link to="/vendor/orders" className="card between" style={{ color: 'inherit', borderColor: 'var(--copper)' }}><span><span className="strong">{sum.to_make} item{sum.to_make > 1 ? 's' : ''} to prepare</span><br /><span className="small muted">Open your order desk</span></span><span aria-hidden>›</span></Link>}
+      <div className="page-head"><div><h1>{v.business_name}</h1><p>You keep what you ask for on every sale. ZaMarket adds its share on top.</p></div></div>
+
+      <BigActions items={[
+        {
+          to: '/vendor/orders', icon: <Icon.box />, urgent: sum.to_make > 0,
+          label: sum.to_make > 0 ? 'Orders to prepare' : 'Orders',
+          note: sum.to_make > 0 ? 'Someone is waiting for these' : 'Nothing waiting right now',
+          value: sum.to_make > 0 ? sum.to_make : null,
+        },
+        {
+          to: '/vendor/payouts', icon: <Icon.tag />, tone: open > 0 ? 'money' : '',
+          label: 'Money coming to you', note: open > 0 ? 'Waiting to be paid out' : 'Nothing owed at the moment',
+          value: open > 0 ? money(open) : null,
+        },
+        {
+          to: '/vendor/products', icon: <Icon.sparkles />,
+          label: 'Add something to sell', note: 'More on your shelf means more chances to sell',
+        },
+        {
+          to: '/vendor/marketing', icon: <Icon.message />,
+          label: 'Share your shop', note: 'Make a picture or a price list for WhatsApp',
+        },
+      ]} />
+
       <div className="grid-4">
         <Stat hero label="Sales" value={money(sum.sales)} sub={`${sum.units} units`} />
         <Stat label="Payouts coming" value={money(open)} tone="copper" />
@@ -259,6 +283,83 @@ export function VendorPayouts() {
 
 // The real colours, applied to a miniature of the shop, so a vendor can see
 // what they are choosing instead of guessing from a square of colour.
+
+// A seller names their own shelf: Cakes, Samosas, Savouries. These are theirs
+// alone — the marketplace department a product is filed under for search is a
+// separate thing and is set per product.
+function Sections({ vendorId }) {
+  const toast = useToast()
+  const [list, setList] = useState([])
+  const [adding, setAdding] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const load = () => {
+    if (!vendorId) return
+    supabase.from('store_sections').select('id,name,sort').eq('vendor_id', vendorId).order('sort')
+      .then(({ data }) => setList(data || []))
+  }
+  useEffect(load, [vendorId])
+
+  const commit = async (names) => {
+    setBusy(true)
+    const { error } = await supabase.rpc('save_sections', { p_vendor: vendorId, p_names: names })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    load()
+  }
+
+  const add = () => {
+    const nm = adding.trim()
+    if (!nm) return
+    if (list.some((x) => x.name.toLowerCase() === nm.toLowerCase())) return toast('You already have that one', true)
+    setAdding('')
+    commit([...list.map((x) => x.name), nm])
+  }
+
+  const remove = (name) => commit(list.filter((x) => x.name !== name).map((x) => x.name))
+
+  const move = (i, dir) => {
+    const next = [...list]
+    const j = i + dir
+    if (j < 0 || j >= next.length) return
+    ;[next[i], next[j]] = [next[j], next[i]]
+    commit(next.map((x) => x.name))
+  }
+
+  return (
+    <section className="card stack-sm">
+      <h3>Sections in your shop</h3>
+      <p className="small muted">
+        How you group your own things — Cakes, Samosas, Shirts, Shoes. Customers see everything at
+        once and use these to narrow down. Each product is put in a section when you edit it.
+      </p>
+
+      {list.length > 0 && (
+        <ul className="section-list">
+          {list.map((x, i) => (
+            <li key={x.id}>
+              <span className="sec-name">{x.name}</span>
+              <span className="sec-actions">
+                <button className="btn sm ghost" disabled={busy || i === 0} onClick={() => move(i, -1)} aria-label={`Move ${x.name} up`}>↑</button>
+                <button className="btn sm ghost" disabled={busy || i === list.length - 1} onClick={() => move(i, 1)} aria-label={`Move ${x.name} down`}>↓</button>
+                <button className="btn sm ghost" disabled={busy} onClick={() => remove(x.name)} aria-label={`Remove ${x.name}`}>Remove</button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <div className="ob-row">
+        <Input value={adding} onChange={setAdding} placeholder="Cakes" />
+        <button type="button" className="btn" disabled={busy || !adding.trim()} onClick={add}>Add section</button>
+      </div>
+      <p className="tiny muted">
+        Removing a section never removes products. Anything in it simply moves back to the main shelf.
+      </p>
+    </section>
+  )
+}
+
 function ShopPreview({ colour, style, name }) {
   const vars = themeVars({ theme: { colour, style } })
   return (
@@ -433,6 +534,8 @@ export function VendorStore() {
         <Field label="When you work" hint="One per line, e.g. Mon–Fri: 08:00 – 17:00" span>
           <Textarea value={f.hours_text} onChange={set('hours_text')} rows={3} placeholder={'Mon–Fri: 08:00 – 17:00\nSaturday: 09:00 – 13:00'} />
         </Field>
+
+        <div className="span"><Sections vendorId={v.id} /></div>
 
         <Field label="Your colour" hint="This is the background of your whole shop page. The writing and prices are adjusted automatically so they stay easy to read on whichever you pick." span>
           {['Dark', 'Light'].map((group) => (

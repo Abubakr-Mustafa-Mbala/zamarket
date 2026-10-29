@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
+import BigActions from '../../components/BigActions'
+import Icon from '../../lib/icons'
 import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
@@ -34,6 +36,28 @@ export function ResellerHome() {
   return (
     <div className="stack">
       <div className="page-head"><div><h1>Hi {r.full_name.split(' ')[0]}</h1><p>Your code is <span className="strong">{r.code}</span></p></div></div>
+
+      <BigActions items={[
+        {
+          to: '/sell/earnings', icon: <Icon.tag />, tone: n(s.approved) + n(s.pending) > 0 ? 'money' : '',
+          label: 'Money coming to you',
+          note: n(s.approved) > 0 ? 'Approved and on its way' : 'Earned once an order is delivered',
+          value: n(s.approved) + n(s.pending) > 0 ? money(n(s.approved) + n(s.pending)) : null,
+        },
+        {
+          to: '/sell/products', icon: <Icon.search />,
+          label: 'Find something to sell', note: 'See what pays most right now',
+        },
+        {
+          to: '/sell/products', icon: <Icon.camera />,
+          label: 'Make a promotion', note: 'A ready picture for WhatsApp or Instagram',
+        },
+        {
+          to: '/sell/find-customers', icon: <Icon.user />,
+          label: 'Find customers', note: 'Where to look, and what to say',
+        },
+      ]} />
+
       <div className="grid-4">
         <Stat hero label="Paid to you" value={money(s.paid)} />
         <Stat label="Approved, being paid" value={money(s.approved)} tone="copper" />

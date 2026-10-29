@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import ActionBell from './ActionBell'
@@ -149,7 +149,7 @@ export default function Shell({ kind }) {
           )}
         </header>
         <main className="content">
-          <Outlet />
+          <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
         </main>
       </div>
 
