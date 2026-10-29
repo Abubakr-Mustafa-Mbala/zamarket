@@ -2338,3 +2338,18 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .ba-tile { padding: 14px; min-height: 72px; }
   .ba-icon { flex-basis: 42px; width: 42px; height: 42px; }
 }
+
+/* ---------------------------------------------------------------
+   Error boundary: what a person sees instead of a black page when
+   a screen fails to render.
+   --------------------------------------------------------------- */
+.boundary { display: flex; align-items: flex-start; justify-content: center; padding: 28px 16px; }
+.boundary-card { max-width: 560px; width: 100%; border: 1px solid var(--line-strong); }
+.boundary-card h2 { font-size: var(--step-2); }
+.boundary-detail {
+  margin: 4px 0 2px; padding: 11px 13px; border-radius: var(--radius-sm);
+  background: var(--coal-2); border: 1px solid var(--line);
+  color: var(--ink-2); font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
+  max-height: 180px; overflow: auto;
+}

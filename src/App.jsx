@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { configured } from './lib/supabase'
 import Shell from './components/Shell'
+import ErrorBoundary from './components/ErrorBoundary'
 import { Loading } from './components/ui'
 import { PublicShell, Storefront, ProductPage, ReferralCapture, StorePage, SearchPage, SellersPage, GoLink } from './pages/public/Marketplace'
 import { Cart, Checkout, OrderConfirmed, ReviewPage } from './pages/public/Checkout'
@@ -150,7 +151,7 @@ export default function App() {
       <Route path="/go/:code" element={<GoLink />} />
       <Route path="/login" element={<Login />} />
 
-      <Route path="/admin/orders/:id/receipt" element={<Guard roles={STAFF}><Receipt /></Guard>} />
+      <Route path="/admin/orders/:id/receipt" element={<Guard roles={STAFF}><ErrorBoundary home="/admin/orders"><Receipt /></ErrorBoundary></Guard>} />
       <Route path="/admin" element={<Guard roles={STAFF}><Shell kind="staff" /></Guard>}>
         <Route index element={<StaffHome />} />
         <Route path="add-stock" element={<AddStock />} />
