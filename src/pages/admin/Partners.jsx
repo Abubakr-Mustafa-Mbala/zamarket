@@ -1,10 +1,107 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, useToast, Tabs, Stat, CopyLine } from '../../components/ui'
+
+
+// The deal struck with one seller: our cut, the room left for an affiliate,
+// and what it costs to deliver from where they are. Agreed at onboarding, and
+// every change is recorded because these decide what everyone earns.
+function TermsCell({ v, onDone }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [t, setT] = useState(null)
+  const [f, setF] = useState({ fee: '', allowance: '', delivery: '', note: '' })
+  const [busy, setBusy] = useState(false)
+
+  const load = async () => {
+    const { data } = await supabase.rpc('vendor_terms', { p_vendor: v.id })
+    setT(data)
+    setF({
+      fee: data?.fee_is_custom ? data.fee_pct : '',
+      allowance: data?.allowance_is_custom ? data.allowance_pct : '',
+      delivery: data?.delivery_is_custom ? data.delivery_fee : '',
+      note: v.terms_note || '',
+    })
+  }
+
+  const save = async () => {
+    setBusy(true)
+    const num = (x) => (x === '' || x == null ? null : Number(x))
+    const { error } = await supabase.rpc('set_vendor_terms', {
+      p_vendor: v.id, p_fee_pct: num(f.fee), p_allowance_pct: num(f.allowance),
+      p_delivery: num(f.delivery), p_note: f.note || null,
+    })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast('Terms saved. Their prices have been brought in line.')
+    setOpen(false); onDone()
+  }
+
+  const custom = v.fee_pct_override != null || v.commission_allowance_override != null || v.delivery_fee_override != null
+
+  return (
+    <>
+      <button className="btn sm" onClick={(e) => { e.stopPropagation(); setOpen(true); load() }}>
+        {custom ? 'Own terms' : 'Standard'}
+      </button>
+      {open && (
+        <Modal title={`Terms for ${v.business_name}`} onClose={() => setOpen(false)}>
+          <div className="stack">
+            <p className="small muted">
+              Leave a box empty to use the marketplace default. Changing these re-prices everything
+              this seller has listed, so what the shopper pays moves — what the seller receives does not.
+            </p>
+            <div className="form-grid">
+              <Field label="Our fee (%)" hint={t ? `Default is ${t.fee_pct}%` : ''}>
+                <Input type="number" value={f.fee} onChange={(val) => setF({ ...f, fee: val })} placeholder="default" />
+              </Field>
+              <Field label="Room for affiliate commission (%)" hint={t ? `Default is ${t.allowance_pct}%` : ''}>
+                <Input type="number" value={f.allowance} onChange={(val) => setF({ ...f, allowance: val })} placeholder="default" />
+              </Field>
+              <Field label="Delivery from their place (K)" hint={t ? `Default is K${t.delivery_fee}` : 'What one trip costs you'} span>
+                <Input type="number" value={f.delivery} onChange={(val) => setF({ ...f, delivery: val })} placeholder="default" />
+              </Field>
+              <Field label="Why these terms" hint="For your own record" span>
+                <Textarea value={f.note} onChange={(val) => setF({ ...f, note: val })} rows={2}
+                  placeholder="An hour out of town, so delivery costs more" />
+              </Field>
+            </div>
+            <TermsMaths fee={f.fee || t?.fee_pct} allowance={f.allowance || t?.allowance_pct} />
+            <button className="btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save terms'}</button>
+          </div>
+        </Modal>
+      )}
+    </>
+  )
+}
+
+// A worked example, because percentages on their own do not show the shape of
+// the deal. Uses a round K100 so the numbers are easy to read off.
+function TermsMaths({ fee, allowance }) {
+  const [p, setP] = useState(null)
+  useEffect(() => {
+    supabase.rpc('shelf_price', { p_take: 100, p_fee_pct: Number(fee || 0), p_allowance_pct: Number(allowance || 0) })
+      .then(({ data, error }) => { if (!error) setP(Number(data)) })
+      .catch(() => {})
+  }, [fee, allowance])
+  if (!p) return null
+  const aff = Math.round(p * Number(allowance || 0)) / 100
+  return (
+    <div className="price-maths">
+      <div className="pm-row"><span>If they ask for</span><strong>K100.00</strong></div>
+      <div className="pm-row lead"><span>The shopper pays</span><strong>K{p.toFixed(2)}</strong></div>
+      <div className="pm-row"><span>They always receive</span><span>K100.00</span></div>
+      <div className="pm-row"><span>An affiliate would earn up to</span><span>K{aff.toFixed(2)}</span></div>
+      <div className="pm-row total"><span>You keep</span>
+        <strong>K{(p - 100 - aff).toFixed(2)} — or K{(p - 100).toFixed(2)} if nobody referred it</strong>
+      </div>
+    </div>
+  )
+}
 
 function TrustCell({ v, onDone, verifying }) {
   const toast = useToast()
@@ -89,6 +186,7 @@ export function Vendors() {
           ...(settings?.verification_on === 'on'
             ? [{ key: 'trust_level', label: 'Checked', render: (v) => <TrustCell v={v} onDone={reload} verifying /> }]
             : []),
+          { key: 'terms', label: 'Terms', render: (v) => <TermsCell v={v} onDone={reload} /> },
           { key: 'status', label: 'Status', render: (v) => <span className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</span> },
           { key: 'live', label: 'Live products', num: true },
           { key: 'sales', label: 'Sales', num: true, render: (v) => money(v.sales) },

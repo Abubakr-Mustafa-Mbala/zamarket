@@ -1203,8 +1203,6 @@ export function StorePage() {
         </div>
       </header>
 
-      <TrustPanel slug={store.slug} />
-
       <nav className="store-tabs" aria-label="This store">
         <a href="#shop" className="on">Products</a>
         {store.about && <a href="#about">About</a>}
@@ -1258,6 +1256,8 @@ export function StorePage() {
           <div className="grid-products">{list.map((p) => <OfferingCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
         </section>
       ))}
+
+      <TrustPanel slug={store.slug} compact />
 
       <section className="store-back">
         <div>

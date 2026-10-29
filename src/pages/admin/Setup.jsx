@@ -80,11 +80,27 @@ export function Team() {
   const rows = (data?.people || []).filter((p) => !search || (p.full_name || '').toLowerCase().includes(search.toLowerCase()) || (p.email || '').includes(search))
   const staff = rows.filter((p) => p.role !== 'customer')
 
+  // Changing someone's role is one tap on a dropdown, and dropping a colleague
+  // to "customer" locks them out of everything. It is easy to do by accident
+  // while looking around, so taking access away now asks first; granting it
+  // does not, because a wrong grant is noticed and undone, while a wrong
+  // removal is usually noticed by the person who can no longer work.
+  const RANK = { customer: 0, reseller: 1, vendor: 1, staff: 2, marketing: 2, admin: 3, founder: 4 }
   const setRole = async (p, role) => {
-    if (p.id === user.id && role !== 'founder' && !window.confirm('Remove your own founder role? You will lose access to founder-only pages.')) return
+    const losing = (RANK[role] ?? 0) < (RANK[p.role] ?? 0)
+    const who = p.full_name || p.email
+    if (p.id === user.id && role !== 'founder'
+      && !window.confirm('Remove your own founder role? You will lose access to founder-only pages.')) return
+    if (p.id !== user.id && losing && !window.confirm(
+      `Move ${who} from ${title(p.role)} to ${title(role)}?\n\n`
+      + `They will lose access to everything a ${title(p.role).toLowerCase()} can see and do. `
+      + 'You can set it back afterwards, but they will be locked out until you do.')) {
+      reload()
+      return
+    }
     const { error } = await supabase.from('profiles').update({ role }).eq('id', p.id)
     if (error) return toast(error.message, true)
-    toast(`${p.full_name || p.email} is now ${title(role)}`); reload()
+    toast(`${who} is now ${title(role)}`); reload()
   }
   const sendInvite = async (e) => {
     e.preventDefault()
@@ -222,14 +238,19 @@ const GROUPS = [
       { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', words: [['no', 'No, charge delivery'], ['yes', 'Yes, it is included']], help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
       { key: 'assumed_delivery_cost', label: 'What a delivery really costs you (K)', type: 'number', help: 'Used for profit when nobody records the actual cost. Free delivery for the customer is never free for you — this keeps profit honest.' },
       { key: 'monthly_fixed_costs', label: 'What the month must cover (K)', type: 'number', help: 'Rent, airtime, transport, data, subscriptions. Finance → Profit guard shows whether you have covered it.' },
-      { key: 'local_delivery_fee', label: 'Delivery fee inside Lusaka District (K)', type: 'number', help: 'Added automatically. Anywhere else, you set the fee after calling the customer.' },
+      { key: 'local_delivery_fee', label: 'What a delivery actually costs you (K)', type: 'number', help: 'Your real cost for one trip inside Lusaka District. The customer is charged this plus the margin below.' },
+      { key: 'delivery_margin_pct', label: 'Margin on delivery (%)', type: 'number', help: 'Added on top of the cost above, so delivery is not run at a loss. One fee per order however many items are in it; a customer who collects pays nothing.' },
     ],
   },
   {
     title: 'Vendors and affiliates',
     note: 'The vendor pays the marketplace fee, and the affiliate\'s commission comes out of that fee.',
     fields: [
-      { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale.' },
+      { key: 'pricing_mode', label: 'How vendors set prices', type: 'choice', options: [['vendor_take_home', 'They say what they want to receive'], ['shelf', 'They set the shopper\'s price']], help: 'Leave this on the first option. The vendor types what they want in their pocket and ZaMarket adds its share on top, so no vendor can price you into a loss. The second option is the old way, where your fee comes out of whatever they chose.' },
+      { key: 'marketplace_fee_pct', label: 'Marketplace fee on a vendor sale (%)', type: 'number', help: 'Your share of every vendor sale. With the setting above, this is added on top of what the vendor asked for.' },
+      { key: 'commission_allowance_pct', label: 'Room for affiliate commission in every price (%)', type: 'number', help: 'Built into every vendor price whether or not an affiliate is involved. If one referred the sale they are paid from this; if your own marketing brought the customer, you keep it. Set it to the highest commission you would ever pay, because it is also the cap.' },
+      { key: 'price_rounding', label: 'Round shelf prices up to the nearest (K)', type: 'number', help: '1 gives whole kwacha. 5 gives prices like K115 and K120. Always rounded up, never down.' },
+      { key: 'min_margin_kwacha', label: 'Warn if you would earn less than (K)', type: 'number', help: 'A vendor pricing something very cheap still costs you a phone call and a delivery. This warns them.' },
       { key: 'show_vendor_views', label: 'Let vendors see visitor numbers', type: 'switch', words: [['no', 'Keep them hidden'], ['yes', 'Show vendors the numbers']], help: 'Off while traffic is still small — a low number is discouraging. Turn it on once the shop is busy.' },
       { key: 'verification_on', label: 'Seller verification', type: 'choice', options: [['off', 'Off'], ['on', 'On']], help: 'Keep this off until ZaMarket is registered and you are really checking sellers. While it is off, the site makes no claim about who a seller is, the price limit below does not apply, and nobody can be marked verified. Turning it on brings all of it back.' },
       { key: 'high_value_threshold', label: 'Verification needed above (K)', type: 'number', help: 'Only applies while seller verification is on. A brand-new vendor cannot publish an item above this price until someone from your team has met them and seen an ID or PACRA paper.' },

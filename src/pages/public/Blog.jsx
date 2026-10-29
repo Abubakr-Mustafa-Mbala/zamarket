@@ -190,7 +190,9 @@ export function BlogPost() {
     title: post.meta_title || `${post.title} | ZaMarket`,
     description: post.meta_description || post.excerpt || '',
     image: post.cover_url || undefined,
-    canonical: `/blog/${post.slug}`,
+    // Absolute, because og:url is built from this too and WhatsApp will not
+    // resolve a relative path when it builds the link preview.
+    canonical: `${window.location.origin}/blog/${post.slug}`,
   } : {})
 
   // Article structured data, so Google can show this as a proper article

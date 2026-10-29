@@ -36,8 +36,8 @@
   /* Type: Fraunces for headlines, Plus Jakarta Sans for everything else */
   --font: 'Plus Jakarta Sans', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-display: 'Fraunces', 'Plus Jakarta Sans', Georgia, serif;
-  --step--1: 0.82rem;
-  --step-0: 0.95rem;
+  --step--1: 0.86rem;
+  --step-0: 0.98rem;
   --step-1: 1.08rem;
   --step-2: 1.32rem;
   --step-3: clamp(1.45rem, 2.4vw, 1.9rem);
@@ -88,8 +88,8 @@ input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
 body {
   margin: 0;
   font-family: var(--font);
-  font-size: 15px;
-  line-height: 1.5;
+  font-size: 16px;
+  line-height: 1.55;
   color: var(--ink);
   /* Not flat black: two very soft pools of light, one warm one cool, over the
      near-black. It reads as depth rather than as a colour, and it stops the
@@ -119,7 +119,7 @@ img { max-width: 100%; display: block; }
 /* ---------- Text utilities ---------- */
 .muted { color: var(--muted); }
 .small { font-size: 0.85rem; }
-.tiny { font-size: 0.78rem; }
+.tiny { font-size: 0.82rem; }
 .strong { font-weight: 600; }
 .money { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .right { text-align: right; }
@@ -1327,7 +1327,7 @@ details summary { cursor: pointer; color: var(--green); font-weight: 600; }
 .bell { position: relative; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 7px 9px; cursor: pointer; color: var(--ink); display: grid; place-items: center; }
 .bell:hover { border-color: var(--ink); }
 .bell.urgent { border-color: var(--marigold); background: #FFF6E4; }
-.bell-count { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 0.7rem; font-weight: 700; display: grid; place-items: center; }
+.bell-count { position: absolute; top: -7px; right: -7px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 0.78rem; font-weight: 700; display: grid; place-items: center; }
 .bell.urgent .bell-count { background: var(--marigold); color: var(--black); }
 .bell-panel { position: absolute; right: 0; top: calc(100% + 8px); width: min(380px, 92vw); background: var(--paper); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 18px 44px rgba(20,30,40,0.18); z-index: 60; overflow: hidden; }
 .bell-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--line); }
@@ -1550,7 +1550,7 @@ details summary { cursor: pointer; color: var(--green); font-weight: 600; }
 @media (max-width: 860px) {
   .bottom-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr);
     background: var(--paper); border-top: 1px solid var(--line); padding: 8px 0 calc(8px + env(safe-area-inset-bottom, 0px)); }
-  .bottom-bar a { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 0.72rem; color: var(--muted); }
+  .bottom-bar a { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 0.78rem; color: var(--muted); }
   .bottom-bar a.on { color: var(--pine); font-weight: 700; }
   .bb-icon { position: relative; font-size: 1.32rem; }
   .bb-icon em { position: absolute; top: -6px; right: -10px; background: var(--marigold); color: var(--black); font-style: normal; font-size: 0.64rem; font-weight: 800; border-radius: 999px; padding: 1px 5px; }
@@ -1607,7 +1607,7 @@ h3 { font-size: var(--step-1); font-weight: 700; letter-spacing: -0.01em; }
 .brand, .foot-brand { font-family: var(--font-display); font-weight: 700; letter-spacing: -0.02em; }
 .lead { font-size: var(--step-1); color: var(--ink-2); }
 .small { font-size: var(--step--1); }
-.tiny { font-size: 0.75rem; }
+.tiny { font-size: 0.82rem; }
 
 /* section headings get a quiet subtitle, like a real shop */
 .shelf-head { align-items: baseline; }
@@ -1652,7 +1652,7 @@ h3 { font-size: var(--step-1); font-weight: 700; letter-spacing: -0.01em; }
 .vhero-save { position: absolute; top: 16px; left: 16px; background: var(--marigold); color: var(--black);
   font-size: 0.76rem; font-weight: 800; letter-spacing: 0.02em; border-radius: 999px; padding: 6px 13px; }
 .vhero-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; padding: 34px; justify-content: center; }
-.vhero-eyebrow { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--marigold); }
+.vhero-eyebrow { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--marigold); }
 .vhero-eyebrow em { font-style: normal; color: #9FD9C0; }
 .vhero-name { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.5rem, 3.2vw, 2.3rem);
   line-height: 1.08; letter-spacing: -0.02em; }
@@ -1701,7 +1701,7 @@ h3 { font-size: var(--step-1); font-weight: 700; letter-spacing: -0.01em; }
    A shop that hasn't opened, not a recruitment page. */
 .opening { border: 1px solid var(--line); border-radius: 20px; padding: 36px 32px;
   background: linear-gradient(180deg, var(--coal-2) 0%, var(--paper) 100%); }
-.opening-eyebrow { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--pine); }
+.opening-eyebrow { font-size: 0.76rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--pine); }
 .opening-head h2 { font-family: var(--font-display); font-weight: 700; font-size: clamp(1.4rem, 3vw, 2rem);
   line-height: 1.12; letter-spacing: -0.02em; margin-top: 8px; max-width: 26ch; }
 .opening-head p { color: var(--ink-2); margin-top: 10px; max-width: 54ch; }
@@ -1916,7 +1916,7 @@ h3 { font-size: var(--step-1); font-weight: 700; letter-spacing: -0.01em; }
 .grid-listings { grid-template-columns: repeat(auto-fill, minmax(280px, 340px)); }
 
 /* ---------- Card and shelf polish ---------- */
-.oc-badge { max-width: calc(100% - 64px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.68rem; padding: 4px 9px; }
+.oc-badge { max-width: calc(100% - 64px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.76rem; padding: 4px 9px; }
 .oc-action-btn { white-space: nowrap; font-size: 0.88rem; padding: 10px 12px; }
 .oc-row { flex-wrap: wrap; row-gap: 6px; }
 .oc-price s { white-space: nowrap; }
@@ -2133,7 +2133,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .bc-pic .ph { display: block; width: 100%; height: 100%;
   background: linear-gradient(120deg, var(--coal-2), var(--coal-3)); }
 .bc-body { display: flex; flex-direction: column; gap: 6px; padding: 14px; }
-.bc-cat { font-style: normal; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.1em;
+.bc-cat { font-style: normal; font-size: 0.76rem; font-weight: 800; letter-spacing: 0.1em;
   text-transform: uppercase; color: var(--brass-text); }
 .bc-body strong { font-size: 1.02rem; line-height: 1.3; }
 .bc-ex { font-size: var(--step--1); color: var(--muted); }
@@ -2256,3 +2256,38 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .serp-url { font-size: 0.78rem; color: var(--muted); }
 .serp-title { color: var(--brass-text); font-size: 1.05rem; margin: 2px 0 3px; }
 .serp-desc { font-size: 0.85rem; color: var(--ink-2); line-height: 1.45; }
+
+/* ---------- What happens to a vendor's price ---------- */
+.price-maths { margin-top: 10px; background: var(--coal-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 11px 13px; display: flex; flex-direction: column; gap: 5px; }
+.pm-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.pm-row span:first-child { color: var(--muted); }
+.pm-row.lead strong { font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
+.pm-row.total { border-top: 1px solid var(--line); padding-top: 7px; margin-top: 2px; }
+.pm-row.total strong { color: var(--brass-text); font-size: 1.1rem; font-weight: 800; }
+.price-maths .tiny { line-height: 1.45; margin-top: 2px; }
+.pm-hint { margin-top: 8px; }
+.bell-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bell-title em { font-style: normal; font-size: 0.7rem; color: var(--muted); line-height: 1.3; }
+
+/* ---------- Mini rows (product coverage, and anywhere else they are used) ----------
+   These had no layout at all, so the name, the commission and the button were
+   all laid on top of one another. A row is: a name that takes the slack and
+   truncates, a figure that keeps its width, then the action. On a phone the
+   action drops to its own line rather than squeezing the text to nothing. */
+.mini-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--coal-2); border: 1px solid var(--line); border-radius: 12px;
+  padding: 11px 13px; }
+.mini-row > .grow { flex: 1 1 220px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.mini-row > .grow > strong { font-size: 0.95rem; line-height: 1.3; }
+.mini-row > .grow > .tiny { line-height: 1.4; }
+.mini-row > .right { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end;
+  text-align: right; gap: 1px; white-space: nowrap; }
+.mini-row > .right > b { font-size: 1rem; }
+.mini-row > .btn { flex: 0 0 auto; }
+@media (max-width: 560px) {
+  .mini-row { gap: 8px 10px; }
+  .mini-row > .right { flex: 1 1 auto; align-items: flex-start; text-align: left; }
+  .mini-row > .right > .tiny { white-space: normal; }
+  .mini-row > .btn { width: 100%; }
+}

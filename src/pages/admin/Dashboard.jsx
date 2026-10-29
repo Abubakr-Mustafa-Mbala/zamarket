@@ -59,13 +59,29 @@ export default function Dashboard() {
           <div className="card-title"><h3>Needs attention</h3></div>
           <div className="stack-sm">
             <Row to="/admin/orders?status=pending" label="New orders to confirm" value={num(s.pending_orders)} tone={s.pending_orders ? 'warn' : ''} />
+            <Row to="/admin/deliveries" label="Deliveries to make" value={num(s.pending_deliveries)} tone={s.pending_deliveries ? 'warn' : ''} />
+            <Row to="/admin/finance?tab=settlements" label="Money owed to sellers" value={money(s.vendor_payables)} tone={s.vendor_payables ? 'copper' : ''} />
+            <Row to="/admin/finance?tab=commissions" label="Money owed to affiliates" value={money(s.commissions_owed)} tone={s.commissions_owed ? 'copper' : ''} />
             <Row to="/admin/orders" label="Awaiting payment" value={money(s.pending_payments)} />
-            <Row to="/admin/deliveries" label="Deliveries in progress" value={num(s.pending_deliveries)} />
-            <Row to="/admin/finance?tab=commissions" label="Commissions owed to resellers" value={money(s.commissions_owed)} tone={s.commissions_owed ? 'copper' : ''} />
-            <Row to="/admin/finance?tab=settlements" label="Payouts owed to vendors" value={money(s.vendor_payables)} tone={s.vendor_payables ? 'copper' : ''} />
             <Row to="/admin/inventory" label="Products low on stock" value={num(s.low_stock)} tone={s.low_stock ? 'warn' : ''} />
           </div>
         </div>
+        <div className="card">
+          <div className="card-title"><h3>New orders</h3><Link to="/admin/orders" className="small">All orders</Link></div>
+          {data.pending.length === 0 ? <p className="muted small">Nothing waiting. Nice.</p> : (
+            <div className="stack-sm">
+              {data.pending.map((o) => (
+                <Link key={o.id} to={`/admin/orders/${o.id}`} className="between" style={{ color: 'inherit' }}>
+                  <div><span className="strong">#{o.order_number}</span> <span className="muted small">{o.customer?.full_name} · {o.district?.name || 'No district'}</span></div>
+                  <span className="money strong">{money(o.total)}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid-2 tight">
         <div className="card">
           <div className="card-title"><h3>Where the money went</h3><span className="small muted">{RANGES[days]}</span></div>
           <Breakdown
@@ -81,22 +97,6 @@ export default function Dashboard() {
             ]}
             total={['Net profit', netProfit, netProfit >= 0 ? 'ok' : 'bad']}
           />
-        </div>
-      </div>
-
-      <div className="grid-2 tight">
-        <div className="card">
-          <div className="card-title"><h3>New orders</h3><Link to="/admin/orders" className="small">All orders</Link></div>
-          {data.pending.length === 0 ? <p className="muted small">Nothing waiting. Nice.</p> : (
-            <div className="stack-sm">
-              {data.pending.map((o) => (
-                <Link key={o.id} to={`/admin/orders/${o.id}`} className="between" style={{ color: 'inherit' }}>
-                  <div><span className="strong">#{o.order_number}</span> <span className="muted small">{o.customer?.full_name} · {o.district?.name || 'No district'}</span></div>
-                  <span className="money strong">{money(o.total)}</span>
-                </Link>
-              ))}
-            </div>
-          )}
         </div>
         <div className="card">
           <div className="card-title"><h3>Top products</h3></div>

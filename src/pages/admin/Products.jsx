@@ -6,6 +6,7 @@ import { money, pct, slugify, n, title } from '../../lib/format'
 import { margin, markup, priceFromMargin, priceFromMarkup, unitEconomics, light } from '../../lib/economics'
 import { useDepartments } from '../../lib/departments'
 import VendorMath from '../../components/VendorMath'
+import PriceMaths from '../../components/PriceMaths'
 import PhotoUpload from '../../components/PhotoUpload'
 import CreativeStudio from '../shared/CreativeStudio'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
@@ -75,6 +76,9 @@ function SampleButton({ onDone }) {
 }
 
 export function ProductEditor({ product, onClose, onDone, vendorMode }) {
+  // When the marketplace prices from the vendor's take-home, the vendor types
+  // what they want to earn rather than what the shopper pays.
+  const takeHomePricing = useAuth().settings?.pricing_mode !== 'shelf'
   const { profile: me } = useAuth()
   const vendorProfile = me?.partner || null
   const DEPARTMENTS = useDepartments()
@@ -103,6 +107,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       images: p.images_text.split('\n').map((s) => s.trim()).filter(Boolean),
       faqs: p.faqs_text.split('\n').filter((l) => l.includes('|')).map((l) => { const [qq, a] = l.split('|'); return { q: qq.trim(), a: (a || '').trim() } }),
       price: n(p.price), normal_price: p.normal_price === '' || p.normal_price == null ? null : n(p.normal_price),
+      vendor_price: p.vendor_price === '' || p.vendor_price == null ? null : n(p.vendor_price),
       cost_override: p.cost_override === '' || p.cost_override == null ? null : n(p.cost_override),
       packaging_cost: p.packaging_cost === '' || p.packaging_cost == null ? null : n(p.packaging_cost),
       commission_type: p.commission_type || null, commission_value: p.commission_type ? n(p.commission_value) : null,
@@ -133,7 +138,15 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           <Field label="Name" span><Input value={p.name} onChange={set('name')} required /></Field>
           <Field label="Category"><Select value={p.category} onChange={set('category')} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" /></Field>
           <Field label="Status">{vendorMode ? <Badge status={p.status} /> : <Select value={p.status} onChange={set('status')} options={['draft', 'submitted', 'approved', 'published', 'rejected', 'out_of_stock', 'suspended']} />}</Field>
-          <Field label="Selling price"><Input money value={p.price} onChange={set('price')} required /></Field>
+          {vendorMode && takeHomePricing ? (
+            <Field label="What you want to receive" span
+              hint="Type what you want in your pocket for one of these. ZaMarket works out the price the customer pays.">
+              <Input money value={p.vendor_price} onChange={set('vendor_price')} required />
+              <PriceMaths take={p.vendor_price} />
+            </Field>
+          ) : (
+            <Field label="Selling price"><Input money value={p.price} onChange={set('price')} required /></Field>
+          )}
           <Field label="Normal price (to show savings)"><Input money value={p.normal_price} onChange={set('normal_price')} /></Field>
           <Field label="Description" span><Textarea value={p.description} onChange={set('description')} rows={4} /></Field>
           <Field label="Benefits (one per line)" span><Textarea value={p.benefits_text} onChange={set('benefits_text')} rows={3} /></Field>

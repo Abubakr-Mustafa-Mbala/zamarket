@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
+import { chime, soundOn, setSound } from '../lib/chime'
 
 const ago = (iso) => {
   if (!iso) return null
@@ -17,11 +18,25 @@ const ago = (iso) => {
 export default function ActionBell() {
   const [groups, setGroups] = useState([])
   const [open, setOpen] = useState(false)
+  const [sound, setSoundOn] = useState(soundOn())
   const box = useRef(null)
+  // What the count was last time, so a sound only plays when something NEW
+  // arrives rather than every time the list is refreshed.
+  const lastCount = useRef(null)
 
   const load = async () => {
     const { data, error } = await supabase.rpc('action_center')
-    if (!error) setGroups(data || [])
+    if (error) return
+    const next = data || []
+    const total = next.reduce((t, g) => t + Number(g.count || 0), 0)
+    const was = lastCount.current
+    setGroups(next)
+    lastCount.current = total
+    // Only on a genuine increase, and never on the first load — otherwise
+    // opening the dashboard would chime at whatever was already waiting.
+    if (was != null && total > was) {
+      chime({ urgent: next.some((g) => g.tone === 'urgent') })
+    }
   }
   useEffect(() => {
     load()
@@ -51,8 +66,18 @@ export default function ActionBell() {
       {open && (
         <div className="bell-panel">
           <div className="bell-head">
-            <strong>What needs you</strong>
-            <button className="btn sm ghost" onClick={load}>Refresh</button>
+            <span className="bell-title">
+              <strong>What needs you</strong>
+              <em>The number clears as you do the work, not as you read it</em>
+            </span>
+            <span className="btn-row">
+              <button className="btn sm ghost" title={sound ? 'Sound is on' : 'Sound is off'}
+                aria-pressed={sound}
+                onClick={() => { const v = !sound; setSound(v); setSoundOn(v); if (v) chime() }}>
+                {sound ? '🔔 Sound on' : '🔕 Sound off'}
+              </button>
+              <button className="btn sm ghost" onClick={load}>Refresh</button>
+            </span>
           </div>
           {groups.length === 0 ? (
             <div className="bell-clear">

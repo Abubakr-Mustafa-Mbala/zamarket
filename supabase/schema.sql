@@ -1575,6 +1575,9 @@ declare
   deal record;
   deals int;
   v_line numeric;
+  v_disc numeric;
+  v_coupon jsonb;
+  v_basket_vendor uuid;
 begin
   if v_manual and not (is_staff() or my_reseller_id() is not null) then raise exception 'Not allowed'; end if;
   if coalesce(c->>'full_name','') = '' then raise exception 'Please enter the customer''s name'; end if;
@@ -1659,13 +1662,18 @@ begin
   if (c->>'district_id') is not null then
     select is_local_zone into local_zone from districts where id = (c->>'district_id')::int;
   end if;
-  if local_zone then fee := setting_num('local_delivery_fee'); end if;
+  if local_zone then fee := delivery_charge(); end if;
   if setting_text('delivery_included') = 'true' then fee := 0; end if;
+  -- "I will collect it myself": no trip, no fee.
+  if coalesce((payload->>'collect')::boolean, false) then fee := 0; end if;
 
   insert into orders (customer_id, referrer_vendor_id, source, channel, seller_type, reseller_id, referral_code, province_id, district_id, area, address, instructions,
-                      is_local, delivery_fee, delivery_fee_status, is_manual, notes, risk_flags, created_by)
+                      is_local, delivery_fee, delivery_fee_status, collection, is_manual, notes, risk_flags, created_by)
   values (cust.id, v_referrer, v_source, v_channel, v_seller, rs.id, nullif(payload->>'referral_code',''), (c->>'province_id')::int, (c->>'district_id')::int,
-          c->>'area', c->>'address', c->>'instructions', local_zone, fee, case when local_zone then 'confirmed' else 'pending' end,
+          c->>'area', c->>'address', c->>'instructions', local_zone, fee,
+          case when coalesce((payload->>'collect')::boolean, false) then 'not_available'
+               when local_zone then 'confirmed' else 'pending' end,
+          coalesce((payload->>'collect')::boolean, false),
           v_manual, payload->>'notes', flags, auth.uid())
   returning * into o;
 
@@ -1751,10 +1759,12 @@ begin
       end if;
     end if;
     if coalesce(item->>'package_id', '') = '' then pkg := null; end if;
-    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note, package_id, package_name)
+    insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note, package_id, package_name, vendor_take)
     values (o.id, prod.id, off.id, prod.vendor_id, qty, v_line / qty, product_effective_cost(prod), v_line,
             case when prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then least(qty, greatest(prod.stock_available, 0)) else 0 end,
-            v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''), pkg.id, pkg.name);
+            v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''), pkg.id, pkg.name,
+            -- what this vendor was promised per unit, frozen now
+            case when prod.owner_type = 'vendor' then prod.vendor_price else null end);
     sub := sub + v_line;
     if prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then
       if prod.stock_available > 0 then
@@ -1783,7 +1793,30 @@ begin
     update orders set store_vendor_id = v_store.id, seller_type = case when seller_type = 'founder' then 'vendor' else seller_type end where id = o.id;
   end if;
   if v_campaign.id is not null then update orders set campaign_id = v_campaign.id where id = o.id; end if;
-  update orders set subtotal = sub, delivery_fee = fee, total = sub + fee,
+  -- A coupon, if one was given and it stands up. Checked here rather than
+  -- trusted from the browser: the discount is money, so the number that counts
+  -- is the one the database works out, not the one the page sent.
+  v_disc := 0;
+  if coalesce(payload->>'coupon','') <> '' then
+    -- Which seller this basket belongs to, if it is all from one. A seller's
+    -- own coupon applies to their goods however the shopper arrived; it is
+    -- only refused when the basket also holds somebody else's items, because
+    -- then the discount could not be charged to them alone.
+    select case when count(*) = 1 then (array_agg(vendor_id))[1] else null end
+      into v_basket_vendor
+      from (select distinct vendor_id from order_items
+             where order_id = o.id and vendor_id is not null) one_seller;
+    v_coupon := coupon_check(payload->>'coupon', sub, coalesce(v_basket_vendor, v_store.id));
+    if coalesce((v_coupon->>'ok')::boolean, false) then
+      v_disc := coalesce((v_coupon->>'discount')::numeric, 0);
+      update orders set coupon_id = (v_coupon->>'id')::uuid, discount = v_disc where id = o.id;
+      update coupons set used_count = used_count + 1 where id = (v_coupon->>'id')::uuid;
+      insert into coupon_uses (coupon_id, order_id, customer_id, discount)
+      values ((v_coupon->>'id')::uuid, o.id, cust.id, v_disc);
+    end if;
+  end if;
+
+  update orders set subtotal = sub, delivery_fee = fee, total = greatest(sub - v_disc, 0) + fee,
     needed_by = case when exists (select 1 from order_items i join products p on p.id = i.product_id where i.order_id = o.id and p.fulfilment in ('made_to_order', 'service')) then v_needed else null end
   where id = o.id;
   if exists (select 1 from order_items i join products p on p.id = i.product_id where i.order_id = o.id and p.fulfilment <> 'service') then
@@ -1844,6 +1877,10 @@ declare
   fee_pct numeric;
   comm numeric;
   gross numeric;
+  vend_net numeric;
+  allowance numeric;
+  line_disc numeric;
+  coupon_funder text;
   vend vendors%rowtype;
   prod products%rowtype;
   src text;
@@ -1908,10 +1945,49 @@ begin
         select * into vend from vendors where id = it.vendor_id;
         fee_pct := case when o.store_vendor_id = it.vendor_id then least(coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')), setting_num('own_audience_fee_pct'))
                         else coalesce(vend.fee_pct_override, setting_num('marketplace_fee_pct')) end;
-        insert into settlements (vendor_id, order_id, order_number, gross, marketplace_fee, reseller_commission, net_payable, status)
-        values (it.vendor_id, p_order, o.order_number, gross, round(gross * fee_pct / 100, 2),
-                case when src = 'on_top' then comm else 0 end,
-                round(gross - gross * fee_pct / 100 - case when src = 'on_top' then comm else 0 end, 2), 'pending');
+
+        -- The vendor is settled at what they agreed, not at a percentage of a
+        -- price that may since have moved. Everything above that belongs to the
+        -- marketplace, which hands part of it to whoever brought the customer —
+        -- and keeps the lot when its own marketing did.
+        if setting_text('pricing_mode') = 'vendor_take_home' and coalesce(it.vendor_take, 0) > 0 then
+          vend_net := round(it.vendor_take * it.quantity, 2);
+
+          -- A discount is somebody's money, and the coupon said whose. A
+          -- marketplace promotion leaves the vendor whole and comes out of
+          -- ZaMarket's share; a seller's own sale comes out of theirs. The
+          -- discount is apportioned across the order's lines by value, so a
+          -- basket from two sellers splits it fairly rather than landing all
+          -- of it on whichever line settled first.
+          if coalesce(o.discount, 0) > 0 and o.subtotal > 0 then
+            line_disc := round(o.discount * (gross / o.subtotal), 2);
+            select funded_by into coupon_funder from coupons where id = o.coupon_id;
+            if coalesce(coupon_funder, 'marketplace') = 'vendor' then
+              vend_net := greatest(vend_net - line_disc, 0);
+            end if;
+            -- either way the sale is now worth less, so the share ZaMarket
+            -- keeps shrinks by the discount it funded
+            gross := greatest(gross - line_disc, 0);
+          end if;
+          -- The commission is capped at the room that was built into the price
+          -- for it. Without this cap a product with a generous commission rate
+          -- would pay the affiliate out of ZaMarket's own share, which is the
+          -- exact thing this whole arrangement exists to prevent.
+          allowance := round(gross * coalesce(
+            (select commission_allowance_override from vendors where id = it.vendor_id),
+            setting_num('commission_allowance_pct')) / 100, 2);
+          if comm > allowance then comm := allowance; end if;
+          -- and never hand out more than the order actually earned
+          if comm > greatest(gross - vend_net, 0) then comm := round(greatest(gross - vend_net, 0), 2); end if;
+          insert into settlements (vendor_id, order_id, order_number, gross, marketplace_fee, reseller_commission, net_payable, status)
+          values (it.vendor_id, p_order, o.order_number, gross,
+                  round(greatest(gross - vend_net - comm, 0), 2), comm, vend_net, 'pending');
+        else
+          insert into settlements (vendor_id, order_id, order_number, gross, marketplace_fee, reseller_commission, net_payable, status)
+          values (it.vendor_id, p_order, o.order_number, gross, round(gross * fee_pct / 100, 2),
+                  case when src = 'on_top' then comm else 0 end,
+                  round(gross - gross * fee_pct / 100 - case when src = 'on_top' then comm else 0 end, 2), 'pending');
+        end if;
       end if;
     end loop;
 
@@ -4806,3 +4882,463 @@ language sql stable security definer set search_path = public as $$
       order by p.updated_at desc) from posts p), '[]'::jsonb)) end;
 $$;
 grant execute on function blog_report() to authenticated;
+
+-- ============================================================================
+-- PRICING: THE MARKETPLACE CANNOT BE PRICED INTO A LOSS
+-- ----------------------------------------------------------------------------
+-- Until now a vendor typed the price the customer pays, and ZaMarket took its
+-- share out of that. It works, but it puts the marketplace's margin in the
+-- vendor's hands: price too low and ZaMarket earns almost nothing on an order
+-- it still has to confirm, deliver and stand behind.
+--
+-- This turns it around. The vendor says what THEY want to receive. The system
+-- works out the shelf price that leaves that amount intact after ZaMarket's
+-- share, rounds it up, and that is what the shopper sees. The settlement maths
+-- is unchanged — the fee is still a percentage of the sale — so nothing
+-- downstream moves. What changes is that the number a vendor controls is their
+-- own earnings, not the marketplace's.
+--
+-- Rounding is always UP, never down. Rounding down would quietly eat the
+-- difference out of ZaMarket's share.
+-- ============================================================================
+
+insert into settings (key, value, description) values
+  ('pricing_mode', '"vendor_take_home"', 'How a vendor''s price is read. "vendor_take_home": they enter what they want to receive and the shelf price is worked out from it. "shelf": they enter the price the customer pays, the old way.'),
+  ('price_rounding', '1', 'Round shelf prices up to the nearest this many kwacha. 1 = whole kwacha, 5 = nearest five.'),
+  ('delivery_margin_pct', '5', 'Added on top of what delivery actually costs you, so delivery is not run at cost (%)'),
+  ('min_margin_kwacha', '5', 'The least ZaMarket should earn on any single item. Below this the vendor is warned.')
+on conflict (key) do nothing;
+
+alter table products add column if not exists vendor_price numeric;
+
+-- What the shopper pays, so that `take` survives the marketplace's cut.
+--   shelf = take / (1 - fee)   then rounded up to the configured step
+
+-- The fee that applies to one vendor, allowing for their own override.
+create or replace function vendor_fee_pct(p_vendor uuid) returns numeric
+language sql stable security definer set search_path = public as $$
+  select coalesce(
+    (select fee_pct_override from vendors where id = p_vendor),
+    setting_num('marketplace_fee_pct'));
+$$;
+grant execute on function vendor_fee_pct(uuid) to authenticated;
+
+-- Existing vendor products predate this: fill in what each vendor is currently
+-- receiving, so nothing is repriced behind their backs. The shelf price they
+-- already have stays exactly as it is.
+update products p
+   set vendor_price = round(p.price - p.price * vendor_fee_pct(p.vendor_id) / 100, 2)
+ where p.owner_type = 'vendor' and p.vendor_id is not null
+   and p.vendor_price is null and p.price > 0;
+
+-- ============================================================================
+-- DELIVERY: CHARGED ONCE, WITH A MARGIN, AND DROPPABLE
+-- ----------------------------------------------------------------------------
+-- Delivery was charged at cost. Running it at cost means every delivered order
+-- quietly subsidises itself out of the marketplace fee, so there is now a
+-- margin on top of what the trip actually costs.
+--
+-- It is charged ONCE per order however many items are in the basket — the van
+-- makes one trip — which is what the order-level fee already did.
+--
+-- And a customer who says "I will collect it myself" should not pay it. That
+-- is a flag on the order rather than a different kind of order, so everything
+-- downstream — totals, settlements, the receipt — keeps working unchanged.
+-- ============================================================================
+
+alter table orders add column if not exists collection boolean not null default false;
+
+-- What to charge for a delivery: the real cost plus the configured margin,
+-- rounded up to whole kwacha so nobody is quoted 32.50.
+
+-- Switch an order between delivery and collection, and put the total right.
+-- Staff only: the fee is money, so it is not something a customer toggles
+-- after the fact, and every change is recorded.
+create or replace function set_collection(p_order uuid, p_collect boolean, p_reason text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare o orders%rowtype; new_fee numeric;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select * into o from orders where id = p_order for update;
+  if not found then raise exception 'Order not found'; end if;
+  if o.status in ('completed', 'cancelled', 'refunded') then
+    raise exception 'That order is already %, so the delivery cannot be changed', o.status;
+  end if;
+
+  new_fee := case when p_collect then 0
+                  when o.is_local then delivery_charge()
+                  else o.delivery_fee end;
+
+  perform set_config('zm.order_fn', 'on', true);
+  update orders set
+    collection = p_collect,
+    delivery_fee = new_fee,
+    delivery_fee_status = case when p_collect then 'not_available' else delivery_fee_status end,
+    total = subtotal + new_fee,
+    notes = case when p_reason is null or p_reason = '' then notes
+                 else coalesce(notes, '') || E'\n[' || case when p_collect then 'Collecting' else 'Delivering' end || '] ' || p_reason end
+  where id = p_order;
+  perform set_config('zm.order_fn', 'off', true);
+
+  perform log_audit(case when p_collect then 'order.collection' else 'order.delivery' end,
+    'orders', p_order,
+    jsonb_build_object('collection', o.collection, 'delivery_fee', o.delivery_fee, 'total', o.total),
+    jsonb_build_object('collection', p_collect, 'delivery_fee', new_fee, 'total', o.subtotal + new_fee),
+    p_reason);
+
+  return jsonb_build_object('collection', p_collect, 'delivery_fee', new_fee, 'total', o.subtotal + new_fee);
+end $$;
+grant execute on function set_collection(uuid, boolean, text) to authenticated;
+
+-- ============================================================================
+-- PER-VENDOR TERMS, AND WHO THE MARGIN BELONGS TO
+-- ----------------------------------------------------------------------------
+-- Three things were still wrong about the money.
+--
+-- 1. Terms were one-size-fits-all. A shop in Kabwata and a shop an hour out of
+--    town cost very different amounts to deliver from, and you will not agree
+--    the same cut with every seller. Both are now agreed per vendor at
+--    onboarding, falling back to the marketplace default when not set.
+--
+-- 2. An affiliate's commission came out of ZaMarket's fee, so the moment
+--    somebody else sold the item, ZaMarket earned less for doing exactly the
+--    same work. The commission is now ALLOWED FOR IN THE SHELF PRICE instead:
+--    every price carries room for it, whether or not anyone claims it.
+--
+-- 3. When nobody referred the sale, that allowance had nowhere to go. It
+--    belongs to ZaMarket: if your own marketing brought the customer, you keep
+--    the whole margin.
+--
+-- The rule underneath all of it: THE VENDOR RECEIVES EXACTLY WHAT THEY ASKED
+-- FOR, every time. Everything above that is the marketplace's to divide between
+-- itself and whoever brought the customer. That is why the settlement below
+-- settles the vendor at their agreed price rather than at "sale minus a
+-- percentage" — a percentage of a changed price is a moving target, and the
+-- vendor should never carry the cost of a commission they did not agree to.
+-- ============================================================================
+
+insert into settings (key, value, description) values
+  ('commission_allowance_pct', '10', 'Room built into every vendor price for an affiliate''s commission (%). If nobody referred the sale, ZaMarket keeps it.')
+on conflict (key) do nothing;
+
+alter table vendors add column if not exists delivery_fee_override numeric;
+alter table vendors add column if not exists commission_allowance_override numeric;
+alter table vendors add column if not exists terms_note text;
+
+-- What the vendor was promised per unit, frozen at the moment of sale. Prices
+-- change; what was agreed on an order must not.
+alter table order_items add column if not exists vendor_take numeric;
+
+-- The three numbers that define a vendor's deal.
+create or replace function vendor_terms(p_vendor uuid) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'fee_pct', coalesce((select fee_pct_override from vendors where id = p_vendor), setting_num('marketplace_fee_pct')),
+    'allowance_pct', coalesce((select commission_allowance_override from vendors where id = p_vendor), setting_num('commission_allowance_pct')),
+    'delivery_fee', coalesce((select delivery_fee_override from vendors where id = p_vendor), setting_num('local_delivery_fee')),
+    'fee_is_custom', (select fee_pct_override is not null from vendors where id = p_vendor),
+    'allowance_is_custom', (select commission_allowance_override is not null from vendors where id = p_vendor),
+    'delivery_is_custom', (select delivery_fee_override is not null from vendors where id = p_vendor));
+$$;
+grant execute on function vendor_terms(uuid) to authenticated;
+
+-- The shelf price now has to carry BOTH the marketplace's share and the room
+-- for a commission, or an affiliate sale costs ZaMarket its own margin.
+create or replace function shelf_price(p_take numeric, p_fee_pct numeric default null, p_allowance_pct numeric default null)
+returns numeric language sql immutable set search_path = public as $$
+  select case
+    when coalesce(p_take, 0) <= 0 then 0
+    else (
+      select greatest(ceil((p_take / nullif(1 - kept, 0)) / step) * step, p_take)
+      from (select
+              least(greatest((coalesce(p_fee_pct, setting_num('marketplace_fee_pct'))
+                            + coalesce(p_allowance_pct, setting_num('commission_allowance_pct'))) / 100.0, 0), 0.9) as kept,
+              greatest(coalesce(setting_num('price_rounding'), 1), 0.01) as step) s
+    )
+  end;
+$$;
+grant execute on function shelf_price(numeric, numeric, numeric) to anon, authenticated;
+
+-- The old two-argument form has to go, or a caller silently gets the version
+-- that leaves no room for commission.
+drop function if exists shelf_price(numeric, numeric);
+
+create or replace function sync_shelf_price() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare t jsonb;
+begin
+  if setting_text('pricing_mode') <> 'vendor_take_home' then return new; end if;
+  if new.owner_type <> 'vendor' or new.vendor_id is null then return new; end if;
+  if new.vendor_price is null or new.vendor_price <= 0 then return new; end if;
+
+  t := vendor_terms(new.vendor_id);
+  new.price := shelf_price(new.vendor_price, (t->>'fee_pct')::numeric, (t->>'allowance_pct')::numeric);
+  if new.normal_price is not null and new.normal_price <= new.price then
+    new.normal_price := null;
+  end if;
+  return new;
+end $$;
+
+-- Keep the shelf price in step with what the vendor asked for. Only vendor
+-- offerings are touched, and only while the marketplace is set to work this
+-- way, so a founder's own products and the old behaviour are both untouched.
+drop trigger if exists trg_shelf_price on products;
+create trigger trg_shelf_price before insert or update of vendor_price, vendor_id, owner_type
+  on products for each row execute function sync_shelf_price();
+
+-- Re-run the trigger over existing vendor products so their prices carry the
+-- allowance too, rather than only the ones saved from now on.
+update products set vendor_price = vendor_price
+ where owner_type = 'vendor' and vendor_id is not null and vendor_price > 0;
+
+-- The preview a vendor sees, now showing where every kwacha goes.
+create or replace function price_preview(p_take numeric, p_vendor uuid default null) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with v as (select coalesce(p_vendor, my_vendor_id()) as id),
+       t as (select vendor_terms((select id from v)) as j),
+       s as (select
+          shelf_price(p_take, ((select j from t)->>'fee_pct')::numeric, ((select j from t)->>'allowance_pct')::numeric) as shelf,
+          ((select j from t)->>'fee_pct')::numeric as fee_pct,
+          ((select j from t)->>'allowance_pct')::numeric as allow_pct,
+          ((select j from t)->>'delivery_fee')::numeric as delivery)
+  select jsonb_build_object(
+    'take_requested', round(coalesce(p_take, 0), 2),
+    'shelf', round(s.shelf, 2),
+    'fee_pct', s.fee_pct,
+    'allowance_pct', s.allow_pct,
+    'vendor_receives', round(coalesce(p_take, 0), 2),
+    'margin_total', round(s.shelf - coalesce(p_take, 0), 2),
+    'affiliate_if_referred', round(s.shelf * s.allow_pct / 100, 2),
+    'marketplace_if_referred', round(s.shelf - coalesce(p_take, 0) - s.shelf * s.allow_pct / 100, 2),
+    'marketplace_if_not', round(s.shelf - coalesce(p_take, 0), 2),
+    'delivery_fee', s.delivery,
+    'below_minimum', (s.shelf - coalesce(p_take, 0) - s.shelf * s.allow_pct / 100) < setting_num('min_margin_kwacha'))
+  from s;
+$$;
+grant execute on function price_preview(numeric, uuid) to authenticated;
+
+-- Delivery is quoted from the vendor the order is being fulfilled by, so a
+-- shop further out carries its own cost rather than the marketplace absorbing it.
+create or replace function delivery_charge(p_vendor uuid default null) returns numeric
+language sql stable security definer set search_path = public as $$
+  select case
+    when setting_text('delivery_included') = 'true' then 0
+    else ceil(
+      coalesce((select delivery_fee_override from vendors where id = p_vendor), setting_num('local_delivery_fee'))
+      * (1 + coalesce(setting_num('delivery_margin_pct'), 0) / 100.0))
+  end;
+$$;
+grant execute on function delivery_charge(uuid) to anon, authenticated;
+drop function if exists delivery_charge();
+
+-- Staff set a vendor's deal when they are onboarded. Every change is audited,
+-- because these are the numbers that decide what everybody earns.
+create or replace function set_vendor_terms(p_vendor uuid, p_fee_pct numeric, p_allowance_pct numeric,
+                                            p_delivery numeric, p_note text default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare v vendors%rowtype; before jsonb;
+begin
+  if not is_staff() then raise exception 'Not allowed'; end if;
+  select * into v from vendors where id = p_vendor;
+  if not found then raise exception 'Seller not found'; end if;
+  if p_fee_pct is not null and (p_fee_pct < 0 or p_fee_pct > 90) then raise exception 'The fee must be between 0 and 90%%'; end if;
+  if p_allowance_pct is not null and (p_allowance_pct < 0 or p_allowance_pct > 50) then raise exception 'The commission allowance must be between 0 and 50%%'; end if;
+  if p_delivery is not null and p_delivery < 0 then raise exception 'Delivery cannot be negative'; end if;
+
+  before := vendor_terms(p_vendor);
+  update vendors set
+    fee_pct_override = p_fee_pct,
+    commission_allowance_override = p_allowance_pct,
+    delivery_fee_override = p_delivery,
+    terms_note = coalesce(nullif(p_note, ''), terms_note)
+  where id = p_vendor;
+
+  -- Their prices follow their terms, or the deal only applies to new products.
+  update products set vendor_price = vendor_price
+   where vendor_id = p_vendor and owner_type = 'vendor' and vendor_price > 0;
+
+  perform log_audit('vendor.terms', 'vendors', p_vendor, before, vendor_terms(p_vendor), p_note);
+  return vendor_terms(p_vendor);
+end $$;
+grant execute on function set_vendor_terms(uuid, numeric, numeric, numeric, text) to authenticated;
+
+-- ============================================================================
+-- COUPONS
+-- ----------------------------------------------------------------------------
+-- A discount is somebody's money. The only question that matters is whose.
+--
+-- Every coupon names who is funding it, and that is who the discount comes out
+-- of when the order settles:
+--
+--   * 'marketplace' — ZaMarket's own promotion. The vendor is paid in full and
+--     the discount comes out of the marketplace's share. If the discount is
+--     bigger than that share, ZaMarket is paying for the sale, which is a real
+--     decision and is shown as one when the coupon is created.
+--   * 'vendor' — the seller's own sale. They receive less, by exactly the
+--     discount, and ZaMarket's share is untouched. Only the vendor or staff can
+--     create one of these, because nobody else may spend a vendor's money.
+--
+-- An affiliate's commission is always calculated on what the customer actually
+-- paid, never on the pre-discount price, so a coupon can never produce a
+-- commission larger than the sale that earned it.
+-- ============================================================================
+
+create table if not exists coupons (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  description text,
+  kind text not null default 'pct' check (kind in ('pct', 'flat')),
+  value numeric not null check (value > 0),
+  funded_by text not null default 'marketplace' check (funded_by in ('marketplace', 'vendor')),
+  vendor_id uuid references vendors(id) on delete cascade,
+  product_id uuid references products(id) on delete cascade,
+  min_order numeric not null default 0,
+  max_discount numeric,
+  starts_at timestamptz not null default now(),
+  expires_at timestamptz,
+  usage_limit int,
+  per_customer_limit int not null default 1,
+  used_count int not null default 0,
+  status text not null default 'active' check (status in ('active', 'paused', 'expired')),
+  created_by uuid references profiles(id),
+  created_at timestamptz not null default now(),
+  -- a vendor-funded coupon must say which vendor is funding it
+  constraint coupon_funder check (funded_by <> 'vendor' or vendor_id is not null)
+);
+
+create index if not exists coupons_code_idx on coupons (lower(code));
+
+create table if not exists coupon_uses (
+  id uuid primary key default gen_random_uuid(),
+  coupon_id uuid not null references coupons(id) on delete cascade,
+  order_id uuid references orders(id) on delete set null,
+  customer_id uuid references customers(id) on delete set null,
+  discount numeric not null,
+  created_at timestamptz not null default now()
+);
+
+alter table orders add column if not exists coupon_id uuid references coupons(id);
+alter table orders add column if not exists discount numeric not null default 0;
+
+do $$ begin
+  alter table coupons enable row level security;
+  alter table coupon_uses enable row level security;
+exception when others then null; end $$;
+
+select ensure_policy('staff_coupons', 'coupons', 'all', 'is_staff()');
+select ensure_policy('vendor_own_coupons', 'coupons', 'all',
+  $p$vendor_id is not null and vendor_id = my_vendor_id()$p$);
+select ensure_policy('staff_coupon_uses', 'coupon_uses', 'select', 'is_staff()');
+
+-- Is this code usable for this basket, and what is it worth? Returns a reason
+-- rather than just a yes/no, because "that code has expired" and "you need to
+-- spend K50 more" need different things from the shopper.
+create or replace function coupon_check(p_code text, p_subtotal numeric, p_vendor uuid default null)
+returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare c coupons%rowtype; disc numeric;
+begin
+  select * into c from coupons where lower(code) = lower(trim(p_code));
+  if not found then return jsonb_build_object('ok', false, 'reason', 'We do not recognise that code.'); end if;
+  if c.status <> 'active' then return jsonb_build_object('ok', false, 'reason', 'That code is not active.'); end if;
+  if c.starts_at > now() then return jsonb_build_object('ok', false, 'reason', 'That code is not live yet.'); end if;
+  if c.expires_at is not null and c.expires_at < now() then
+    return jsonb_build_object('ok', false, 'reason', 'That code has expired.');
+  end if;
+  if c.usage_limit is not null and c.used_count >= c.usage_limit then
+    return jsonb_build_object('ok', false, 'reason', 'That code has been fully used.');
+  end if;
+  if coalesce(p_subtotal, 0) < c.min_order then
+    return jsonb_build_object('ok', false, 'reason',
+      'That code needs an order of at least K' || trim(to_char(c.min_order, 'FM999999990.00')) || '.');
+  end if;
+  if c.vendor_id is not null and p_vendor is distinct from c.vendor_id then
+    return jsonb_build_object('ok', false, 'reason', 'That code only works on one seller''s items.');
+  end if;
+
+  disc := case when c.kind = 'pct' then round(p_subtotal * c.value / 100, 2) else c.value end;
+  if c.max_discount is not null then disc := least(disc, c.max_discount); end if;
+  -- never discount below zero, and never more than the basket itself
+  disc := greatest(least(disc, coalesce(p_subtotal, 0)), 0);
+
+  return jsonb_build_object(
+    'ok', true, 'id', c.id, 'code', c.code, 'discount', disc,
+    'funded_by', c.funded_by, 'description', c.description,
+    'label', case when c.kind = 'pct' then c.value || '% off' else 'K' || trim(to_char(c.value, 'FM999999990.00')) || ' off' end);
+end $$;
+grant execute on function coupon_check(text, numeric, uuid) to anon, authenticated;
+
+-- Create or update a coupon. A vendor may only fund their own, and may only
+-- discount their own items; staff may do either.
+create or replace function save_coupon(payload jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare v uuid := my_vendor_id(); c coupons%rowtype; id uuid := nullif(payload->>'id','')::uuid;
+        funder text := coalesce(payload->>'funded_by', case when my_vendor_id() is not null then 'vendor' else 'marketplace' end);
+        vend uuid := coalesce(nullif(payload->>'vendor_id','')::uuid, v);
+begin
+  if not (is_staff() or v is not null) then raise exception 'Not allowed'; end if;
+  if not is_staff() then
+    -- a vendor cannot spend the marketplace's money, nor another vendor's
+    funder := 'vendor';
+    vend := v;
+  end if;
+  if funder = 'vendor' and vend is null then raise exception 'Say which seller is funding this discount'; end if;
+  if coalesce((payload->>'value')::numeric, 0) <= 0 then raise exception 'The discount must be more than zero'; end if;
+  if coalesce(payload->>'kind','pct') = 'pct' and (payload->>'value')::numeric > 90 then
+    raise exception 'A percentage discount cannot be more than 90%%';
+  end if;
+
+  if id is null then
+    insert into coupons (code, description, kind, value, funded_by, vendor_id, product_id,
+                         min_order, max_discount, starts_at, expires_at, usage_limit,
+                         per_customer_limit, status, created_by)
+    values (upper(trim(payload->>'code')), nullif(payload->>'description',''),
+            coalesce(payload->>'kind','pct'), (payload->>'value')::numeric, funder, vend,
+            nullif(payload->>'product_id','')::uuid,
+            coalesce((payload->>'min_order')::numeric, 0),
+            nullif(payload->>'max_discount','')::numeric,
+            coalesce(nullif(payload->>'starts_at','')::timestamptz, now()),
+            nullif(payload->>'expires_at','')::timestamptz,
+            nullif(payload->>'usage_limit','')::int,
+            coalesce((payload->>'per_customer_limit')::int, 1),
+            coalesce(payload->>'status','active'), auth.uid())
+    returning * into c;
+  else
+    select * into c from coupons where coupons.id = save_coupon.id;
+    if not found then raise exception 'Coupon not found'; end if;
+    if not is_staff() and c.vendor_id is distinct from v then raise exception 'Not allowed'; end if;
+    update coupons set
+      description = coalesce(nullif(payload->>'description',''), description),
+      kind = coalesce(payload->>'kind', kind),
+      value = coalesce((payload->>'value')::numeric, value),
+      min_order = coalesce((payload->>'min_order')::numeric, min_order),
+      max_discount = nullif(payload->>'max_discount','')::numeric,
+      expires_at = nullif(payload->>'expires_at','')::timestamptz,
+      usage_limit = nullif(payload->>'usage_limit','')::int,
+      status = coalesce(payload->>'status', status)
+    where coupons.id = save_coupon.id
+    returning * into c;
+  end if;
+
+  perform log_audit('coupon.save', 'coupons', c.id, null, to_jsonb(c));
+  return to_jsonb(c);
+end $$;
+grant execute on function save_coupon(jsonb) to authenticated;
+
+-- What each coupon has actually cost, and who paid for it.
+create or replace function coupon_report() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select case when not (is_staff() or my_vendor_id() is not null) then null else
+    coalesce((select jsonb_agg(jsonb_build_object(
+      'id', c.id, 'code', c.code, 'description', c.description,
+      'kind', c.kind, 'value', c.value, 'funded_by', c.funded_by,
+      'vendor', (select business_name from vendors where id = c.vendor_id),
+      'status', case when c.expires_at is not null and c.expires_at < now() then 'expired' else c.status end,
+      'expires_at', c.expires_at, 'min_order', c.min_order,
+      'usage_limit', c.usage_limit, 'used_count', c.used_count,
+      'given_away', coalesce((select sum(u.discount) from coupon_uses u where u.coupon_id = c.id), 0),
+      'orders', (select count(*) from coupon_uses u where u.coupon_id = c.id))
+      order by c.created_at desc)
+    from coupons c
+    where is_staff() or c.vendor_id = my_vendor_id()), '[]'::jsonb) end;
+$$;
+grant execute on function coupon_report() to authenticated;
