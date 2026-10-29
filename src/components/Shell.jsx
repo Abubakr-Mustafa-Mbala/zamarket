@@ -2,6 +2,7 @@ import { useState, Suspense } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { Loading } from './ui'
+import ErrorBoundary from './ErrorBoundary'
 import ActionBell from './ActionBell'
 
 const I = {
@@ -150,7 +151,9 @@ export default function Shell({ kind }) {
           )}
         </header>
         <main className="content">
-          <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+          <ErrorBoundary home={kind === 'vendor' ? '/vendor' : kind === 'reseller' ? '/sell' : '/admin'}>
+            <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+          </ErrorBoundary>
         </main>
       </div>
 
