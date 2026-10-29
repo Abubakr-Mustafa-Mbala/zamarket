@@ -1,6 +1,7 @@
 import { useState, Suspense } from 'react'
 import { NavLink, Outlet, Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { Loading } from './ui'
 import ActionBell from './ActionBell'
 
 const I = {
