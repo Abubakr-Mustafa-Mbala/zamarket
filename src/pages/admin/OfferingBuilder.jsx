@@ -60,18 +60,25 @@ export default function OfferingBuilder() {
   const [p, setP] = useState(null)
   const [pg, setPg] = useState({})
   const [packs, setPacks] = useState([])
-  const { data, loading } = useData(async () => ({
+  const { data, loading, error } = useData(async () => ({
     product: await q(supabase.from('products').select('*,vendor:vendors(business_name)').eq('id', id).single()),
     packages: await q(supabase.from('product_packages').select('*').eq('product_id', id).order('sort')),
   }), [id])
 
   useEffect(() => {
-    if (!data) return
+    if (!data?.product) return
     setP(data.product)
     setPg(data.product.page || {})
-    setPacks(data.packages.map((k) => ({ ...k, items_text: toText(k.items) })))
+    setPacks((data.packages || []).map((k) => ({ ...k, items_text: toText(k.items) })))
   }, [data])
 
+  // Every hook must run on every render, including the one where the data is
+  // still loading. Putting this after the early return below meant React saw
+  // more hooks once the data arrived and tore the whole page down — a blank
+  // screen that only ever appeared on products that loaded successfully.
+  const preview = useMemo(() => (p ? { ...p, page: pg, vendor_name: p.vendor?.business_name || null } : null), [p, pg])
+
+  if (error) return <Empty title="This page could not be opened">{error}</Empty>
   if (loading || !p) return <Loading />
   const hint = HINTS[p.offering_type] || HINTS.other
   const setField = (k) => (v) => setP((x) => ({ ...x, [k]: v }))
@@ -82,9 +89,6 @@ export default function OfferingBuilder() {
   const addRow = (key, blank) => setPg((x) => ({ ...x, [key]: [...(x[key] || []), blank] }))
   const delRow = (key, i) => setPg((x) => ({ ...x, [key]: (x[key] || []).filter((_, k) => k !== i) }))
 
-  const preview = useMemo(() => ({
-    ...p, page: pg, vendor_name: p.vendor?.business_name || null,
-  }), [p, pg])
   const previewPacks = packs.filter((k) => k.active !== false && k.name).map((k) => ({ ...k, items: lines(k.items_text), price: n(k.price), normal_price: k.normal_price === '' ? null : n(k.normal_price) }))
 
   const save = async (publish) => {
