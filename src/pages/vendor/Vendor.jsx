@@ -17,8 +17,18 @@ import ShareThis from '../../components/ShareThis'
 import QrCode from '../../components/QrCode'
 import Statement from '../../components/Statement'
 import CreativeStudio from '../shared/CreativeStudio'
+import { useActingVendor, useActingSaved } from '../../lib/actingVendor'
 
-const useVendor = () => useAuth().profile?.partner || null
+// Normally the shop belongs to whoever is signed in. When a staff member is
+// setting a shop up on a seller's behalf, the acting context names that shop
+// instead and these same screens point at it.
+// Both hooks run on every render — short-circuiting with `||` would skip
+// useAuth whenever a staff member is acting, and React counts hooks.
+const useVendor = () => {
+  const acting = useActingVendor()
+  const { profile } = useAuth()
+  return acting || profile?.partner || null
+}
 
 export function VendorHome() {
   const v = useVendor()
@@ -470,6 +480,8 @@ export function VendorStore() {
   const v = useVendor()
   const toast = useToast()
   const { refresh } = useAuth()
+  const acting = useActingVendor()
+  const actingSaved = useActingSaved()
   const [busy, setBusy] = useState('')
   const [f, setF] = useState(() => ({
     tagline: v?.tagline || '', about: v?.about || v?.description || '',
@@ -497,8 +509,11 @@ export function VendorStore() {
     }
     const { error } = await supabase.from('vendors').update(row).eq('id', v.id)
     if (error) return toast(error.message, true)
-    await refresh()
-    toast('Your shop is updated')
+    // A staff member saving somebody else's shop has no own profile to refresh;
+    // the admin page reloads the shop it is working on instead.
+    if (actingSaved) await actingSaved()
+    else await refresh()
+    toast(acting ? 'Shop updated' : 'Your shop is updated')
   }
 
   return (
