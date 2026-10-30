@@ -10,12 +10,12 @@ import { DateBar, useRange } from '../shared/Earnings'
 export default function ProfitGuard() {
   const { settings } = useAuth()
   const [range, setRange] = useRange('month')
-  const { data, loading, error } = useData(async () => ({
+  const { data, loading, error, reload } = useData(async () => ({
     be: await q(supabase.rpc('break_even', { p_from: range.from, p_to: range.to })),
     losers: await q(supabase.rpc('losing_orders', { p_from: range.from, p_to: range.to })),
     creep: await q(supabase.rpc('cost_creep')).catch(() => []),
   }), [range.from, range.to])
-  if (error) return <Problem error={error} what="the profit guard" onRetry={typeof reload === 'function' ? reload : undefined} />
+  if (error) return <Problem error={error} what="the profit guard" onRetry={reload} />
   if (loading || !data) return <><div className="card"><DateBar range={range} setRange={setRange} /></div><Loading /></>
   const b = data.be || {}
   const losers = data.losers || []
