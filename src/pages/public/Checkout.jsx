@@ -18,11 +18,31 @@ export function useLocations() {
   return { provinces, districts }
 }
 
-function useLocalFee() {
-  const [fee, setFee] = useState(30)
+// What the customer will actually be charged for delivery.
+//
+// Reading local_delivery_fee straight from settings showed the base figure and
+// left out the delivery margin, so the checkout quoted one number and the order
+// charged another. delivery_charge() is the same function the order uses, so
+// the two cannot drift apart.
+function useLocalFee(vendorIds = []) {
+  const [fee, setFee] = useState(null)
+  const key = vendorIds.filter(Boolean).sort().join(',')
   useEffect(() => {
-    supabase.from('settings').select('value').eq('key', 'local_delivery_fee').maybeSingle().then(({ data }) => { if (data) setFee(Number(data.value)) })
-  }, [])
+    let alive = true
+    const ids = key ? key.split(',') : []
+    // One trip has to reach the furthest seller in the basket, so the highest
+    // of their fees is the one that applies — the same rule the order uses.
+    Promise.all(ids.length
+      ? ids.map((id) => supabase.rpc('delivery_charge', { p_vendor: id }))
+      : [supabase.rpc('delivery_charge')])
+      .then((res) => {
+        if (!alive) return
+        const vals = res.map((r) => Number(r.data)).filter((n) => Number.isFinite(n))
+        if (vals.length) setFee(Math.max(...vals))
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [key])
   return fee
 }
 
@@ -156,7 +176,7 @@ export function Checkout() {
   const freeDelivery = fdOffers.some((o) => subtotal >= Number(o.config?.minSpend || 0))
   const fdNext = !freeDelivery && fdOffers.length ? Math.min(...fdOffers.map((o) => Number(o.config?.minSpend || 0))) : null
   const { provinces, districts } = useLocations()
-  const localFee = useLocalFee()
+  const localFee = useLocalFee(items.map((i) => i.vendor_id))
   const nav = useNavigate()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -180,7 +200,7 @@ export function Checkout() {
   const district = districts.find((d) => String(d.id) === String(f.district_id))
   const local = district?.is_local_zone
   const shop = useShopInfo()
-  const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : localFee) : 0
+  const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : (localFee ?? 0)) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
   if (!items.length) return <div className="card empty"><h3>Your cart is empty</h3><Link to="/">Browse products</Link></div>
@@ -260,7 +280,7 @@ export function Checkout() {
         {savings > 0 && <div className="between small mt"><span>Offer savings</span><span className="save money">−{money(savings)}</span></div>}
         <div className="between small mt">
           <span>Delivery</span>
-          <span>{!needsDelivery ? 'Not needed' : shop.deliveryIncluded ? <span className="save">Free</span> : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : money(localFee)) : 'Confirmed by phone'}</span>
+          <span>{!needsDelivery ? 'Not needed' : shop.deliveryIncluded ? <span className="save">Free</span> : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : localFee == null ? '…' : money(localFee)) : 'Confirmed by phone'}</span>
         </div>
         {fdNext != null && (!f.district_id || local) && <div className="tiny save">Add {money(fdNext - subtotal)} more for free delivery in Lusaka</div>}
         <div className="between strong mt"><span>Total</span><span className="money">{money(subtotal + fee)}{f.district_id && !local ? ' + delivery' : ''}</span></div>
