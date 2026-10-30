@@ -31,6 +31,7 @@ const Offers = lazy(() => import('./pages/admin/Offers'))
 const Customers = named(adminPeople, 'Customers')
 const Deliveries = named(adminPeople, 'Deliveries')
 const Vendors = named(adminPartners, 'Vendors')
+const SellerSetup = lazy(() => import('./pages/admin/SellerSetup'))
 const Affiliates = named(adminPartners, 'Resellers')
 const MarketingHub = lazy(() => import('./pages/marketing/MarketingHub'))
 const growthPages = () => import('./pages/public/GrowthPages')
@@ -172,6 +173,7 @@ export default function App() {
         <Route path="offers" element={<Offers />} />
         <Route path="resellers" element={<Affiliates />} />
         <Route path="vendors" element={<Vendors />} />
+        <Route path="vendors/:id/shop" element={<SellerSetup />} />
         <Route path="marketing" element={<MarketingHub />} />
         <Route path="marketing/:section" element={<MarketingHub />} />
         <Route path="reviews" element={<Reviews />} />

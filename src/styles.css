@@ -2353,3 +2353,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word;
   max-height: 180px; overflow: auto;
 }
+
+/* A standing reminder on a page where staff act for somebody else. */
+.note-strip {
+  background: var(--warn-soft); border: 1px solid var(--warn);
+  border-radius: var(--radius); padding: 12px 15px;
+  font-size: 0.92rem; color: var(--ink-2); line-height: 1.55;
+}
+.note-strip strong { color: var(--ink); }
