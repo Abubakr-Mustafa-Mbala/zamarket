@@ -66,7 +66,7 @@ export function OrderDetail() {
   const [fee, setFee] = useState(null)
   const [reason, setReason] = useState('')
   const { data: o, loading, reload } = useData(() => q(
-    supabase.from('orders').select('*,customer:customers(*),province:provinces(name),district:districts(name),reseller:resellers(code,full_name,phone),items:order_items(*,product:products(name,owner_type),offer:offers(name)),payments(*),delivery:deliveries(*),commissions(*),settlements(*,vendor:vendors(business_name))').eq('id', id).single()
+    supabase.from('orders').select('*,customer:customers(*),province:provinces(name),district:districts(name),reseller:resellers(code,full_name,phone),items:order_items(*,product:products(name,owner_type),vendor:vendors(business_name),offer:offers(name)),payments(*),delivery:deliveries(*),commissions(*),settlements(*,vendor:vendors(business_name))').eq('id', id).single()
   ), [id])
   const { data: log } = useData(() => advanced ? q(supabase.from('audit_logs').select('*').eq('entity_id', id).order('created_at')) : Promise.resolve([]), [id, advanced])
 
@@ -99,6 +99,28 @@ export function OrderDetail() {
   const fees = o.settlements.filter((s) => s.status !== 'cancelled').reduce((s, x) => s + n(x.marketplace_fee), 0)
   const vendorPay = o.settlements.filter((s) => s.status !== 'cancelled').reduce((s, x) => s + n(x.net_payable), 0)
   const delivCost = n(o.delivery?.delivery_cost) + n(o.delivery?.fuel_cost)
+
+  // Settlements are only written when an order completes, so until then the
+  // page could not say who was owed what — which is the first thing anybody
+  // wants to know when an order comes in. This works the same split out of the
+  // order's own lines: each seller is owed their agreed take-home, the
+  // affiliate is paid from the room reserved for them, and the rest is ours.
+  const projected = (() => {
+    const bySeller = new Map()
+    for (const i of o.items) {
+      if (!i.vendor_id) continue
+      const cur = bySeller.get(i.vendor_id) || {
+        name: i.vendor?.business_name || 'Seller', gross: 0, theirs: 0,
+      }
+      cur.gross += n(i.line_total)
+      cur.theirs += n(i.vendor_take) * n(i.quantity)
+      bySeller.set(i.vendor_id, cur)
+    }
+    const rows = [...bySeller.values()]
+    const gross = rows.reduce((t, r) => t + r.gross, 0)
+    const theirs = rows.reduce((t, r) => t + r.theirs, 0)
+    return { rows, gross, theirs, ours: Math.max(0, gross - theirs - comm) }
+  })()
   const profit = n(o.subtotal) - cost - vendorPay - comm + n(o.delivery_fee) - delivCost
 
   return (
@@ -186,6 +208,22 @@ export function OrderDetail() {
             <div key={p.id} className="between small"><span>{title(p.method)} {p.reference && <span className="muted">· {p.reference}</span>}</span><span className="money">{money(p.amount)}</span></div>
           ))}
           {o.commissions.length > 0 && <><h3 className="mt">Commission</h3>{o.commissions.map((c) => <div key={c.id} className="between small"><span>{o.reseller?.full_name}</span><span className="row"><Badge status={c.status} /><span className="money">{money(c.amount)}</span></span></div>)}</>}
+          {o.settlements.length === 0 && projected.rows.length > 0 && (
+            <>
+              <h3 className="mt">Money on this order</h3>
+              {projected.rows.map((r) => (
+                <div key={r.name} className="between small">
+                  <span>{r.name} receives</span><span className="money">{money(r.theirs)}</span>
+                </div>
+              ))}
+              {comm > 0 && <div className="between small"><span>Affiliate commission</span><span className="money">{money(comm)}</span></div>}
+              <div className="between small strong"><span>ZaMarket keeps</span><span className="money">{money(projected.ours)}</span></div>
+              {n(o.delivery_fee) > 0 && (
+                <div className="between small"><span>Delivery charged</span><span className="money">{money(o.delivery_fee)}</span></div>
+              )}
+              <p className="tiny muted mt">Expected, not yet owed. Nothing is payable until the order is completed.</p>
+            </>
+          )}
           {o.settlements.length > 0 && <><h3 className="mt">Vendor payout</h3>{o.settlements.map((s) => <div key={s.id} className="between small"><span>{s.vendor?.business_name}</span><span className="row"><Badge status={s.status} /><span className="money">{money(s.net_payable)}</span></span></div>)}</>}
         </div>
       </div>
