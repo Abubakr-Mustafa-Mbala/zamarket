@@ -4,6 +4,37 @@ import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
 import { chime, soundOn, setSound } from '../lib/chime'
 
+// Remembering what you have seen, kept out of the component so a private
+// window or blocked storage cannot take the bell down with it.
+const save = (map) => {
+  try { localStorage.setItem('zamarket-bell-seen-v2', JSON.stringify(map)) } catch { /* ignore */ }
+}
+
+// A notification the operating system shows, so an order that arrives while
+// ZaMarket is in another tab still reaches you. The browser only allows this
+// after you have granted permission, and only while the site is open
+// somewhere — it is not a replacement for a phone alert when everything is
+// closed, and it never pretends to be.
+export const canNotify = () => typeof Notification !== 'undefined'
+export const notifyState = () => (canNotify() ? Notification.permission : 'unsupported')
+
+export async function askToNotify() {
+  if (!canNotify()) return 'unsupported'
+  try { return await Notification.requestPermission() } catch { return 'denied' }
+}
+
+function notify(groups, urgent) {
+  if (!canNotify() || Notification.permission !== 'granted') return
+  const lead = groups[0]
+  const rest = groups.length - 1
+  const title = urgent ? 'ZaMarket — needs you now' : 'ZaMarket'
+  const body = `${lead.label}${rest > 0 ? ` and ${rest} other thing${rest > 1 ? 's' : ''}` : ''}`
+  try {
+    const n = new Notification(title, { body, tag: 'zamarket-action', renotify: true })
+    n.onclick = () => { try { window.focus() } catch { /* ignore */ } n.close() }
+  } catch { /* some browsers refuse outside a service worker; the chime still plays */ }
+}
+
 const ago = (iso) => {
   if (!iso) return null
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000)
@@ -19,35 +50,58 @@ export default function ActionBell() {
   const [groups, setGroups] = useState([])
   const [open, setOpen] = useState(false)
   const [sound, setSoundOn] = useState(soundOn())
+  const [perm, setPerm] = useState(notifyState())
   const box = useRef(null)
   // The badge counts what has arrived SINCE YOU LAST LOOKED, not everything
   // outstanding. The list underneath still shows all the work until it is
   // actually done — so opening the bell clears the red dot without hiding a
   // pending order, which is the thing that must never disappear quietly.
-  const [seen, setSeenCount] = useState(() => {
-    try { return Number(localStorage.getItem('zamarket-bell-seen') || 0) } catch { return 0 }
+  //
+  // This is remembered per KIND of work, not as one running total. A single
+  // total hid real arrivals: with three orders already waiting, a fourth
+  // arriving while one was handled left the total at three and showed no
+  // badge at all. Counting each kind against what you last saw of that kind
+  // cannot go quiet like that.
+  const [seen, setSeen] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('zamarket-bell-seen-v2') || '{}') } catch { return {} }
   })
-  // What the count was last time, so a sound only plays when something NEW
+  // What each kind stood at last time, so a sound plays when something NEW
   // arrives rather than every time the list is refreshed.
-  const lastCount = useRef(null)
+  const lastCounts = useRef(null)
 
   const load = async () => {
     const { data, error } = await supabase.rpc('action_center')
     if (error) return
     const next = data || []
-    const total = next.reduce((t, g) => t + Number(g.count || 0), 0)
-    const was = lastCount.current
+    const counts = Object.fromEntries(next.map((g) => [g.key, Number(g.count || 0)]))
+    const was = lastCounts.current
     setGroups(next)
-    lastCount.current = total
-    setSeenCount((prev) => {
-      if (prev <= total) return prev
-      try { localStorage.setItem('zamarket-bell-seen', String(total)) } catch { /* ignore */ }
-      return total
+    lastCounts.current = counts
+
+    // When work is handled elsewhere, what you have "seen" of that kind drops
+    // with it, so the badge never owes you a number for something already done.
+    setSeen((prev) => {
+      const merged = { ...prev }
+      let changed = false
+      for (const [k, v] of Object.entries(counts)) {
+        if (merged[k] != null && merged[k] > v) { merged[k] = v; changed = true }
+      }
+      for (const k of Object.keys(merged)) {
+        if (counts[k] == null) { delete merged[k]; changed = true }
+      }
+      if (changed) save(merged)
+      return changed ? merged : prev
     })
-    // Only on a genuine increase, and never on the first load — otherwise
+
+    // Only on a genuine arrival, and never on the first load — otherwise
     // opening the dashboard would chime at whatever was already waiting.
-    if (was != null && total > was) {
-      chime({ urgent: next.some((g) => g.tone === 'urgent') })
+    if (was) {
+      const arrived = next.filter((g) => Number(g.count || 0) > Number(was[g.key] || 0))
+      if (arrived.length) {
+        const urgentNow = arrived.some((g) => g.tone === 'urgent')
+        chime({ urgent: urgentNow })
+        notify(arrived, urgentNow)
+      }
     }
   }
   useEffect(() => {
@@ -64,12 +118,15 @@ export default function ActionBell() {
   }, [open])
 
   const total = groups.reduce((t, g) => t + Number(g.count || 0), 0)
-  const fresh = Math.max(0, total - seen)
+  // New work, counted per kind: what is waiting now minus what you last saw.
+  const fresh = groups.reduce(
+    (t, g) => t + Math.max(0, Number(g.count || 0) - Number(seen[g.key] || 0)), 0)
   const urgent = groups.some((g) => g.tone === 'urgent')
 
   const markSeen = () => {
-    setSeenCount(total)
-    try { localStorage.setItem('zamarket-bell-seen', String(total)) } catch { /* private window */ }
+    const now = Object.fromEntries(groups.map((g) => [g.key, Number(g.count || 0)]))
+    setSeen(now)
+    save(now)
   }
 
   return (
@@ -96,6 +153,11 @@ export default function ActionBell() {
                 onClick={() => { const v = !sound; setSound(v); setSoundOn(v); if (v) chime() }}>
                 {sound ? '🔔 Sound on' : '🔕 Sound off'}
               </button>
+              {canNotify() && perm !== 'granted' && (
+                <button className="btn sm ghost" onClick={async () => setPerm(await askToNotify())}>
+                  {perm === 'denied' ? '🔕 Blocked' : '🔔 Alert me'}
+                </button>
+              )}
               <button className="btn sm ghost" onClick={load}>Refresh</button>
             </span>
           </div>
