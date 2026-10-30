@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
@@ -71,13 +71,16 @@ export function VendorHome() {
         <div className="card stack-sm">
           <div className="between"><h3>Your store link</h3><Link to="/vendor/marketing" className="small">Share and advertise</Link></div>
           <CopyLine text={`${window.location.origin}/${data.store.slug}`} />
-          <p className="small muted">Share it on Instagram, WhatsApp or Facebook. Sales from people who arrive through your link cost you a {data.store.own_fee_pct}% fee instead of {data.store.normal_fee_pct}%. So far: {data.store.own_orders} order{data.store.own_orders === 1 ? '' : 's'}, {money(data.store.own_sales)}.</p>
+          {/* In take-home pricing the vendor is settled at the price they set, so a
+              reduced fee changes nothing for them — claiming otherwise is a promise
+              the settlement does not keep. The honest benefit is the traffic. */}
+          <p className="small muted">Share it on Instagram, WhatsApp or Facebook. It takes people straight into your shop instead of the marketplace. So far: {data.store.own_orders} order{data.store.own_orders === 1 ? '' : 's'}, {money(data.store.own_sales)}.</p>
         </div>
       )}
       <VendorTraffic />
       <section className="card stack-sm">
         <h3>Your link to ZaMarket</h3>
-        <p className="small muted">Share this with anyone. If they buy from your store, you pay our smaller fee of {settings.own_audience_fee_pct}%. If they buy from another seller here, you still earn {settings.vendor_referral_pct}% of what they spend.</p>
+        <p className="small muted">Share this with anyone. If they buy from your store, you receive exactly what you asked for, as always. If they buy from another seller here, you earn {settings.vendor_referral_pct}% of what they spend.</p>
         <ShareThis store={v} products={[]} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
         <div className="store-qr">
           <QrCode value={`${window.location.origin}/${v.slug}`} size={132} />
@@ -411,7 +414,7 @@ export function VendorMarketing() {
       <div className="page-head"><div><h1>Share and advertise</h1><p>Bring your own customers with your links, or ask our team to run ads for you.</p></div></div>
       <div className="card stack-sm">
         <h3>Your links</h3>
-        <p className="small muted">People who arrive through these links are credited to you, and you pay a {data.store.own_fee_pct}% fee on those sales instead of {data.store.normal_fee_pct}%.</p>
+        <p className="small muted">People who arrive through these links are credited to you. If they buy from another seller on ZaMarket, you earn a share of that too.</p>
         <div className="tiny muted">Your store</div>
         <CopyLine text={base} />
         {data.products.map((p) => (<div key={p.id}><div className="tiny muted">{p.name}</div><CopyLine text={`${base}/${p.slug}`} /></div>))}
