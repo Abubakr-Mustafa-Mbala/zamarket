@@ -43,6 +43,9 @@ export function CartProvider({ children }) {
       fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days || 0, order_days: product.order_days || null,
       time_slots: product.time_slots || null, service_location: product.service_location || null, duration_text: product.duration_text || null,
       vendor_name: product.vendor_name || null,
+      // Needed at checkout: delivery is quoted from the sellers in the basket,
+      // because one trip has to reach the furthest of them.
+      vendor_id: product.vendor_id || null,
     }
     if (pkg) Object.assign(line, { package_id: pkg.id, package_name: pkg.name, name: `${product.name} — ${pkg.name}`, price: Number(pkg.price), normalValue: Number(pkg.normal_price || pkg.price) })
     if (offer) {
