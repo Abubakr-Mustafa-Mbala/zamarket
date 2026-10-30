@@ -34,18 +34,22 @@ export default function PriceMaths({ take }) {
         <span>The customer pays</span>
         <strong>{money(p.shelf)}</strong>
       </div>
+      {/* price_preview returns margin_total — the whole amount above the vendor's
+          take-home. It is not fee_pct of the shelf price, because it also carries
+          the room reserved for an affiliate's commission. Showing a single
+          percentage here would understate it and read as a mistake. */}
       <div className="pm-row">
-        <span>ZaMarket's share ({p.fee_pct}%)</span>
-        <span>− {money(p.marketplace_share)}</span>
+        <span>ZaMarket's share</span>
+        <span>− {money(p.margin_total)}</span>
       </div>
       <div className="pm-row total">
         <span>You receive</span>
         <strong>{money(p.vendor_receives)}</strong>
       </div>
-      {Number(p.rounding_gain) > 0 && (
+      {Number(p.allowance_pct) > 0 && (
         <p className="tiny muted">
-          {money(p.rounding_gain)} more than you asked for, because the price is rounded up to a
-          tidy number. It is yours.
+          That share includes the {p.allowance_pct}% set aside for commission if an affiliate
+          brings the sale. Either way, what you receive does not change.
         </p>
       )}
       {p.below_minimum && (
