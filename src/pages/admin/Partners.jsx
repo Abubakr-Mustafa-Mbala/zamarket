@@ -193,6 +193,11 @@ export function Vendors() {
           { key: 'fees', label: 'Fees earned', num: true, render: (v) => money(v.fees) },
           { key: 'owed', label: 'We owe', num: true, render: (v) => <span className={v.owed ? 'copper strong' : ''}>{money(v.owed)}</span> },
           { key: 'created_at', label: 'Applied', render: (v) => date(v.created_at) },
+          // Some sellers cannot set their own shop up. This opens their own
+          // screens so a staff member can do it for them.
+          { key: 'setup', label: '', render: (v) => v.status === 'approved'
+            ? <Link className="btn sm" to={`/admin/vendors/${v.id}/shop`} onClick={(e) => e.stopPropagation()}>Set up shop</Link>
+            : null },
         ]} />
       )}
       {open && <VendorModal v={open} onClose={() => setOpen(null)} onReview={review} onSave={saveVendor} canReview={isFounder} />}
@@ -206,7 +211,7 @@ function VendorModal({ v: initial, onClose, onReview, onSave, canReview }) {
   return (
     <Modal title={v.business_name} onClose={onClose}>
       <div className="stack">
-        <div className="between"><div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div>{v.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/vendor/${v.id}`}>View earnings</Link>}</div>
+        <div className="between"><div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div><div className="btn-row">{v.status === 'approved' && <Link className="btn sm primary" to={`/admin/vendors/${v.id}/shop`}>Set up their shop</Link>}{v.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/vendor/${v.id}`}>View earnings</Link>}</div></div>
         <Breakdown items={[['Owner', v.owner_name || '—'], ['Phone', v.phone], ['Email', v.email || '—'], ['Location', v.location || '—'], ['Category', v.category || '—'], ['Delivers?', v.delivery_capability || '—'], ['Returns policy', v.return_policy || '—'], ['Links', v.links || '—'], ['Licences', v.licenses || '—'], ['Payout details', v.payout_info || '—'], ['Agreed to terms', v.agreed_terms ? 'Yes' : 'No']]} />
         {v.description && <div className="small"><span className="strong">What they sell:</span> {v.description}</div>}
         {v.slug && v.status === 'approved' && (
