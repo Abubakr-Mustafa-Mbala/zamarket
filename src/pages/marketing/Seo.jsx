@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
-import { Loading, Empty, CopyLine, Badge } from '../../components/ui'
+import { Loading, Empty, CopyLine, Badge, useToast } from '../../components/ui'
 
 // Plain checks that decide whether a page can be found and whether anyone clicks it.
 function check(p) {
@@ -24,7 +24,7 @@ const TIPS = [
   },
   {
     t: 'One page per thing you sell',
-    b: 'Each product and each store has its own address, like zamarket.com/aminas-kitchen/birthday-cake. That is what Google lists. The more real pages you publish, the more chances to be found.',
+    b: 'Each product and each store has its own address, like zamarket.shop/aminas-kitchen/birthday-cake. That is what Google lists. The more real pages you publish, the more chances to be found.',
   },
   {
     t: 'Write for one person, not for Google',
@@ -45,34 +45,71 @@ const TIPS = [
 ]
 
 export default function Seo() {
+  const toast = useToast()
   const [open, setOpen] = useState(null)
+  const [notifyPath, setNotifyPath] = useState('')
+  const [notifying, setNotifying] = useState(false)
   const { data, loading } = useData(async () => ({
-    products: await q(supabase.from('products').select('id,name,slug,description,images,category,price,status,page,vendor_id').eq('status', 'published').order('name')),
+    products: await q(supabase.from('public_products').select('id,name,slug,description,images,category,price,status,page,vendor_id,vendor_slug').eq('status', 'published').order('name')),
     vendors: await q(supabase.from('public_vendors').select('id,slug,business_name,description')),
   }), [])
   const rows = useMemo(() => (data?.products || []).map((p) => ({ ...p, issues: check(p) })), [data])
   if (loading) return <Loading />
   const clean = rows.filter((r) => r.issues.length === 0).length
-  const site = window.location.origin
+  const site = 'https://zamarket.shop'
+  const notifyIndexNow = async () => {
+    if (!notifyPath.trim()) return toast('Enter a published ZA Market page URL', true)
+    let path
+    try {
+      const url = new URL(notifyPath, site)
+      if (url.origin !== site) throw new Error('Only zamarket.shop URLs are supported')
+      path = url.pathname
+    } catch { return toast('Enter a valid zamarket.shop product, store or blog URL', true) }
+    setNotifying(true)
+    try {
+      const { data: auth } = await supabase.auth.getSession()
+      const token = auth.session?.access_token
+      if (!token) throw new Error('Sign in first')
+      const result = await fetch('/.netlify/functions/indexnow', {
+        method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ path }),
+      })
+      const json = await result.json()
+      if (!result.ok) throw new Error(json.message || 'Could not submit')
+      toast('URL submitted to IndexNow-enabled search engines')
+    } catch (e) { toast(e.message, true) }
+    finally { setNotifying(false) }
+  }
 
   return (
     <div className="stack">
       <div className="mk-kpis">
-        <div className="kpi lead"><span className="kpi-l">Pages Google can list</span><span className="kpi-v">{rows.length + (data.vendors?.length || 0)}</span><span className="kpi-s">{rows.length} products, {data.vendors?.length || 0} stores</span></div>
-        <div className="kpi"><span className="kpi-l">Ready to rank</span><span className="kpi-v">{clean}</span><span className="kpi-s">no problems found</span></div>
+        <div className="kpi lead"><span className="kpi-l">Public product/store pages</span><span className="kpi-v">{rows.length + (data.vendors?.length || 0)}</span><span className="kpi-s">{rows.length} products, {data.vendors?.length || 0} stores</span></div>
+        <div className="kpi"><span className="kpi-l">Pass on-page checks</span><span className="kpi-v">{clean}</span><span className="kpi-s">no issues flagged here</span></div>
         <div className="kpi"><span className="kpi-l">Need work</span><span className="kpi-v">{rows.length - clean}</span><span className="kpi-s">listed below</span></div>
       </div>
 
       <section className="card stack-sm">
-        <h3>Tell Google your site exists</h3>
-        <p className="small muted">Do this once, after you deploy. It is free and takes ten minutes.</p>
+        <h3>Get ZA Market discovered on Google and other search engines</h3>
+        <p className="small muted">After deploying and verifying your site, submit the same sitemap to each webmaster service. Submission helps discovery, not guaranteed ranking.</p>
         <ol className="week">
-          <li>Open <strong>Google Search Console</strong> and add your site address.</li>
-          <li>Verify it by adding the DNS record or HTML tag they give you.</li>
-          <li>Submit your sitemap: <CopyLine text={`${site}/sitemap.xml`} /></li>
-          <li>Create a free <strong>Google Business Profile</strong> for your business in Lusaka, with the same name and phone you use here.</li>
+          <li>Verify <strong>zamarket.shop</strong> in <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Google Search Console</a> using a DNS record or verification tag.</li>
+          <li>Verify the site in <a href="https://www.bing.com/webmasters" target="_blank" rel="noopener noreferrer">Bing Webmaster Tools</a> (you can import verification from Google).</li>
+          <li>Submit this sitemap in both tools: <CopyLine text={`${site}/sitemap.xml`} /></li>
+          <li>Check your most important product and article pages with URL Inspection. Request indexing for priority pages when needed; repeated submissions do not force ranking.</li>
+          <li>Only if ZA Market has an eligible customer-facing business location, create a Google Business Profile using your real name, location and contact details.</li>
         </ol>
-        <p className="tiny muted">Your sitemap updates itself every time you publish a product or approve a vendor, so you never resubmit it.</p>
+        <p className="tiny muted">The sitemap paginates published listings and articles. It is generated from live data; it does not submit URLs by itself. IndexNow notifications for newly published articles are optional and require INDEXNOW_KEY configured in Netlify.</p>
+      </section>
+
+      <section className="card stack-sm">
+        <h3>Notify Bing and other IndexNow search engines</h3>
+        <p className="small muted">After deploying and configuring INDEXNOW_KEY, submit a recently published or changed product, seller or blog page. This does not notify Google or guarantee indexing.</p>
+        <div className="btn-row wrap">
+          <input className="input" style={{ flex: '1 1 320px' }} aria-label="Published page URL" placeholder="https://zamarket.shop/blog/your-guide" value={notifyPath} onChange={e => setNotifyPath(e.target.value)} />
+          <button type="button" className="btn primary" disabled={notifying} onClick={notifyIndexNow}>{notifying ? 'Submitting…' : 'Notify IndexNow'}</button>
+        </div>
+        <p className="tiny muted">This feature needs a real Netlify INDEXNOW_KEY and a working public key URL. Never put secret keys in browser code. Google discovery still requires a sitemap and Search Console.</p>
       </section>
 
       <section className="stack-sm">
@@ -84,7 +121,7 @@ export default function Seo() {
               <div className="between">
                 <div>
                   <strong>{r.name}</strong>
-                  <div className="tiny muted">{site}/p/{r.slug}</div>
+                  <div className="tiny muted">{site}{r.vendor_slug ? `/${r.vendor_slug}/${r.slug}` : `/p/${r.slug}`}</div>
                 </div>
                 <div className="btn-row">
                   {r.issues.map((i) => <Badge key={i.key} tone="warn">{i.label}</Badge>)}
@@ -115,8 +152,15 @@ export default function Seo() {
         </div>
       </section>
 
-      <section className="card small muted">
-        <p><strong>What is already handled for you.</strong> Every page sends Google a proper title, description and product details (price, photos, ratings), plus a share picture so links look right in WhatsApp. Admin, checkout and personal pages are kept out of search. The sitemap is generated from live data. You don't have to touch any of that.</p>
+      <section className="card stack-sm">
+        <h3>Content and product visibility</h3>
+        <p className="small muted">Write original shopping guides with useful photos and video, clear product names, real prices and descriptive image alt text. Link each guide to the specific products mentioned, then share its own URL through a tracked marketing campaign.</p>
+        <div className="btn-row wrap">
+          <Link className="btn" to="/admin/marketing/blog">Write a buying guide</Link>
+          <Link className="btn" to="/admin/marketing/launch">Create promotional posts</Link>
+          <a className="btn" href="https://search.google.com/test/rich-results" rel="noopener noreferrer" target="_blank">Check product rich results</a>
+        </div>
+        <p className="tiny muted">The local checks above inspect product content; they cannot confirm search-engine indexing, search position, Core Web Vitals, or actual results shown by Google/Bing. Check those separately in Search Console, Bing Webmaster Tools, and your analytics.</p>
       </section>
     </div>
   )

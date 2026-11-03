@@ -23,6 +23,7 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
+  const [showLink, setShowLink] = useState(false)
   const madeId = useRef(null)
 
   const link = `${window.location.origin}/r/${code}/${product.slug}`
@@ -45,7 +46,7 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
       .then((b) => {
         if (dead || !b) return
         setBlob(b)
-        setImg(URL.createObjectURL(b))
+        setImg((previous) => { if (previous) URL.revokeObjectURL(previous); return URL.createObjectURL(b) })
         supabase.rpc('log_creative', { payload: {
           kind: 'promotion', composition: composition?.key, hook: hook?.text, hook_family: hook?.family,
           format, product_id: product.id,
@@ -59,7 +60,13 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const check = useMemo(() => checkCreative({ product, offer, hook: hook?.text, caption: text, link, settings }),
     [product, offer, hook?.text, text, link, settings])
 
-  const copy = async () => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
+  useEffect(() => () => { if (img) URL.revokeObjectURL(img) }, [img])
+  const copyValue = async (value, label) => {
+    try { await navigator.clipboard.writeText(value); toast(`${label} copied`) }
+    catch { toast(`Could not copy ${label.toLowerCase()}`, true) }
+  }
+  const copy = () => copyValue(text, 'Message')
+  const copyLink = () => copyValue(link, 'Referral link')
   const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
   const share = async () => {
     if (!blob) return copy()
@@ -96,7 +103,9 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
             <input className="input" value={intro} onChange={(e) => setIntro(e.target.value)} placeholder="e.g. Guys, I've been using this one myself…" maxLength={140} />
           </label>
 
-          <textarea className="input kit-text" rows={9} value={text} onChange={(e) => setEdited(e.target.value)} />
+          <label className="field"><span>Promotion message <span className="muted">({text.length} characters)</span></span>
+            <textarea className="input kit-text" rows={9} value={text} onChange={(e) => setEdited(e.target.value)} aria-label="Promotion message" />
+          </label>
           {(!check.ok || check.warnings.length > 0) && (
             <div className={`check-box ${check.ok ? 'warn' : 'bad'}`}>
               <strong>{check.ok ? 'Worth a second look' : 'This cannot be shared yet'}</strong>
@@ -111,8 +120,9 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
             {canShareFiles
               ? <button className="btn primary" onClick={share} disabled={!check.ok}>Share picture and message</button>
               : <button className="btn primary" onClick={share} disabled={!check.ok}>Download the picture</button>}
-            <a className="btn buy" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
-            <button className="btn" onClick={copy}>Copy the message</button>
+            <a className="btn buy" href={check.ok ? `https://wa.me/?text=${encodeURIComponent(text)}` : undefined} aria-disabled={!check.ok} onClick={(e) => { if (!check.ok) e.preventDefault() }} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
+            <button className="btn" onClick={copy} disabled={!check.ok}>Copy the message</button>
+            <button className="btn" onClick={copyLink}>Copy referral link</button>
             {edited !== null && <button className="btn ghost sm" onClick={() => setEdited(null)}>Undo my edits</button>}
           </div>
         </div>
@@ -132,8 +142,10 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
               <button key={c.key} className={`chip ${i === look % looks.length ? 'on' : ''}`} onClick={() => setLook(i)} title={c.note}>{c.label}</button>
             ))}
           </div>
-          {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt="" />}
-          <p className="tiny muted">Your link is already in the picture and the message: <br /><span className="strong">{link.replace(/^https?:\/\//, '')}</span></p>
+          {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt={`Promotion preview for ${product.name}`} />}
+          <p className="tiny muted">Your referral link is included in the promotion. Customers who follow it reach the current product listing.</p>
+          <button className="btn ghost sm" type="button" onClick={() => setShowLink(!showLink)} aria-expanded={showLink}>{showLink ? "Hide referral link" : "Show referral link"}</button>
+          {showLink && <input className="input" readOnly value={link} aria-label="Your referral link" onFocus={(e) => e.target.select()} />}
         </aside>
       </div>
     </Modal>

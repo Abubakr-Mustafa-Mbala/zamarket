@@ -247,7 +247,12 @@ export async function storeCard({ store, products, link }) {
 
 // Share the picture, with the caption, straight to WhatsApp or anywhere else.
 export async function sharePicture(blob, { caption, filename = 'zamarket.jpg' }) {
-  const file = new File([blob], filename, { type: 'image/jpeg' })
+  // Preserve the actual encoder format (price lists are PNG; other cards may be JPEG).
+  const mime = blob?.type || (filename.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg')
+  const extension = mime === 'image/png' ? '.png' : mime === 'image/jpeg' ? '.jpg' : ''
+  const safeName = extension && !filename.toLowerCase().endsWith(extension)
+    ? filename.replace(/\.(png|jpe?g)$/i, '') + extension : filename
+  const file = new File([blob], safeName, { type: mime })
   if (navigator.canShare?.({ files: [file] }) && navigator.share) {
     await navigator.share({ files: [file], text: caption })
     return 'shared'
@@ -255,7 +260,7 @@ export async function sharePicture(blob, { caption, filename = 'zamarket.jpg' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = filename
+  a.download = safeName
   document.body.appendChild(a)
   a.click()
   a.remove()

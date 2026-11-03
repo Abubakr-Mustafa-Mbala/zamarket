@@ -50,8 +50,8 @@ export const STYLES = {
 // The layout follows the content: five things are shown, twenty-five are listed.
 export function layoutFor(count, sheet) {
   const tall = sheet === 'story' || sheet === 'a4'
-  if (count <= (tall ? 8 : 6)) return 'showcase'
-  if (count <= (tall ? 18 : 14)) return 'rows'
+  if (count <= (tall ? 6 : 4)) return 'showcase'
+  if (count <= (tall ? 20 : 12)) return 'rows'
   return 'columns'
 }
 const font = (weight, size, display) =>
@@ -75,6 +75,23 @@ function rounded(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, rr)
   ctx.arcTo(x, y, x + w, y, rr)
   ctx.closePath()
+}
+
+function wrapped(ctx, text, maxWidth, maxLines = 2) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  const lines = []
+  let line = ''
+  for (const word of words) {
+    const next = line ? `${line} ${word}` : word
+    if (ctx.measureText(next).width <= maxWidth) { line = next; continue }
+    if (line) lines.push(line)
+    line = word
+    if (lines.length === maxLines - 1) break
+  }
+  const used = lines.join(' ').split(/\s+/).filter(Boolean).length
+  if (lines.length === maxLines - 1) line = words.slice(used).join(' ')
+  if (line) lines.push(fit(ctx, line, maxWidth))
+  return lines.slice(0, maxLines)
 }
 
 function fit(ctx, text, maxWidth) {
@@ -172,7 +189,7 @@ function drawFooter(ctx, S, F, M, { vendor, note }) {
 
   ctx.fillStyle = S.muted
   setType(ctx, S, { weight: 600, size: Math.round(F.w * 0.018) })
-  const host = typeof window !== 'undefined' ? window.location.host : 'zamarket'
+  const host = 'zamarket.shop'
   const link = vendor?.slug ? `${host}/${vendor.slug}` : host
   ctx.fillText(link, M, y + Math.round(F.h * 0.022))
 
@@ -208,13 +225,13 @@ function priceInk(ctx, S, F, p, x, y, size, alignRight) {
 // Few products: show them. Big photographs, big prices, room to breathe.
 async function layoutShowcase(ctx, S, F, M, products, top) {
   const inner = F.w - M * 2
-  const cols = products.length <= 3 ? 1 : 2
+  const cols = products.length === 1 ? 1 : 2
   const gap = Math.round(F.w * 0.035)
   const cellW = Math.round((inner - gap * (cols - 1)) / cols)
   const bottom = F.h - Math.round(F.h * 0.11)
   const rows = Math.ceil(products.length / cols)
   const cellH = Math.min(Math.round((bottom - top - gap * (rows - 1)) / rows), Math.round(F.h * 0.34))
-  const imgH = Math.round(cellH * (cols === 1 ? 0.62 : 0.66))
+  const imgH = Math.round(cellH * (cols === 1 ? 0.59 : 0.60))
 
   for (let i = 0; i < products.length; i++) {
     const p = products[i]
@@ -231,10 +248,12 @@ async function layoutShowcase(ctx, S, F, M, products, top) {
     }
 
     ctx.fillStyle = S.ink
-    setType(ctx, S, { weight: S.display === 'serif' ? 600 : 700, size: Math.round(cellW * 0.072), display: true })
-    ctx.fillText(fit(ctx, p.name, cellW), x, y + imgH + Math.round(cellH * 0.13))
-
-    priceInk(ctx, S, F, p, x, y + imgH + Math.round(cellH * 0.27), Math.round(cellW * 0.085), false)
+    const nameSize = Math.max(21, Math.min(38, Math.round(cellW * 0.064)))
+    setType(ctx, S, { weight: S.display === 'serif' ? 600 : 700, size: nameSize, display: true })
+    const nameLines = wrapped(ctx, p.name, cellW, 2)
+    nameLines.forEach((line, n) => ctx.fillText(line, x, y + imgH + nameSize * (1.15 + n * 1.16)))
+    const priceY = Math.min(y + cellH - 9, y + imgH + nameSize * (1.15 + nameLines.length * 1.16) + Math.round(cellH * 0.09))
+    priceInk(ctx, S, F, p, x, priceY, Math.min(Math.round(cellW * 0.082), 46), false)
   }
 }
 
@@ -244,7 +263,7 @@ async function layoutRows(ctx, S, F, M, products, top) {
   const bottom = F.h - Math.round(F.h * 0.11)
   const groups = groupProducts(products)
   const lines = products.length + groups.length
-  const rowH = Math.max(54, Math.min(Math.round((bottom - top) / lines), Math.round(F.w * 0.105)))
+  const rowH = Math.max(46, Math.min(Math.round((bottom - top) / lines), Math.round(F.w * 0.105)))
   const photo = rowH >= 68
   let y = top
 
@@ -272,7 +291,7 @@ async function layoutRows(ctx, S, F, M, products, top) {
       }
       ctx.fillStyle = S.ink
       setType(ctx, S, { weight: 600, size: Math.round(rowH * 0.32) })
-      ctx.fillText(fit(ctx, p.name, inner - (x - M) - Math.round(inner * 0.34)), x, y + rowH * 0.58)
+      ctx.fillText(fit(ctx, p.name, inner - (x - M) - Math.round(inner * 0.40)), x, y + rowH * 0.58)
       priceInk(ctx, S, F, p, M + inner, y + rowH * 0.58, Math.round(rowH * 0.36), true)
 
       if (S.rules && !S.stripes) {
@@ -386,7 +405,7 @@ export async function renderPriceList({
   else layoutColumns(ctx, S, F, M, products, top)
 
   drawFooter(ctx, S, F, M, { vendor, note })
-  return new Promise((res) => c.toBlob(res, 'image/jpeg', 0.93))
+  return new Promise((res, rej) => c.toBlob((blob) => blob ? res(blob) : rej(new Error('Image export failed')), 'image/png'))
 }
 
 // How many rows fit before the sheet starts to look crowded.
@@ -398,7 +417,7 @@ export const roomFor = (sheet) => (sheet === 'story' ? 30 : sheet === 'a4' ? 40 
 // number we make several pages instead, each with its own footer and page number.
 
 export function pagesFor(products, sheet) {
-  const perPage = sheet === 'a4' ? 26 : sheet === 'story' ? 20 : 16
+  const perPage = sheet === 'a4' ? 20 : sheet === 'story' ? 16 : sheet === 'square' ? 10 : 12
   if (products.length <= perPage) return [products]
   // keep categories together where we can: start a new page on a category break
   const groups = groupProducts(products)

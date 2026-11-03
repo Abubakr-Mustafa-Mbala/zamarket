@@ -1,4 +1,4 @@
-import { useEffect, useState, createContext, useContext } from 'react'
+import { useEffect, useState, createContext, useContext, forwardRef } from 'react'
 import { money, title } from '../lib/format'
 import { TONE } from '../lib/statuses'
 
@@ -57,9 +57,9 @@ export function Select({ value, onChange, options, placeholder, ...rest }) {
   )
 }
 
-export function Textarea({ value, onChange, ...rest }) {
-  return <textarea className="input" value={value ?? ''} onChange={(e) => onChange(e.target.value)} {...rest} />
-}
+export const Textarea = forwardRef(function Textarea({ value, onChange, ...rest }, ref) {
+  return <textarea ref={ref} className="input" value={value ?? ''} onChange={(e) => onChange(e.target.value)} {...rest} />
+})
 
 export function Modal({ title: t, onClose, children, wide }) {
   useEffect(() => {

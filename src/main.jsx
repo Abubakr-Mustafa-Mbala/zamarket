@@ -7,6 +7,7 @@ import { CartProvider } from './lib/cart'
 import { SavedProvider } from './lib/saved'
 import { ToastProvider } from './components/ui'
 import './styles.css'
+import './premium.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

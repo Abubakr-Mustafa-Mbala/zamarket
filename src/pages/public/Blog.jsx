@@ -5,12 +5,13 @@ import { useSeo } from '../../lib/seo'
 import { money, date } from '../../lib/format'
 import { Loading } from '../../components/ui'
 import Icon from '../../lib/icons'
+import { safeArticleUrl, describeVideo } from '../../lib/blogMedia'
 
 // A very small markdown renderer. The blog is written by the marketplace team,
 // not by the public, so this only has to handle what the editor produces —
 // headings, paragraphs, lists, links, bold and quotes. No HTML is passed
 // through, so a pasted <script> renders as text rather than running.
-function Article({ body }) {
+export function Article({ body }) {
   const blocks = (body || '').split(/\n{2,}/)
   const inline = (t) => {
     const out = []
@@ -19,10 +20,10 @@ function Article({ body }) {
     while ((m = re.exec(t))) {
       if (m.index > last) out.push(t.slice(last, m.index))
       if (m[1]) {
-        const href = m[2]
-        out.push(href.startsWith('/')
+        const href = safeArticleUrl(m[2])
+        out.push(!href ? m[1] : href.startsWith('/')
           ? <Link key={k++} to={href}>{m[1]}</Link>
-          : <a key={k++} href={href} target="_blank" rel="noreferrer nofollow">{m[1]}</a>)
+          : <a key={k++} href={href} target="_blank" rel="noopener noreferrer">{m[1]}</a>)
       } else if (m[3]) out.push(<strong key={k++}>{m[3]}</strong>)
       else if (m[4]) out.push(<code key={k++}>{m[4]}</code>)
       last = m.index + m[0].length
@@ -60,8 +61,25 @@ function Article({ body }) {
       const bullet = l.match(/^[-*]\s+(.*)$/)
       const numbered = l.match(/^\d+\.\s+(.*)$/)
       const quote = l.match(/^>\s+(.*)$/)
+      const image = l.match(/^!\[([^\]]*)\]\(([^)\s]+)\)$/)
+      const video = l.match(/^\[video\]\(([^)\s]+)\)$/i)
+      const imageUrl = image && safeArticleUrl(image[2])
+      const videoInfo = video && describeVideo(video[1])
 
-      if (h) {
+      if (imageUrl) {
+        flushPara(); flushList()
+        out.push(<figure className="article-media" key={`${key}-img${out.length}`}>
+          <img src={imageUrl} alt={image[1] || 'Article image'} loading="lazy" decoding="async" />
+          {image[1] && <figcaption>{image[1]}</figcaption>}
+        </figure>)
+      } else if (videoInfo) {
+        flushPara(); flushList()
+        out.push(<figure className="article-media article-video" key={`${key}-vid${out.length}`}>
+          {videoInfo.kind === 'file'
+            ? <video src={videoInfo.src} controls preload="metadata" playsInline aria-label="Article video" />
+            : <iframe src={videoInfo.src} title={`${videoInfo.provider} video in article`} loading="lazy" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen />}
+        </figure>)
+      } else if (h) {
         flushPara(); flushList()
         const Tag = h[1].length >= 3 ? 'h3' : 'h2'
         out.push(<Tag key={`${key}-h${out.length}`}>{inline(h[2])}</Tag>)
@@ -155,7 +173,7 @@ export function BlogIndex() {
           {posts.map((p) => (
             <Link key={p.slug} to={`/blog/${p.slug}`} className="blog-card">
               <span className="bc-pic">
-                {p.cover_url ? <img src={p.cover_url} alt="" loading="lazy" /> : <span className="ph" aria-hidden />}
+                {p.cover_url ? <img src={p.cover_url} alt={p.title} loading="lazy" /> : <span className="ph" aria-hidden />}
               </span>
               <span className="bc-body">
                 {p.category && <em className="bc-cat">{p.category}</em>}
@@ -192,16 +210,18 @@ export function BlogPost() {
     image: post.cover_url || undefined,
     // Absolute, because og:url is built from this too and WhatsApp will not
     // resolve a relative path when it builds the link preview.
-    canonical: `${window.location.origin}/blog/${post.slug}`,
-  } : {})
+    canonical: `https://zamarket.shop/blog/${post.slug}`,
+  } : post ? { noIndex: true } : {})
 
   // Article structured data, so Google can show this as a proper article
   // rather than guessing. Written straight into the page because the blog is
   // the one thing here that search engines are meant to read closely.
   useEffect(() => {
     if (!post?.found) return
-    const el = document.createElement('script')
+    const el = document.head.querySelector('script[data-zm-page-article]') ||
+      document.head.querySelector('script[data-zm-edge-jsonld]') || document.createElement('script')
     el.type = 'application/ld+json'
+    el.setAttribute('data-zm-page-article', 'true')
     el.text = JSON.stringify({
       '@context': 'https://schema.org',
       '@type': 'Article',
@@ -211,7 +231,7 @@ export function BlogPost() {
       datePublished: post.published_at,
       author: { '@type': 'Organization', name: post.author || 'ZaMarket' },
       publisher: { '@type': 'Organization', name: 'ZaMarket' },
-      mainEntityOfPage: `${window.location.origin}/blog/${post.slug}`,
+      mainEntityOfPage: `https://zamarket.shop/blog/${post.slug}`,
     })
     document.head.appendChild(el)
     return () => { el.remove() }
@@ -243,7 +263,7 @@ export function BlogPost() {
       </header>
 
       {post.cover_url && (
-        <div className="post-cover"><img src={post.cover_url} alt="" /></div>
+        <div className="post-cover"><img src={post.cover_url} alt={post.title} /></div>
       )}
 
       <Article body={post.body} />

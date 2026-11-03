@@ -6,6 +6,7 @@ import { money } from '../../lib/format'
 import { Modal, Stars, useToast } from '../../components/ui'
 import { iconFor } from '../../lib/categories'
 import { useDepartments } from '../../lib/departments'
+import ProductGallery from '../../components/ProductGallery'
 
 // Icons a seller can pick for "What you get" blocks (original line drawings)
 const G = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
@@ -60,9 +61,34 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
           </div>
         </div>
         <div className="of-hero-media">
-          {heroImg ? <img src={heroImg} alt={p.name} /> : <span className="of-ph" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}
-          {p.images?.length > 1 && <div className="of-thumbs">{p.images.slice(1, 4).map((src, i) => <img key={i} src={src} alt="" />)}</div>}
+          <ProductGallery images={p.images || []} name={p.name} fallback={<span className="of-ph" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>} />
         </div>
+      </section>
+
+      {/* ORDERING GUIDE — instructions are tied to the actual sales model. */}
+      <section className="of-order-guide" aria-labelledby="of-order-guide-title">
+        <div className="of-order-guide-head">
+          <h2 id="of-order-guide-title">How to {model === 'buy' ? 'order' : model === 'book' ? 'book' : 'enquire'}</h2>
+          <p>Know what happens before you continue.</p>
+        </div>
+        <ol className="of-order-steps">
+          {(model === 'buy' ? [
+            ['Choose your item', packages.length > 0 ? 'Select the package you want, then continue to your cart.' : 'Review the details and add this item to your cart.'],
+            ['Provide order details', 'Continue through checkout and enter the requested contact and delivery details.'],
+            ['Wait for confirmation', 'ZA Market will contact you to confirm the order and next steps.'],
+          ] : model === 'book' ? [
+            ['Choose your option', packages.length > 0 ? 'Select the package or booking option that suits you.' : 'Review the offering and start your booking.'],
+            ['Enter your details', 'Complete the requested details during checkout.'],
+            ['Confirm arrangements', 'ZA Market will contact you to confirm availability and arrangements.'],
+          ] : [
+            ['Review the offering', 'Check the description, price and seller details.'],
+            ['Send your enquiry', 'Use the enquiry button to provide your name, phone number and question.'],
+            ['Discuss the next steps', 'ZA Market will contact you to discuss your request.'],
+          ]).map(([title, detail], i) => (
+            <li key={title}><span className="of-order-number">{i + 1}</span><div><strong>{title}</strong><p>{detail}</p></div></li>
+          ))}
+        </ol>
+        <div className="of-order-note">Delivery charges, availability and payment arrangements should be confirmed before completing a purchase. Do not send money outside the agreed checkout process.</div>
       </section>
 
       {/* PROVIDER */}

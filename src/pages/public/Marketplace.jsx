@@ -14,37 +14,87 @@ import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
 import { themeOf, themeVars } from '../../lib/storeTheme'
 import { commissionLabel } from '../../lib/economics'
-import ErrorBoundary from '../../components/ErrorBoundary'
 import PromoKit from '../../components/PromoKit'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareThis from '../../components/ShareThis'
+import ShareStore from '../../components/ShareStore'
+import { productRelevance } from '../../lib/productDiscovery'
+import { fetchCataloguePages } from '../../lib/paginatedCatalogue'
 
-// ---------- shared catalogue loader (small catalogue: one fetch, cached for the session) ----------
-let cache = null
+// ---------- shared catalogue loader ----------
+// Cache successful reads briefly; never cache a failed/partial response as an
+// empty marketplace. A shared in-flight promise avoids duplicate requests.
+const CATALOGUE_TTL_MS = 5 * 60 * 1000
+let catalogueCache = null
+let catalogueFetchedAt = 0
+let catalogueRequest = null
+const catalogueListeners = new Set()
+
+function publishCatalogue(value) {
+  for (const listener of catalogueListeners) listener(value)
+}
+
+async function loadCatalogue({ force = false } = {}) {
+  if (!force && catalogueCache && Date.now() - catalogueFetchedAt < CATALOGUE_TTL_MS) {
+    return catalogueCache
+  }
+  if (catalogueRequest) return catalogueRequest
+  catalogueRequest = (async () => {
+    // Supabase limits individual responses; page each public view to avoid
+    // hiding products, offers, or vendors once the marketplace grows.
+    const [products, offers, vendors] = await Promise.all([
+      fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
+      fetchCataloguePages((from, to) => supabase.from('public_offers').select('id,product_id,type,name,deal_price,normal_value,units,end_at,remaining').order('id').range(from, to)),
+      fetchCataloguePages((from, to) => supabase.from('public_vendors').select('*').order('business_name').order('id').range(from, to)),
+    ])
+    const offersBy = {}
+    for (const offer of offers) {
+      (offersBy[offer.product_id] = offersBy[offer.product_id] || []).push(offer)
+    }
+    catalogueCache = { products, offersBy, vendors }
+    catalogueFetchedAt = Date.now()
+    publishCatalogue(catalogueCache)
+    return catalogueCache
+  })().finally(() => { catalogueRequest = null })
+  return catalogueRequest
+}
+
 function useCatalogue() {
-  const [data, setData] = useState(cache)
+  const [data, setData] = useState(catalogueCache)
+  const [error, setError] = useState('')
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
-    if (cache) return
-    Promise.all([
-      supabase.from('public_products').select('*').order('created_at', { ascending: false }),
-      supabase.from('public_offers').select('id,product_id,type,name,deal_price,normal_value,units,end_at,remaining'),
-      supabase.from('public_vendors').select('*').order('business_name'),
-    ]).then(([p, o, v]) => {
-      const offersBy = {}
-      for (const x of o.data || []) (offersBy[x.product_id] = offersBy[x.product_id] || []).push(x)
-      cache = { products: p.data || [], offersBy, vendors: v.data || [] }
-      setData(cache)
+    let active = true
+    const update = (value) => { if (active) { setData(value); setError('') } }
+    catalogueListeners.add(update)
+    loadCatalogue({ force: attempt > 0 }).then(update).catch((e) => {
+      if (active) {
+        console.error('Catalogue request failed:', e)
+        setError('We could not connect to the marketplace. Please try again.')
+      }
     })
-  }, [])
-  return data
+    return () => { active = false; catalogueListeners.delete(update) }
+  }, [attempt])
+  return { data, error, retry: () => setAttempt((n) => n + 1) }
+}
+
+function CatalogueUnavailable({ error, retry }) {
+  if (!error) return <Loading />
+  return (
+    <div className="catalogue-unavailable" role="alert">
+      <h2>We couldn't load the marketplace</h2>
+      <p>{error}</p>
+      <button type="button" className="btn primary" onClick={retry}>Try again</button>
+    </div>
+  )
 }
 
 // Departments with nothing in them are hidden from shoppers — an empty shelf looks abandoned.
 function useStockedDepartments(all) {
-  const data = useCatalogue()
+  const { data } = useCatalogue()
   return useMemo(() => {
     if (!data) return []
     const have = new Set((data.products || []).map((p) => p.category))
@@ -206,7 +256,7 @@ function FounderHero() {
       <div className="fh-media" style={f.image_url ? { backgroundImage: `url(${f.image_url})` } : undefined} aria-hidden />
       <div className="fh-body">
         <span className="fh-eyebrow">{f.eyebrow}</span>
-        <h1>{f.headline}</h1>
+        <h2>{f.headline}</h2>
         {f.sub && <p>{f.sub}</p>}
         {v.name && (
           <span className="fh-vendor">
@@ -392,10 +442,10 @@ function ShopFooter({ user, home }) {
           <Link to="/cart">Cart</Link>
           <Link to="/saved">Saved items</Link>
         </FooterGroup>
-        {/* The only recruitment on the site. A shopper is not asked twice. */}
+        {/* Company and affiliate programme links stay accessible in the footer. */}
         <FooterGroup title="Work with us">
           <Link to="/apply/vendor">Sell on ZaMarket</Link>
-          <Link to="/apply/reseller">Become an affiliate</Link>
+          <Link to="/affiliates">Become an affiliate</Link>
         </FooterGroup>
       </div>
       <HelpStrip compact />
@@ -456,6 +506,8 @@ export function PublicShell() {
 
   return (
     <div className="shop" style={showBar ? { paddingBottom: 88 } : undefined}>
+      <a className="skip-link" href="#market-main">Skip to products</a>
+      <div className="shop-utility"><div className="shop-utility-inner"><span><Icon.pin /> Discover products from businesses in Zambia</span><span><Link to="/how-it-works">How ordering works <Icon.arrow /></Link><Link to="/protection">Customer support</Link></span></div></div>
       <header className="shop-header">
         <div className="shop-bar">
           <Link to="/" className="wordmark" aria-label="ZaMarket home">ZaMarket</Link>
@@ -470,15 +522,15 @@ export function PublicShell() {
             </select>
             <input aria-label="Search ZaMarket" placeholder="Search products, cakes, services…" value={q} onChange={(e) => setQ(e.target.value)} />
             <button type="submit" aria-label="Search">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+              <Icon.search />
             </button>
           </form>
           <Link to={user ? home : '/login'} className="header-link">
             <span className="dt-small">{user ? `Hello, ${(profile?.full_name || 'there').split(' ')[0]}` : 'Hello, sign in'}</span>
-            <span className="dt-big">{user && home !== '/account' ? 'Dashboard' : 'Account'}</span>
+            <span className="dt-big header-account-label"><Icon.user /> {user && home !== '/account' ? 'Dashboard' : 'Account'}</span>
           </Link>
           <Link to="/cart" className="header-cart" aria-label={`Cart, ${count} items`}>
-            <svg viewBox="0 0 32 32" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h4l3.2 15.2a2 2 0 0 0 2 1.6h10.6a2 2 0 0 0 2-1.5L27 11H8.3" /><circle cx="13" cy="27" r="1.8" /><circle cx="23" cy="27" r="1.8" /></svg>
+            <Icon.cart />
             <span className="cart-count">{count}</span>
             <span className="dt-big hide-mobile">Cart</span>
           </Link>
@@ -488,15 +540,14 @@ export function PublicShell() {
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Sellers</Link>
           <Link to="/blog">Journal</Link>
+          <Link to="/affiliates">Affiliate programme</Link>
         </nav>
       </header>
 
-      <CategoryRail />
-      <main className="shop-main">
+      {pathname !== '/affiliates' && <CategoryRail />}
+      <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
-        <ErrorBoundary home="/">
-          <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
-        </ErrorBoundary>
+        <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
       </main>
       <BottomBar />
 
@@ -555,14 +606,14 @@ export function Storefront() {
   const stocked = useStockedDepartments(useDepartments())
   useSeo({ title: 'ZaMarket — buy online in Lusaka, Zambia', description: 'Shop phones, home goods, fashion, cakes made to order and local services in Lusaka. Order online and we call you to confirm the price and delivery.' })
   const DEPARTMENTS = useDepartments()
-  const data = useCatalogue()
+  const { data, error, retry } = useCatalogue()
   const { ref } = useCart()
   const counts = useMemo(() => {
     const m = {}
     for (const p of data?.products || []) m[p.category] = (m[p.category] || 0) + 1
     return m
   }, [data])
-  if (!data) return <Loading />
+  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
   const { products, offersBy, vendors } = data
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
@@ -578,8 +629,20 @@ export function Storefront() {
 
   return (
     <div className="home">
+      <section className="home-welcome" aria-label="Welcome to ZA Market">
+        <div><span className="eyebrow"><span className="status-dot" /> THE MARKETPLACE FOR REAL FINDS</span>
+          <h1>Discover more. Shop <em>local.</em></h1>
+          <p>From everyday essentials to standout finds, explore what independent sellers are offering on ZA Market.</p>
+        </div>
+        <div className="home-welcome-actions"><Link to="/search" className="btn primary">Explore products <Icon.arrow /></Link><Link to="/sellers" className="btn">Meet our sellers</Link></div>
+      </section>
       <FounderHero />
       {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
+      <div className="home-value-bar" aria-label="How shopping works">
+        <div><Icon.search /><span><strong>Browse the real catalogue</strong><small>Explore products and local businesses</small></span></div>
+        <div><Icon.phone /><span><strong>Order confirmation</strong><small>Our team confirms your order details</small></span></div>
+        <div><Icon.shield /><span><strong>Support from ZA Market</strong><small>Contact us about your order</small></span></div>
+      </div>
       <HelpStrip />
 
       {products.length === 0 ? <OpeningSoon /> : (
@@ -609,6 +672,11 @@ export function Storefront() {
         </section>
       )}
 
+      <section className="home-explore" aria-label="Explore ZA Market">
+        <div className="home-explore-copy"><span className="eyebrow">DISCOVER MORE</span><h2>Good finds start with a good search.</h2><p>See the latest listings, discover the businesses behind them, or read buying guides before deciding.</p></div>
+        <div className="home-explore-links"><Link to="/search">Browse all products <Icon.arrow /></Link><Link to="/sellers">Meet the sellers <Icon.arrow /></Link><Link to="/blog">Read the journal <Icon.arrow /></Link></div>
+      </section>
+
       {/* "Grow with ZaMarket" used to sit here as well as in the footer. A
           shopper does not need to be recruited twice on one page, so the
           recruitment lives in the footer only. */}
@@ -621,13 +689,8 @@ export function Storefront() {
 // thing to do — leave a number so we can tell them. The "sell with us" pitch is
 // in the footer, where it belongs.
 function OpeningSoon() {
-  // Call the hook once and reuse it. Calling it again inside the fallback meant
-  // the hook only ran when nothing was stocked, so the hook count changed
-  // between renders and React blanked the page — on the empty state, which is
-  // exactly the state a brand-new marketplace is in.
-  const departments = useDepartments()
-  const stocked = useStockedDepartments(departments)
-  const coming = (stocked.length ? stocked : departments).slice(0, 6)
+  const stocked = useStockedDepartments(useDepartments())
+  const coming = (stocked.length ? stocked : useDepartments()).slice(0, 6)
   return (
     <section className="opening">
       <div className="opening-head">
@@ -638,8 +701,8 @@ function OpeningSoon() {
           The moment there's something to buy, it appears here.
         </p>
         <div className="btn-row">
-          <Link to="/how-it-works" className="btn primary">How ZaMarket will work</Link>
-          <Link to="/sellers" className="btn">See who's joined</Link>
+          <Link to="/how-it-works" className="btn primary"><Icon.info /> How ZaMarket will work</Link>
+          <Link to="/sellers" className="btn"><Icon.house /> See who's joined</Link>
         </div>
       </div>
       {coming.length > 0 && (
@@ -728,9 +791,9 @@ function SellerCard({ v, shelf = [] }) {
 
 export function SellersPage() {
   useSeo({ title: 'Sellers on ZaMarket — local businesses in Lusaka', description: 'Browse the shops, bakers, tailors and services selling on ZaMarket in Lusaka, Zambia.' })
-  const data = useCatalogue()
+  const { data, error, retry } = useCatalogue()
   const shelves = useMemo(() => byVendor(data?.products || []), [data])
-  if (!data) return <Loading />
+  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
   return (
     <div className="stack">
       <div className="crumbs"><Link to="/">Home</Link><span>Sellers</span></div>
@@ -760,7 +823,7 @@ export function SearchPage() {
   useSeo(spSeo.get('cat')
     ? { title: `${spSeo.get('cat')} in Lusaka | ZaMarket`, description: `Buy ${spSeo.get('cat').toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged.` }
     : { title: 'All products | ZaMarket Lusaka', noIndex: !!spSeo.get('q') })
-  const data = useCatalogue()
+  const { data, error, retry } = useCatalogue()
   const [sp, setSp] = useSearchParams()
   const [sheet, setSheet] = useState(false)
   const q = (sp.get('q') || '').trim().toLowerCase()
@@ -776,7 +839,7 @@ export function SearchPage() {
   const results = useMemo(() => {
     if (!data) return []
     let list = data.products.filter((p) => {
-      if (q && !`${p.name} ${p.description || ''} ${p.category || ''} ${p.vendor_name || ''}`.toLowerCase().includes(q)) return false
+      if (q && productRelevance(p, q) < 0) return false
       if (cat && p.category !== cat) return false
       if (type === 'in_stock' && p.fulfilment !== 'in_stock') return false
       if (type === 'made_to_order' && p.fulfilment !== 'made_to_order') return false
@@ -793,12 +856,12 @@ export function SearchPage() {
       price_desc: (a, b) => b.price - a.price,
       new: (a, b) => (b.created_at || '').localeCompare(a.created_at || ''),
       rating: (a, b) => (b.rating || 0) - (a.rating || 0),
-      featured: (a, b) => Number(isOut(a)) - Number(isOut(b)) || Number(!!dealFor(data.offersBy, b.id)) - Number(!!dealFor(data.offersBy, a.id)),
+      featured: (a, b) => Number(isOut(a)) - Number(isOut(b)) || (q ? productRelevance(b, q) - productRelevance(a, q) : 0) || Number(!!dealFor(data.offersBy, b.id)) - Number(!!dealFor(data.offersBy, a.id)),
     }[sort]
     return [...list].sort(by)
   }, [data, q, cat, type, sort, deals, minR, pmin, pmax])
 
-  if (!data) return <Loading />
+  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
   const heading = deals ? "Today's deals" : cat || (q ? `Results for “${sp.get('q')}”` : 'All products')
   const active = [cat, type, deals, minR, pmin, pmax].filter(Boolean).length
 
@@ -913,7 +976,7 @@ export function ProductPage() {
   const nav = useNavigate()
   const { add } = useCart()
   const toast = useToast()
-  const catalogue = useCatalogue()
+  const { data: catalogue } = useCatalogue()
   const [p, setP] = useState(null)
   const [offers, setOffers] = useState([])
   const [reviews, setReviews] = useState([])
@@ -1224,7 +1287,7 @@ export function StorePage() {
           </div>
           <div className="store-cta">
             <a className="btn primary" href="#shop">Shop this store</a>
-            <ShareThis store={store} products={products} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />
+            <ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />
             <span className="tiny muted">{note}</span>
           </div>
         </div>

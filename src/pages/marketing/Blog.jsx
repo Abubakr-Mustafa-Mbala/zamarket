@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { date } from '../../lib/format'
@@ -6,6 +6,9 @@ import { scoreDraft, LEVELS } from '../../lib/seoScore'
 import { planKeywords, verifySteps, outlineFor } from '../../lib/keywordPlanner'
 import { Field, Input, Textarea, Loading, Problem, Modal, useToast, Stat } from '../../components/ui'
 import Icon from '../../lib/icons'
+import BlogMediaTools from '../../components/BlogMediaTools'
+import { Article } from '../public/Blog'
+import { Link } from 'react-router-dom'
 
 const empty = {
   title: '', body: '', excerpt: '', keyword: '', secondary_keywords: [],
@@ -136,6 +139,20 @@ function Editor({ post, products, onClose, onSaved }) {
   const [f, setF] = useState({ ...empty, ...post, secondary_keywords: post?.secondary_keywords || [] })
   const [linked, setLinked] = useState([])
   const [busy, setBusy] = useState(false)
+  const [preview, setPreview] = useState(false)
+  const bodyRef = useRef(null)
+  const insertMedia = (snippet) => {
+    const el = bodyRef.current
+    const current = f.body || ''
+    const pos = el ? el.selectionStart : current.length
+    const before = current.slice(0, pos)
+    const after = current.slice(pos)
+    const prefix = before && !before.endsWith('\n') ? '\n\n' : ''
+    const suffix = after && !after.startsWith('\n') ? '\n\n' : '\n'
+    const newPos = (before + prefix + snippet).length
+    setF(x => ({ ...x, body: before + prefix + snippet + suffix + after }))
+    requestAnimationFrame(() => { el?.focus(); el?.setSelectionRange(newPos, newPos) })
+  }
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }))
 
   useEffect(() => {
@@ -160,17 +177,39 @@ function Editor({ post, products, onClose, onSaved }) {
       author_id: profile?.id || null,
     }
     const q = post?.id
-      ? supabase.from('posts').update(row).eq('id', post.id).select('id').maybeSingle()
-      : supabase.from('posts').insert(row).select('id').maybeSingle()
+      ? supabase.from('posts').update(row).eq('id', post.id).select('id,slug').maybeSingle()
+      : supabase.from('posts').insert(row).select('id,slug').maybeSingle()
     const { data, error } = await q
     if (error) { setBusy(false); return toast(error.message, true) }
 
     const id = data?.id || post?.id
     if (id) {
-      await supabase.from('post_products').delete().eq('post_id', id)
+      const { error: unlinkError } = await supabase.from('post_products').delete().eq('post_id', id)
+      if (unlinkError) { setBusy(false); return toast('The article saved, but its linked products could not be updated: ' + unlinkError.message, true) }
       if (linked.length) {
-        await supabase.from('post_products').insert(linked.map((pid, i) => ({ post_id: id, product_id: pid, sort: i })))
+        const { error: linkError } = await supabase.from('post_products').insert(linked.map((pid, i) => ({ post_id: id, product_id: pid, sort: i })))
+        if (linkError) { setBusy(false); return toast('The article saved, but product linking failed: ' + linkError.message, true) }
       }
+    }
+    // IndexNow is optional. Submission failure never undoes a successful publish.
+    // Google is notified separately through the sitemap/Search Console.
+    if (status === 'published' && (data?.slug || post?.slug)) {
+      try {
+        const session = await supabase.auth.getSession()
+        const token = session.data?.session?.access_token
+        if (token) {
+          const controller = new AbortController()
+          const timeout = setTimeout(() => controller.abort(), 4000)
+          try {
+            await fetch('/.netlify/functions/indexnow', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({ path: `/blog/${data?.slug || post.slug}` }),
+              signal: controller.signal,
+            })
+          } finally { clearTimeout(timeout) }
+        }
+      } catch { /* IndexNow may be unconfigured; published article remains live. */ }
     }
     setBusy(false)
     toast(status === 'published' ? 'Published' : 'Saved as a draft')
@@ -203,8 +242,27 @@ function Editor({ post, products, onClose, onSaved }) {
           <Field label="Title" hint="Put the phrase in it, near the start if it reads naturally.">
             <Input value={f.title} onChange={set('title')} />
           </Field>
-          <Field label="The article" hint="Markdown. ## makes a subheading. [words](/search) links to a page on ZaMarket.">
-            <Textarea value={f.body} onChange={set('body')} rows={20} />
+          <BlogMediaTools onInsert={insertMedia} onCover={set('cover_url')} fallbackAlt={f.title} notify={toast} />
+          <section className="card stack-sm">
+            <div className="between">
+              <strong>Article content</strong>
+              <div className="btn-row">
+                <button type="button" className={`btn sm ${!preview ? 'primary' : ''}`} onClick={() => setPreview(false)}>Write</button>
+                <button type="button" className={`btn sm ${preview ? 'primary' : ''}`} onClick={() => setPreview(true)}>Preview</button>
+              </div>
+            </div>
+            {preview ? <div className="blog-editor-preview"><Article body={f.body} /></div> : (
+              <Field label="The article" hint="Markdown: ## heading, ![description](image URL), [video](YouTube/MP4 URL), [words](/search) for internal links.">
+                <Textarea ref={bodyRef} value={f.body} onChange={set('body')} rows={20} />
+              </Field>
+            )}
+          </section>
+          <Field label="Cover image URL" hint="Upload a cover above, or paste an image URL. Give article images descriptive captions.">
+            <Input type="url" value={f.cover_url} onChange={set('cover_url')} placeholder="https://..." />
+          </Field>
+          {f.cover_url && <img className="blog-cover-preview" src={f.cover_url} alt="Article cover preview" />}
+          <Field label="Category">
+            <Input value={f.category} onChange={set('category')} placeholder="e.g. Buying guides" />
           </Field>
           <Field label="Short summary" hint="Shown on the blog index.">
             <Textarea value={f.excerpt} onChange={set('excerpt')} rows={2} />
@@ -289,7 +347,7 @@ export default function Blog() {
           <h1>Blog</h1>
           <p>Articles that answer what people search for, each one ending at something they can buy.</p>
         </div>
-        <button className="btn primary" onClick={() => setEditing({ ...empty })}>Write a post</button>
+        <div className="btn-row"><Link className="btn" to="/admin/marketing/launch">Promote an article</Link><button className="btn primary" onClick={() => setEditing({ ...empty })}>Write a post</button></div>
       </div>
 
       <div className="stats-row">

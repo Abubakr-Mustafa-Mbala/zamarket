@@ -41,7 +41,7 @@ function rounded(ctx, x, y, w, h, r) {
   ctx.closePath()
 }
 
-const font = (weight, size) => `${weight} ${size}px "Instrument Sans", "Segoe UI", system-ui, sans-serif`
+const font = (weight, size) => `${weight} ${size}px "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif`
 
 function lines(ctx, text, maxWidth, maxLines) {
   const words = String(text || '').split(/\s+/).filter(Boolean)

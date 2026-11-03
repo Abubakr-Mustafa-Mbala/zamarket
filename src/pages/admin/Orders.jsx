@@ -8,6 +8,7 @@ import { ORDER_NEXT, SOURCES, CHANNELS, PAYMENT_METHODS } from '../../lib/status
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Breakdown, Tabs, CopyLine } from '../../components/ui'
 import { useLocations } from '../public/Checkout'
 import { niceDate } from '../../lib/madeToOrder'
+import Icon from '../../lib/icons'
 
 const FILTERS = [['', 'All'], ['pending', 'New'], ['active', 'In progress'], ['completed', 'Completed'], ['problem', 'Problems']]
 const ACTIVE = ['confirmed', 'payment_pending', 'paid', 'processing', 'ready_for_dispatch', 'out_for_delivery', 'delivered']
@@ -30,9 +31,10 @@ export function OrdersList() {
   return (
     <div className="stack">
       <div className="page-head">
-        <div><h1>Orders</h1><p>Every sale, wherever it happened.</p></div>
-        <button className="btn primary" onClick={() => setManual(true)}>Record a sale</button>
+        <div><h1>Orders</h1><p>Every sale, wherever it happened. Choose a status below to focus on the orders that need attention.</p></div>
+        <button className="btn primary" onClick={() => setManual(true)}><Icon.cart /> Record a sale</button>
       </div>
+      <div className="order-workflow-hint"><Icon.info /><span><strong>Simple workflow:</strong> New order → Confirm customer → Record payment → Dispatch → Complete. Open an order to see its next action.</span></div>
       <Tabs tabs={FILTERS} value={filter} onChange={(v) => setSp(v ? { status: v } : {})} />
       {loading ? <Loading /> : (
         <Table
@@ -101,17 +103,14 @@ export function OrderDetail() {
   const delivCost = n(o.delivery?.delivery_cost) + n(o.delivery?.fuel_cost)
 
   // Settlements are only written when an order completes, so until then the
-  // page could not say who was owed what — which is the first thing anybody
-  // wants to know when an order comes in. This works the same split out of the
-  // order's own lines: each seller is owed their agreed take-home, the
-  // affiliate is paid from the room reserved for them, and the rest is ours.
+  // page could say nothing about who was owed what — the first thing anybody
+  // wants to know when an order arrives. This works the split out of the
+  // order's own lines instead.
   const projected = (() => {
     const bySeller = new Map()
     for (const i of o.items) {
       if (!i.vendor_id) continue
-      const cur = bySeller.get(i.vendor_id) || {
-        name: i.vendor?.business_name || 'Seller', gross: 0, theirs: 0,
-      }
+      const cur = bySeller.get(i.vendor_id) || { name: i.vendor?.business_name || 'Seller', gross: 0, theirs: 0 }
       cur.gross += n(i.line_total)
       cur.theirs += n(i.vendor_take) * n(i.quantity)
       bySeller.set(i.vendor_id, cur)
@@ -212,15 +211,11 @@ export function OrderDetail() {
             <>
               <h3 className="mt">Money on this order</h3>
               {projected.rows.map((r) => (
-                <div key={r.name} className="between small">
-                  <span>{r.name} receives</span><span className="money">{money(r.theirs)}</span>
-                </div>
+                <div key={r.name} className="between small"><span>{r.name} receives</span><span className="money">{money(r.theirs)}</span></div>
               ))}
               {comm > 0 && <div className="between small"><span>Affiliate commission</span><span className="money">{money(comm)}</span></div>}
               <div className="between small strong"><span>ZaMarket keeps</span><span className="money">{money(projected.ours)}</span></div>
-              {n(o.delivery_fee) > 0 && (
-                <div className="between small"><span>Delivery charged</span><span className="money">{money(o.delivery_fee)}</span></div>
-              )}
+              {n(o.delivery_fee) > 0 && <div className="between small"><span>Delivery charged</span><span className="money">{money(o.delivery_fee)}</span></div>}
               <p className="tiny muted mt">Expected, not yet owed. Nothing is payable until the order is completed.</p>
             </>
           )}

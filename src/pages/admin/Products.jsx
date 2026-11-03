@@ -1,3 +1,4 @@
+import { suggestProductSeo } from '../../lib/productDiscovery'
 import { useEffect, useMemo, useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
@@ -18,9 +19,12 @@ export default function Products() {
   const { advanced, settings, isStaff, isFounder } = useAuth()
   const [edit, setEdit] = useState(null)
   const [tab, setTab] = useState('founder')
-  const { data, loading, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })), [])
+  const { data, loading, error, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })), [])
   const rows = (data || []).filter((p) => (tab === 'founder' ? p.owner_type === 'founder' : tab === 'vendor' ? p.owner_type === 'vendor' && p.status !== 'submitted' : p.status === 'submitted'))
   const submitted = (data || []).filter((p) => p.status === 'submitted').length
+  const needsContent = (data || []).filter(p => !p.name?.trim() || !p.description?.trim() || !(Array.isArray(p.images) && p.images.length) || !(Number(p.price) > 0))
+  const [qualityOnly, setQualityOnly] = useState(false)
+  const visibleRows = qualityOnly ? rows.filter(p => needsContent.some(item => item.id === p.id)) : rows
 
   return (
     <div className="stack">
@@ -32,9 +36,14 @@ export default function Products() {
         </div>
       </div>
       <Tabs tabs={[['founder', 'Our products'], ['vendor', 'Vendor products'], ['review', `To review${submitted ? ` (${submitted})` : ''}`]]} value={tab} onChange={setTab} />
-      {loading ? <Loading /> : (
+      <div className="card between" style={{ gap: 12, flexWrap: 'wrap' }}>
+        <div><strong>Listing quality check</strong><p className="muted small">{needsContent.length} products may need a title, description, image, or valid price.</p></div>
+        <label className="small"><input type="checkbox" checked={qualityOnly} onChange={e => setQualityOnly(e.target.checked)} /> Show incomplete listings only</label>
+      </div>
+      {error && <div className="card" role="alert">Unable to load product records. <button className="btn" onClick={reload}>Retry</button></div>}
+      {loading ? <Loading /> : !error && (
         <Table
-          rows={rows}
+          rows={visibleRows}
           onRow={setEdit}
           empty={tab === 'review' ? 'No vendor products waiting for review' : 'No products yet'}
           cols={[
@@ -97,6 +106,14 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const set = (k) => (v) => setP((c) => ({ ...c, [k]: v }))
   const cost = effectiveCost(p)
   const isNew = !p.id
+  const listingChecks = [
+    { label: 'A clear product name', done: Boolean(p.name?.trim()), tip: 'Use words buyers would search for, including brand or model when relevant.' },
+    { label: 'A browsing department', done: Boolean(p.category), tip: 'Choose the closest department so customers can find it.' },
+    { label: 'A valid price', done: Number(takeHomePricing && vendorMode ? p.vendor_price : p.price) > 0, tip: 'Enter the amount you want to receive or the selling price shown.' },
+    { label: 'A helpful description', done: (p.description || '').trim().length >= 30, tip: 'Explain the condition, specifications, size and what is included.' },
+    { label: 'At least one real product photo', done: Boolean((p.images_text || '').trim()), tip: 'Upload a clear photo of the actual item, not a misleading stock photo.' },
+  ]
+  const completedChecks = listingChecks.filter((check) => check.done).length
 
   const econ = useMemo(() => unitEconomics({
     price: p.price, productCost: cost, packaging: p.packaging_cost ?? settings.default_packaging_cost, paymentFeePct: settings.payment_fee_pct,
@@ -142,6 +159,14 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   return (
     <Modal title={isNew ? 'New product' : p.name} onClose={onClose} wide>
       <form onSubmit={(e) => { e.preventDefault(); save() }} className="stack">
+        {vendorMode && <section className="card flat stack-sm vendor-listing-guide" aria-label="Product listing checklist">
+          <div className="between"><h3>Get your listing ready</h3><strong>{completedChecks} of {listingChecks.length}</strong></div>
+          <progress value={completedChecks} max={listingChecks.length} style={{ width: '100%', accentColor: 'var(--accent, #14856b)' }} aria-label="Listing completeness" />
+          <p className="small muted">Complete these essentials before sending your product for review. You can save a draft at any time.</p>
+          <ul className="vendor-listing-checks">{listingChecks.map((check) => <li key={check.label} className={check.done ? 'is-complete' : ''}>
+            <span aria-hidden="true">{check.done ? '✓' : '○'}</span><span><strong>{check.label}</strong><small>{check.tip}</small></span>
+          </li>)}</ul>
+        </section>}
         <div className="form-grid">
           <Field label="Name" span><Input value={p.name} onChange={set('name')} required /></Field>
           <Field label="Department" hint="Where it appears when people browse ZaMarket">
@@ -180,6 +205,8 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           <Field label="FAQs (one per line: question | answer)" span><Textarea value={p.faqs_text} onChange={set('faqs_text')} rows={2} /></Field>
           <div className="span card flat stack-sm">
             <h3>How it looks on Google and WhatsApp</h3>
+            <button type="button" className="btn sm" onClick={() => { const suggestion = suggestProductSeo(p); set('seo_title')(suggestion.title); set('seo_description')(suggestion.description) }}>Suggest search title and description</button>
+            <p className="tiny muted">Suggestions use only your entered product details. Review before saving; no AI service is called.</p>
             <p className="small muted">Leave these empty and we write them for you from the name and price. Fill them in when you want to target what people actually search.</p>
             <Field label="Search title" hint="About 60 characters. Put the words people type first, e.g. 'Solar lamp Lusaka — rechargeable, 12 hours'">
               <Input value={p.seo_title} onChange={set('seo_title')} maxLength={70} />

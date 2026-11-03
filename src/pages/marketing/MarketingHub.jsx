@@ -17,24 +17,25 @@ import Featured from './Featured'
 import Proof from './Proof'
 import Creatives from './Creatives'
 import Blog from './Blog'
+import Launchpad from './Launchpad'
 import Coupons from './Coupons'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['blog', 'Blog'], ['coupons', 'Coupons'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['blog', 'Blog'], ['launch', 'Campaign launchpad'], ['coupons', 'Coupons'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, launch: Launchpad, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
-      <div className="mk-head">
-        <div>
-          <h1>{section ? heading : 'Marketing'}</h1>
+      <div className="mk-head premium-marketing-head">
+        <div><span className="eyebrow"><span className="status-dot" /> THE GROWTH DESK</span>
+          <h1>{section ? heading : 'Marketing command centre'}</h1>
           <p>{{
             '': 'What marketing brought in, and where it came from.',
             start: 'New to this? Start here: what to do, in order, and what every number means.',
@@ -43,6 +44,7 @@ export default function MarketingHub() {
             featured: 'Who or what is at the top of the homepage today, and what it brought.',
             coverage: 'Which products affiliates are ignoring, and how to fix it.',
             blog: 'Articles that answer what people search for, each one ending at something they can buy.',
+            launch: 'Promote your actual products and articles with tracked links and ready-to-share content.',
             coupons: 'Discount codes, and who is paying for each one.',
             seo: 'Being found on Google for free, and what each page still needs.',
             funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
@@ -56,6 +58,7 @@ export default function MarketingHub() {
             spend: 'What each channel costs and what it returns.',
           }[section]}</p>
         </div>
+        <div className="marketing-head-actions"><Link to="/admin/marketing/launch" className="btn primary">Launch a campaign</Link><Link to="/admin/marketing/seo" className="btn">SEO centre</Link><Link to="/admin/marketing/blog" className="btn">Write an article</Link></div>
       </div>
       <nav className="mk-nav" aria-label="Marketing sections">
         {SECTIONS.map(([k, l]) => <NavLink key={k || 'overview'} end to={`/admin/marketing${k ? `/${k}` : ''}`}>{l}</NavLink>)}
@@ -85,7 +88,12 @@ function Overview() {
 
   return (
     <div className="stack">
-      <div className="card"><DateBar range={range} setRange={setRange} /></div>
+      <div className="marketing-starter-grid">
+        <Link to="/admin/marketing/launch" className="marketing-action-tile"><span className="marketing-tile-num">01 / CAMPAIGNS</span><strong>Make something worth sharing</strong><small>Turn a product into a tracked social campaign.</small><span className="marketing-tile-link">Open launchpad →</span></Link>
+        <Link to="/admin/marketing/seo" className="marketing-action-tile"><span className="marketing-tile-num">02 / ORGANIC SEARCH</span><strong>Be easier to discover</strong><small>See which pages need search optimisation.</small><span className="marketing-tile-link">Review SEO →</span></Link>
+        <Link to="/admin/marketing/blog" className="marketing-action-tile"><span className="marketing-tile-num">03 / CONTENT</span><strong>Publish useful buying guides</strong><small>Write with images, video and products.</small><span className="marketing-tile-link">Open blog →</span></Link>
+      </div>
+      <div className="card marketing-range"><DateBar range={range} setRange={setRange} /></div>
       {loading || !d ? <Loading /> : (
         <>
           <div className="mk-kpis">

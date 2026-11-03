@@ -76,7 +76,7 @@ export default function About() {
           <h2>Sell with us, or earn from sharing</h2>
           <p className="small muted">Two ways in. Both are free to start.</p>
         </div>
-        <div className="btn-row"><Link className="btn primary" to="/apply/vendor">Sell on ZaMarket</Link><Link className="btn" to="/apply/reseller">Become an affiliate</Link></div>
+        <div className="btn-row"><Link className="btn primary" to="/apply/vendor">Sell on ZaMarket</Link><Link className="btn" to="/affiliates">Become an affiliate</Link></div>
       </section>
     </div>
   )

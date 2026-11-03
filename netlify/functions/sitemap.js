@@ -1,49 +1,73 @@
-// A sitemap Google can read, built fresh from what is published right now.
+// Live XML sitemap with PostgREST pagination (which caps responses by default).
+// Google/Bing discover pages here; search engines still decide what to index.
 const SB = process.env.VITE_SUPABASE_URL
 const KEY = process.env.VITE_SUPABASE_ANON_KEY
+const SITE = 'https://zamarket.shop'
+const PAGE_SIZE = 500
 
-const get = async (path) => {
-  const res = await fetch(`${SB}/rest/v1/${path}`, { headers: { apikey: KEY, authorization: `Bearer ${KEY}` } })
-  return res.ok ? res.json() : []
-}
-const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;')
-
-export default async (request) => {
-  const site = new URL(request.url).origin
-  const urls = [
-    { loc: `${site}/`, pri: '1.0', freq: 'daily' },
-    { loc: `${site}/search`, pri: '0.6', freq: 'daily' },
-    { loc: `${site}/sellers`, pri: '0.5', freq: 'weekly' },
-    { loc: `${site}/blog`, pri: '0.7', freq: 'weekly' },
-    { loc: `${site}/how-it-works`, pri: '0.5', freq: 'monthly' },
-    { loc: `${site}/protection`, pri: '0.5', freq: 'monthly' },
-    { loc: `${site}/apply/vendor`, pri: '0.4', freq: 'monthly' },
-    { loc: `${site}/apply/reseller`, pri: '0.4', freq: 'monthly' },
-  ]
-  if (SB && KEY) {
-    const [products, vendors, departments, posts] = await Promise.all([
-      get('public_products?select=slug,vendor_slug,created_at&order=created_at.desc&limit=2000'),
-      get('public_vendors?select=slug&limit=500'),
-      get('settings?key=eq.departments&select=value'),
-      // Articles are the pages most likely to be found by search, so they
-      // belong in the sitemap the moment they are published.
-      get('public_posts?select=slug,published_at&order=published_at.desc&limit=1000'),
-    ])
-    for (const b of posts) {
-      if (b.slug) urls.push({ loc: `${site}/blog/${b.slug}`, pri: '0.75', freq: 'monthly', lastmod: b.published_at })
-    }
-    for (const p of products) {
-      if (!p.slug) continue
-      urls.push({ loc: p.vendor_slug ? `${site}/${p.vendor_slug}/${p.slug}` : `${site}/p/${p.slug}`, pri: '0.8', freq: 'weekly', lastmod: p.created_at })
-    }
-    for (const v of vendors) if (v.slug) urls.push({ loc: `${site}/${v.slug}`, pri: '0.7', freq: 'weekly' })
-    for (const d of (departments?.[0]?.value || [])) if (d?.name) urls.push({ loc: `${site}/search?cat=${encodeURIComponent(d.name)}`, pri: '0.6', freq: 'weekly' })
+async function getAll(resource, max = 25000) {
+  if (!SB || !KEY) return []
+  const items = []
+  for (let offset = 0; offset < max; offset += PAGE_SIZE) {
+    const sep = resource.includes('?') ? '&' : '?'
+    const url = `${SB}/rest/v1/${resource}${sep}limit=${PAGE_SIZE}&offset=${offset}`
+    const res = await fetch(url, {
+      headers: { apikey: KEY, authorization: `Bearer ${KEY}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) throw new Error(`Sitemap data source returned HTTP ${res.status}`)
+    const rows = await res.json()
+    if (!Array.isArray(rows)) throw new Error('Sitemap data source returned unexpected JSON')
+    items.push(...rows)
+    if (rows.length < PAGE_SIZE) break
   }
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${urls.map((u) => `  <url><loc>${esc(u.loc)}</loc>${u.lastmod ? `<lastmod>${new Date(u.lastmod).toISOString().slice(0, 10)}</lastmod>` : ''}<changefreq>${u.freq}</changefreq><priority>${u.pri}</priority></url>`).join('\n')}
-</urlset>`
-  return new Response(xml, { headers: { 'content-type': 'application/xml', 'cache-control': 'public, max-age=3600' } })
+  return items
+}
+const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const validDate = value => {
+  const d = value ? new Date(value) : null
+  return d && !Number.isNaN(d.getTime()) ? d.toISOString().slice(0, 10) : null
+}
+const validSlug = slug => typeof slug === 'string' && /^[a-z0-9][a-z0-9_-]{0,140}$/i.test(slug)
+
+export default async function sitemap() {
+  const urls = [
+    { loc: `${SITE}/`, pri: '1.0' },
+    { loc: `${SITE}/sellers`, pri: '0.7' },
+    { loc: `${SITE}/blog`, pri: '0.8' },
+    { loc: `${SITE}/categories`, pri: '0.6' },
+    { loc: `${SITE}/about`, pri: '0.4' },
+    { loc: `${SITE}/apply/vendor`, pri: '0.6' },
+    { loc: `${SITE}/apply/reseller`, pri: '0.6' },
+    { loc: `${SITE}/affiliates`, pri: '0.8' },
+    { loc: `${SITE}/how-it-works`, pri: '0.5' },
+    { loc: `${SITE}/protection`, pri: '0.5' },
+  ]
+
+  if (SB && KEY) {
+    try {
+      const [products, vendors, articles] = await Promise.all([
+        getAll('public_products?select=slug,vendor_slug,created_at&order=created_at.desc'),
+        getAll('public_vendors?select=slug'),
+        getAll('public_posts?select=slug,published_at&order=published_at.desc'),
+      ])
+      for (const a of articles) if (validSlug(a.slug)) urls.push({ loc: `${SITE}/blog/${a.slug}`, pri: '0.75', lastmod: a.published_at })
+      for (const p of products) {
+        if (!validSlug(p.slug)) continue
+        const path = validSlug(p.vendor_slug) ? `/${p.vendor_slug}/${p.slug}` : `/p/${p.slug}`
+        urls.push({ loc: SITE + path, pri: '0.8', lastmod: p.created_at })
+      }
+      for (const v of vendors) if (validSlug(v.slug)) urls.push({ loc: `${SITE}/${v.slug}`, pri: '0.7' })
+    } catch (err) {
+      // A partial / empty sitemap could cause expensive re-crawling churn.
+      // Return 503 so search engines try again later rather than trusting it.
+      console.error('Sitemap unavailable:', err.message)
+      return new Response('Sitemap temporarily unavailable', { status: 503, headers: { 'cache-control': 'no-store' } })
+    }
+  }
+  const unique = [...new Map(urls.map(row => [row.loc, row])).values()]
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${unique.map(row => `  <url><loc>${esc(row.loc)}</loc>${validDate(row.lastmod) ? `<lastmod>${validDate(row.lastmod)}</lastmod>` : ''}<priority>${row.pri}</priority></url>`).join('\n')}\n</urlset>`
+  return new Response(xml, { headers: { 'content-type': 'application/xml; charset=utf-8', 'cache-control': 'public, max-age=300' } })
 }
 
 export const config = { path: '/sitemap.xml' }

@@ -1,117 +1,182 @@
-// Search engines and WhatsApp read the HTML before the app starts, so the page
-// title, description and share image have to be in the HTML itself.
-// This runs at the edge, fills them in per page, and leaves the app untouched.
+// Crawlable metadata and initial, truthful page content for JS and non-JS clients.
+// Never publish privileged data or replace search output with unrelated keywords.
+const SITE = 'https://zamarket.shop'
+const SHOP = 'ZA Market'
 
-const esc = (s) =>
-  String(s ?? '')
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/\n+/g, ' ').trim()
-
+const esc = value => String(value ?? '')
+  .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\s+/g, ' ').trim()
 const clip = (s, n = 155) => {
   const t = String(s ?? '').replace(/\s+/g, ' ').trim()
-  return t.length <= n ? t : `${t.slice(0, n - 1).replace(/[,.;:\s]\w*$/, '')}…`
+  return t.length > n ? `${t.slice(0, n - 1).trimEnd()}…` : t
 }
+const money = v => `K${Number(v).toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-const money = (v) => `K${Number(v || 0).toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+// Include every public route here so informational pages don't get mistaken for
+// unknown vendors (and incorrectly tagged noindex).
+const RESERVED = new Set([
+  'p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review',
+  'login', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
+  'free', 'invite', 'saved', 'categories', 'about', 'how-it-works', 'protection',
+  'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml',
+])
+const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
 
-const RESERVED = new Set(['p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review', 'login', 'account', 'apply', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'free', 'invite', 'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml'])
-
-async function api(path, url, key) {
+async function getOne(path, base, key) {
   try {
-    const res = await fetch(`${url}/rest/v1/${path}`, { headers: { apikey: key, authorization: `Bearer ${key}` } })
-    if (!res.ok) return null
-    const rows = await res.json()
-    return Array.isArray(rows) ? rows[0] || null : rows
-  } catch { return null }
+    const response = await fetch(`${base}/rest/v1/${path}`, {
+      headers: { apikey: key, authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!response.ok) return { ok: false, item: null }
+    const data = await response.json()
+    return { ok: true, item: Array.isArray(data) ? data[0] || null : data }
+  } catch { return { ok: false, item: null } }
 }
+const paragraph = t => `<p>${esc(clip(t, 4500))}</p>`
+const fallback = (heading, description, link = '') => `<main class="seo-fallback"><h1>${esc(heading)}</h1>${paragraph(description)}${link ? `<p><a href="${esc(link)}">View the full page</a></p>` : ''}</main>`
 
 export default async function handler(request, context) {
-  const res = await context.next()
-  const type = res.headers.get('content-type') || ''
-  if (!type.includes('text/html')) return res
+  const response = await context.next()
+  if (!(response.headers.get('content-type') || '').includes('text/html')) return response
 
-  const url = new URL(request.url)
-  const parts = url.pathname.split('/').filter(Boolean)
-  const SB = Deno.env.get('VITE_SUPABASE_URL')
-  const KEY = Deno.env.get('VITE_SUPABASE_ANON_KEY')
-  const site = url.origin
-  const shop = Deno.env.get('SITE_NAME') || 'ZaMarket'
+  const current = new URL(request.url)
+  const parts = current.pathname.split('/').filter(Boolean)
+  const base = Deno.env.get('VITE_SUPABASE_URL')
+  const key = Deno.env.get('VITE_SUPABASE_ANON_KEY')
+  let canonical = SITE + (current.pathname === '/' ? '/' : current.pathname.replace(/\/$/, ''))
+  let title = `${SHOP} — Shop online in Lusaka, Zambia`
+  let description = 'Browse products from local sellers in Lusaka, Zambia. Compare prices and order phones, fashion, home essentials, food and more on ZA Market.'
+  let image = `${SITE}/social.png`
+  let robots = parts.length && (PRIVATE.has(parts[0]) || parts[0] === 'search') ? 'noindex,follow' : 'index,follow'
+  let schema = null
+  let initialContent = ''
 
-  let title = `${shop} — buy online in Lusaka, Zambia`
-  let description = 'Shop phones, home goods, fashion, food made to order and local services in Lusaka. Order online and we call you to confirm the price and delivery.'
-  let image = `${site}/social.png`
-  let canonical = site + url.pathname
-  let jsonld = null
-  let robots = 'index,follow'
-
-  const noIndex = ['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'order', 'rate', 'invite', 'go', 'r']
-  if (parts[0] && noIndex.includes(parts[0])) robots = 'noindex,follow'
-
-  if (SB && KEY) {
-    try {
-      // A product: /p/<slug>  or  /<store>/<product>
-      const productSlug = parts[0] === 'p' ? parts[1] : (parts.length === 2 && !RESERVED.has(parts[0]) ? parts[1] : null)
-      const storeSlug = parts[0] === 'store' ? parts[1] : (parts.length >= 1 && !RESERVED.has(parts[0]) ? parts[0] : null)
-
-      if (productSlug) {
-        const p = await api(`public_products?slug=eq.${encodeURIComponent(productSlug)}&select=name,description,price,images,category,vendor_name,rating,review_count,fulfilment,offering_type,page,slug,vendor_slug`, SB, KEY)
-        if (p) {
-          const what = p.fulfilment === 'service' ? 'Book' : 'Buy'
-          title = p.page?.seo?.title || `${p.name} — ${money(p.price)} | ${shop} Lusaka`
-          description = clip(p.page?.seo?.description || p.page?.hero_headline || p.description || `${what} ${p.name} in Lusaka for ${money(p.price)}. ${p.vendor_name ? `Sold by ${p.vendor_name}. ` : ''}Delivery in Lusaka District, other areas arranged. We confirm every order by phone first.`)
-          if (p.images?.[0]) image = p.images[0]
-          canonical = p.vendor_slug ? `${site}/${p.vendor_slug}/${p.slug}` : `${site}/p/${p.slug}`
-          jsonld = {
-            '@context': 'https://schema.org', '@type': 'Product', name: p.name,
-            description: clip(p.description || p.page?.hero_headline || p.name, 300),
-            image: p.images?.length ? p.images : undefined, category: p.category || undefined,
-            brand: p.vendor_name ? { '@type': 'Brand', name: p.vendor_name } : undefined,
-            offers: { '@type': 'Offer', price: Number(p.price), priceCurrency: 'ZMW', availability: 'https://schema.org/InStock', url: canonical, areaServed: 'Lusaka, Zambia' },
-            aggregateRating: p.rating ? { '@type': 'AggregateRating', ratingValue: p.rating, reviewCount: p.review_count } : undefined,
-          }
+  if (!parts.length) {
+    schema = {
+      '@context': 'https://schema.org', '@type': 'OnlineStore', name: SHOP,
+      url: `${SITE}/`, description, areaServed: { '@type': 'City', name: 'Lusaka' },
+    }
+    initialContent = fallback('Shop products from local sellers in Lusaka', description, `${SITE}/sellers`)
+  } else if (parts[0] === 'blog') {
+    if (parts.length === 1) {
+      title = `Buying guides and local shopping advice in Lusaka | ${SHOP}`
+      description = 'Practical ZA Market guides to products, prices and shopping with local sellers in Lusaka, Zambia.'
+      canonical = `${SITE}/blog`
+      initialContent = fallback('Shopping guides for Lusaka', description, `${SITE}/blog`)
+    } else if (parts.length === 2 && base && key) {
+      const result = await getOne(`public_posts?slug=eq.${encodeURIComponent(parts[1])}&select=slug,title,excerpt,body,cover_url,meta_title,meta_description,author,published_at`, base, key)
+      if (result.ok && !result.item) robots = 'noindex,follow'
+      if (result.item) {
+        const post = result.item
+        canonical = `${SITE}/blog/${encodeURIComponent(post.slug)}`
+        title = post.meta_title || `${post.title} | ${SHOP}`
+        description = clip(post.meta_description || post.excerpt || post.body, 155)
+        if (typeof post.cover_url === 'string' && /^https:\/\//i.test(post.cover_url)) image = post.cover_url
+        schema = {
+          '@context': 'https://schema.org', '@type': 'Article', headline: post.title,
+          description, mainEntityOfPage: canonical,
+          author: { '@type': 'Organization', name: post.author || SHOP },
+          publisher: { '@type': 'Organization', name: SHOP },
+          datePublished: post.published_at || undefined,
+          image: image !== `${SITE}/social.png` ? image : undefined,
         }
-      } else if (storeSlug) {
-        const v = await api(`public_vendors?slug=eq.${encodeURIComponent(storeSlug)}&select=business_name,description,category,town,rating,review_count,slug`, SB, KEY)
-        if (v) {
-          title = `${v.business_name} — ${v.category || 'Seller'} in ${v.town || 'Lusaka'} | ${shop}`
-          description = clip(v.description || `Shop ${v.business_name} on ${shop}. ${v.category || ''} in ${v.town || 'Lusaka'}, Zambia. Order online and we call you to confirm.`)
-          canonical = `${site}/${v.slug}`
-          jsonld = {
-            '@context': 'https://schema.org', '@type': 'Store', name: v.business_name,
-            description: clip(v.description || v.business_name, 300), url: canonical,
-            address: { '@type': 'PostalAddress', addressLocality: v.town || 'Lusaka', addressCountry: 'ZM' },
-            aggregateRating: v.rating ? { '@type': 'AggregateRating', ratingValue: v.rating, reviewCount: v.review_count } : undefined,
-          }
-        }
-      } else if (parts[0] === 'free' && parts[1]) {
-        const m = await api(`public_magnets?slug=eq.${encodeURIComponent(parts[1])}&select=name,headline,description`, SB, KEY)
-        if (m) {
-          title = `${m.headline} | ${shop}`
-          description = clip(m.description || m.name)
-          robots = 'noindex,follow'
-        }
-      } else if (parts[0] === 'search') {
-        const cat = url.searchParams.get('cat')
-        const qq = url.searchParams.get('q')
-        if (cat) { title = `${cat} in Lusaka | ${shop}`; description = clip(`Buy ${cat.toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged. We confirm every order by phone first.`); canonical = `${site}/search?cat=${encodeURIComponent(cat)}` }
-        else if (qq) { title = `${qq} in Lusaka | ${shop}`; robots = 'noindex,follow' }
-      } else if (parts.length === 0) {
-        jsonld = {
-          '@context': 'https://schema.org', '@type': 'OnlineStore', name: shop, url: site,
-          description, areaServed: { '@type': 'City', name: 'Lusaka' },
-          potentialAction: { '@type': 'SearchAction', target: `${site}/search?q={search_term_string}`, 'query-input': 'required name=search_term_string' },
-        }
+        // Initial HTML is visible to all visitors, not just crawlers. React
+        // replaces this fallback when JS starts; content stays consistent.
+        const plainBody = String(post.body || '').replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+          .replace(/\[video\]\([^)]+\)/gi, 'Video included in the article.')
+          .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+          .replace(/[#*`>]/g, '').replace(/\n+/g, ' ')
+        initialContent = fallback(post.title, plainBody || post.excerpt || '', canonical)
       }
-    } catch { /* fall back to the defaults */ }
+    }
+  } else if (parts[0] === 'search') {
+    canonical = `${SITE}/search`
+  } else if (parts[0] === 'sellers') {
+    title = `Local sellers and shops in Lusaka | ${SHOP}`
+    description = 'Find and compare local shops and sellers on ZA Market in Lusaka, Zambia.'
+    initialContent = fallback('Explore local sellers in Lusaka', description, `${SITE}/sellers`)
+  } else if (parts[0] === 'affiliates') {
+    title = 'Become a ZA Market Affiliate in Zambia | Apply & Learn'
+    description = 'Join the ZA Market affiliate programme in Zambia. Learn to promote products and earn commission on qualifying completed sales. No salary or guaranteed earnings.'
+    canonical = `${SITE}/affiliates`
+    initialContent = fallback('Become a ZA Market Affiliate in Zambia', description, `${SITE}/affiliates`)
+  } else if (parts[0] === 'apply' && parts[1] === 'vendor') {
+    title = `Sell your products on ZA Market | Join as a vendor`
+    description = 'Apply to sell through ZA Market, a local online marketplace connecting businesses and shoppers in Zambia.'
+    initialContent = fallback('Become a ZA Market vendor', description, `${SITE}/apply/vendor`)
+  } else if (parts[0] === 'apply' && parts[1] === 'reseller') {
+    title = `Earn by promoting ZA Market products | Become a reseller`
+    description = 'Learn how to apply as a ZA Market reseller and promote local products to potential customers in Zambia.'
+    initialContent = fallback('Apply as a ZA Market reseller', description, `${SITE}/apply/reseller`)
+  } else if (parts[0] === 'how-it-works') {
+    title = `How buying on ZA Market works | ${SHOP}`
+    description = 'Learn how to find products, order and arrange delivery through ZA Market in Lusaka.'
+  } else if (parts[0] === 'about') {
+    title = `About ZA Market — Local marketplace in Zambia`
+    description = 'Learn more about ZA Market, the marketplace connecting customers with local sellers in Zambia.'
+  } else if (parts[0] === 'categories') {
+    title = `Shop product categories in Lusaka | ${SHOP}`
+  } else if (parts[0] === 'protection') {
+    title = `Customer protection and buying safely | ${SHOP}`
   }
 
+  if (base && key && parts[0] !== 'blog' && parts[0] !== 'search') {
+    const productSlug = parts[0] === 'p' && parts.length === 2 ? parts[1]
+      : parts.length === 2 && !RESERVED.has(parts[0]) ? parts[1] : null
+    const vendorSlug = parts[0] === 'store' && parts.length === 2 ? parts[1]
+      : parts.length === 1 && !RESERVED.has(parts[0]) ? parts[0] : null
+
+    if (productSlug) {
+      const { ok, item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(productSlug)}&select=name,description,price,images,category,vendor_name,rating,review_count,fulfilment,offering_type,page,slug,vendor_slug`, base, key)
+      // A temporary Supabase failure MUST NOT mark all catalogue pages noindex.
+      if (ok && !p) robots = 'noindex,follow'
+      if (p) {
+        canonical = p.vendor_slug ? `${SITE}/${p.vendor_slug}/${p.slug}` : `${SITE}/p/${p.slug}`
+        title = p.page?.seo?.title || `${p.name}${Number.isFinite(Number(p.price)) ? ` — ${money(p.price)}` : ''} | ${SHOP}`
+        description = clip(p.page?.seo?.description || p.description || `${p.name} on ZA Market, Lusaka, Zambia.`)
+        if (typeof p.images?.[0] === 'string' && /^https:\/\//i.test(p.images[0])) image = p.images[0]
+        schema = {
+          '@context': 'https://schema.org', '@type': 'Product', name: p.name,
+          description: clip(p.description || p.name, 300),
+          image: (p.images || []).filter(x => typeof x === 'string' && /^https:\/\//i.test(x)),
+          category: p.category || undefined,
+          brand: p.vendor_name ? { '@type': 'Brand', name: p.vendor_name } : undefined,
+          offers: Number.isFinite(Number(p.price)) && Number(p.price) >= 0
+            ? { '@type': 'Offer', url: canonical, price: Number(p.price), priceCurrency: 'ZMW' }
+            : undefined,
+          aggregateRating: Number(p.rating) > 0 && Number(p.review_count) > 0
+            ? { '@type': 'AggregateRating', ratingValue: p.rating, reviewCount: p.review_count }
+            : undefined,
+        }
+        initialContent = fallback(p.name, p.description || `${p.name} available from ${p.vendor_name || 'a local seller'} on ZA Market.`, canonical)
+      }
+    } else if (vendorSlug) {
+      const { ok, item: v } = await getOne(`public_vendors?slug=eq.${encodeURIComponent(vendorSlug)}&select=business_name,description,category,town,rating,review_count,slug`, base, key)
+      if (ok && !v) robots = 'noindex,follow'
+      if (v) {
+        canonical = `${SITE}/${v.slug}`
+        title = `${v.business_name} — Local seller | ${SHOP}`
+        description = clip(v.description || `Explore products from ${v.business_name} on ZA Market.`)
+        schema = {
+          '@context': 'https://schema.org', '@type': 'Store', name: v.business_name,
+          url: canonical, description, address: { '@type': 'PostalAddress', addressLocality: v.town || 'Lusaka', addressCountry: 'ZM' },
+          aggregateRating: Number(v.rating) > 0 && Number(v.review_count) > 0
+            ? { '@type': 'AggregateRating', ratingValue: v.rating, reviewCount: v.review_count } : undefined,
+        }
+        initialContent = fallback(v.business_name, description, canonical)
+      }
+    }
+  }
+
+  const ogType = schema?.['@type'] === 'Article' ? 'article' : schema?.['@type'] === 'Product' ? 'product' : 'website'
   const head = `
     <title>${esc(title)}</title>
     <meta name="description" content="${esc(description)}" />
     <meta name="robots" content="${robots}" />
     <link rel="canonical" href="${esc(canonical)}" />
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="${esc(shop)}" />
+    <meta property="og:type" content="${ogType}" />
+    <meta property="og:site_name" content="${SHOP}" />
     <meta property="og:title" content="${esc(title)}" />
     <meta property="og:description" content="${esc(description)}" />
     <meta property="og:image" content="${esc(image)}" />
@@ -121,14 +186,21 @@ export default async function handler(request, context) {
     <meta name="twitter:title" content="${esc(title)}" />
     <meta name="twitter:description" content="${esc(description)}" />
     <meta name="twitter:image" content="${esc(image)}" />
-    ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld).replace(/</g, '\\u003c')}</script>` : ''}
-  `
+    ${schema ? `<script type="application/ld+json" data-zm-edge-jsonld="true" data-zm-edge-path="${esc(current.pathname)}">${JSON.stringify(schema).replace(/</g, '\\u003c')}</script>` : ''}`
 
-  const html = (await res.text())
-    .replace(/<title>.*?<\/title>/i, '')
+  let html = await response.text()
+  html = html
+    .replace(/<title>[^<]*<\/title>/gi, '')
+    .replace(/<meta\s+name=["'](?:description|robots)["'][^>]*>/gi, '')
+    .replace(/<link\s+rel=["']canonical["'][^>]*>/gi, '')
     .replace('</head>', `${head}</head>`)
-
-  return new Response(html, { status: res.status, headers: { ...Object.fromEntries(res.headers), 'content-type': 'text/html; charset=utf-8' } })
+  if (initialContent) html = html.replace('<div id="root"></div>', `<div id="root">${initialContent}</div>`)
+  const headers = new Headers(response.headers)
+  headers.delete('content-length')
+  headers.delete('content-encoding')
+  headers.set('content-type', 'text/html; charset=utf-8')
+  headers.set('cache-control', 'public, max-age=120')
+  return new Response(html, { status: response.status, headers })
 }
 
 export const config = { path: '/*', excludedPath: ['/assets/*', '/*.png', '/*.jpg', '/*.svg', '/*.ico', '/*.xml', '/*.txt'] }

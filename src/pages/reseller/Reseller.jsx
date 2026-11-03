@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import BigActions from '../../components/BigActions'
+import DashboardTrend from '../../components/DashboardTrend'
 import Icon from '../../lib/icons'
 import { useAuth } from '../../lib/auth'
 import { money, date, n, title } from '../../lib/format'
@@ -35,7 +36,7 @@ export function ResellerHome() {
   const link = `${window.location.origin}/r/${r.code}`
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>Hi {r.full_name.split(' ')[0]}</h1><p>Your code is <span className="strong">{r.code}</span></p></div></div>
+      <div className="page-head workspace-page-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR AFFILIATE WORKSPACE</span><h1>Find it. Share it. Earn from it.</h1><p>Welcome, {r.full_name.split(' ')[0]}. Your referral code is <span className="strong">{r.code}</span>.</p></div><div className="btn-row"><Link className="btn" to="/sell/find-customers">Selling guide</Link><Link className="btn primary" to="/sell/products">Find products <Icon.arrow /></Link></div></div>
 
       <BigActions items={[
         {
@@ -64,6 +65,7 @@ export function ResellerHome() {
         <Stat label="Pending" value={money(s.pending)} sub="waiting for delivery + 24h check" />
         <Stat label="Sales this month" value={s.sales_month} sub={`${s.sales_today} today · ${money(s.revenue_month)}`} />
       </div>
+      <DashboardTrend scope="reseller" id={r.id} href="/sell/earnings" />
       {target > 0 && (
         <div className="card stack-sm">
           <div className="between"><h3>Monthly target</h3><span className="small">{money(s.revenue_month)} of {money(target)}</span></div>

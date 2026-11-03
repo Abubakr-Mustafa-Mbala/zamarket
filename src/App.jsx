@@ -41,6 +41,9 @@ const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
 const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
+const AffiliateRecruitment = lazy(() => import('./pages/public/AffiliateRecruitment'))
+const AffiliateRecruiting = lazy(() => import('./pages/admin/AffiliateRecruiting'))
+const AffiliateAcademy = lazy(() => import('./pages/admin/AffiliateAcademy'))
 const BlogIndex = named(() => import('./pages/public/Blog'), 'BlogIndex')
 const BlogPost = named(() => import('./pages/public/Blog'), 'BlogPost')
 const VendorRefCapture = named(growthPages, 'VendorRefCapture')
@@ -133,6 +136,7 @@ export default function App() {
         <Route path="/review" element={<ReviewPage />} />
         <Route path="/account" element={<Account />} />
         <Route path="/apply/:kind" element={<Apply />} />
+        <Route path="/affiliates" element={<AffiliateRecruitment />} />
         <Route path="/free/:slug" element={<MagnetPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/rate/:link" element={<RatePage />} />
@@ -172,6 +176,8 @@ export default function App() {
         <Route path="simulator" element={<Simulator />} />
         <Route path="offers" element={<Offers />} />
         <Route path="resellers" element={<Affiliates />} />
+        <Route path="affiliate-recruiting" element={<Guard roles={['founder','ops','marketing']}><AffiliateRecruiting /></Guard>} />
+        <Route path="affiliate-academy" element={<Guard roles={['founder','ops','marketing']}><AffiliateAcademy /></Guard>} />
         <Route path="vendors" element={<Vendors />} />
         <Route path="vendors/:id/shop" element={<SellerSetup />} />
         <Route path="marketing" element={<MarketingHub />} />

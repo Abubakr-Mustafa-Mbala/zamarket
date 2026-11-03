@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
+import { validAttributionTouch } from './referralExpiry'
+
 const Ctx = createContext(null)
 const KEY = 'zm-cart'
 
@@ -17,10 +19,12 @@ export function CartProvider({ children }) {
   const readTouch = () => {
     try {
       const t = JSON.parse(localStorage.getItem('zm-touch') || 'null')
-      if (t && Date.now() - t.at < 30 * 864e5) return t
+      if (validAttributionTouch(t)) return t
     } catch { /* ignore */ }
     const legacy = localStorage.getItem('zm-ref')
-    return legacy ? { type: 'reseller', code: legacy, at: Date.now() } : null
+    // Legacy codes have no trustworthy timestamp: do not extend their attribution window.
+    if (legacy) localStorage.removeItem('zm-ref')
+    return null
   }
   const [touch, setTouchState] = useState(readTouch)
   const setTouch = (t) => { const v = { ...t, at: Date.now() }; localStorage.setItem('zm-touch', JSON.stringify(v)); localStorage.removeItem('zm-ref'); setTouchState(v) }
@@ -66,14 +70,18 @@ export function CartProvider({ children }) {
   const setCampaign = (code, store) => setTouch({ type: 'campaign', code, store: store || null })
   const setVendorRef = (code) => setTouch({ type: 'vendor_ref', code })
   const setInvite = (code) => setTouch({ type: 'invite', code })
-  const attribution = () => ({
-    referral_code: touch?.type === 'reseller' ? touch.code : null,
-    store_ref: touch?.type === 'store' ? touch.code : null,
-    campaign_code: touch?.type === 'campaign' ? touch.code : null,
-    invite_code: touch?.type === 'invite' ? touch.code : null,
-    vendor_ref: touch?.type === 'vendor_ref' ? touch.code : null,
-    source: touch?.type === 'reseller' ? `reseller:${touch.code}` : touch?.type === 'store' ? `vendor:${touch.code}` : touch?.type === 'campaign' ? `campaign:${touch.code}` : touch?.type === 'invite' ? `referral:${touch.code}` : touch?.type === 'vendor_ref' ? `vendor_ref:${touch.code}` : 'organic',
-  })
+  const attribution = () => {
+    // A cart can remain open for weeks; check expiry again at checkout.
+    const activeTouch = validAttributionTouch(touch) ? touch : null
+    return {
+    referral_code: activeTouch?.type === 'reseller' ? activeTouch.code : null,
+    store_ref: activeTouch?.type === 'store' ? activeTouch.code : null,
+    campaign_code: activeTouch?.type === 'campaign' ? activeTouch.code : null,
+    invite_code: activeTouch?.type === 'invite' ? activeTouch.code : null,
+    vendor_ref: activeTouch?.type === 'vendor_ref' ? activeTouch.code : null,
+    source: activeTouch?.type === 'reseller' ? `reseller:${activeTouch.code}` : activeTouch?.type === 'store' ? `vendor:${activeTouch.code}` : activeTouch?.type === 'campaign' ? `campaign:${activeTouch.code}` : activeTouch?.type === 'invite' ? `referral:${activeTouch.code}` : activeTouch?.type === 'vendor_ref' ? `vendor_ref:${activeTouch.code}` : 'organic',
+    }
+  }
   const count = items.reduce((s, x) => s + x.qty * (x.units || 1), 0)
   const subtotal = items.reduce((s, x) => s + x.qty * x.price, 0)
   const savings = items.reduce((s, x) => s + x.qty * Math.max(0, (x.normalValue || x.price) - x.price), 0)

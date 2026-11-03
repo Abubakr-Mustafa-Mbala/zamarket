@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { Field, Input, Select, useToast, Loading } from '../../components/ui'
 import { useDepartments } from '../../lib/departments'
+import { recruitmentAttribution } from '../../lib/affiliateRecruitment'
 
 export function homeFor(role) {
   if (role === 'marketing') return '/admin/marketing'
@@ -124,10 +125,10 @@ export function Account() {
 
 const PENDING = 'zm-pending-apply'
 
-function buildRow(isVendor, f, user, profile) {
+function buildRow(isVendor, f, user, profile, attribution = {}) {
   return isVendor
     ? { user_id: user.id, business_name: f.business_name, owner_name: f.full_name || profile?.full_name, phone: f.phone || profile?.phone, email: user.email, location: f.location, category: f.category || null, description: f.description, delivery_capability: f.delivery_capability || null, return_policy: f.return_policy || null, links: f.links || null, licenses: f.licenses || null, payout_info: f.payout_info || null, agreed_terms: true }
-    : { user_id: user.id, full_name: f.full_name || profile?.full_name, phone: f.phone || profile?.phone, email: user.email, location: f.location, experience: f.experience || null, categories: f.categories || null, agreed_terms: true }
+    : { user_id: user.id, full_name: f.full_name || profile?.full_name, phone: f.phone || profile?.phone, email: user.email, location: f.location, experience: f.experience || null, categories: f.categories || null, application_source: attribution.source || 'direct', application_campaign: attribution.campaign || 'organic', agreed_terms: true }
 }
 
 function BigText({ label, hint, optional, ...rest }) {
@@ -143,6 +144,10 @@ function BigText({ label, hint, optional, ...rest }) {
 export function Apply() {
   const DEPARTMENTS = useDepartments()
   const { kind } = useParams()
+  const [searchParams] = useSearchParams()
+  const attribution = recruitmentAttribution(searchParams)
+  const resumePath = `/apply/${kind}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`
+  const loginPath = `/login?next=${encodeURIComponent(resumePath)}`
   const { user, profile, loading, refresh } = useAuth()
   const toast = useToast()
   const isVendor = kind === 'vendor'
@@ -168,7 +173,7 @@ export function Apply() {
         try {
           const pending = JSON.parse(localStorage.getItem(PENDING) || 'null')
           if (pending && pending.kind === kind) {
-            const { data: made } = await supabase.from(table).insert(buildRow(isVendor, pending.f, user, profile)).select().single()
+            const { data: made } = await supabase.from(table).insert(buildRow(isVendor, pending.f, user, profile, pending.attribution || attribution)).select().single()
             localStorage.removeItem(PENDING)
             if (made) { setExisting(made); await refresh(); return }
           }
@@ -184,7 +189,7 @@ export function Apply() {
       <div className="done-card">
         <div className="done-tick">{existing.status === 'approved' ? '✓' : '⏳'}</div>
         <div className="strong">{existing.status === 'pending' ? 'Application received' : existing.status === 'approved' ? "You're approved" : 'Application not active'}</div>
-        <div className="small">{existing.status === 'pending' ? "We'll call you soon. You don't need to do anything else." : existing.status === 'approved' ? 'Your dashboard is ready.' : 'Please contact us if you think this is a mistake.'}</div>
+        <div className="small">{existing.status === 'pending' ? "Our team will review your application. You can revisit this page to check the result." : existing.status === 'approved' ? 'Your dashboard is ready.' : 'Please contact us if you think this is a mistake.'}</div>
       </div>
       {existing.status === 'approved' && <Link className="btn big primary block" to={isVendor ? '/vendor' : '/sell'}>Open my dashboard</Link>}
     </div>
@@ -196,7 +201,7 @@ export function Apply() {
         <div className="strong">Check your email</div>
         <div className="small">Tap the link we sent to {f.email}. Then sign in, and your application sends by itself.</div>
       </div>
-      <Link className="btn big primary block" to={`/login?next=/apply/${kind}`}>Sign in</Link>
+      <Link className="btn big primary block" to={loginPath}>Sign in</Link>
     </div>
   )
 
@@ -209,13 +214,13 @@ export function Apply() {
         const { data, error } = await supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name, phone: f.phone } } })
         if (error) throw error
         if (!data.session) {
-          localStorage.setItem(PENDING, JSON.stringify({ kind, f: { ...f, password: undefined } }))
+          localStorage.setItem(PENDING, JSON.stringify({ kind, f: { ...f, password: undefined }, attribution }))
           setWaitingEmail(true)
           return
         }
         u = data.user
       }
-      const { data: made, error } = await supabase.from(table).insert(buildRow(isVendor, f, u, profile)).select().single()
+      const { data: made, error } = await supabase.from(table).insert(buildRow(isVendor, f, u, profile, attribution)).select().single()
       if (error) throw error
       setExisting(made)
       await refresh()
@@ -229,10 +234,10 @@ export function Apply() {
   return (
     <form onSubmit={submit} className="wizard">
       <div>
-        <h1>{isVendor ? 'Sell your products with us' : 'Earn money selling our products'}</h1>
+        <h1>{isVendor ? 'Sell your products with us' : 'Apply to become a ZA Market affiliate'}</h1>
         <p className="lead">{isVendor
           ? 'Fill this in and we will call you.'
-          : 'Share products with anyone — friends, your WhatsApp status, TikTok, Facebook, or people you meet. When someone buys through your link, you earn commission on that sale. Fill this in and we will call you.'}</p>
+          : 'Promote ZA Market products, access free training and earn commission on qualifying completed sales. This is independent, commission-based work, not a salaried job. We review each application.'}</p>
         {isVendor && (
           <div className="card flat small stack-sm">
             <strong>Before you fill this in, here is who we are.</strong>
@@ -245,11 +250,11 @@ export function Apply() {
         )}
         {!isVendor && (
           <ul className="sell-points">
-            <li>Your own link, with ready-made messages, photos and prices</li>
+            <li>Your own link, with prepared product posts, photos and current prices</li>
             <li>No stock to buy, nothing to carry, no deliveries to make</li>
-            <li>Commission on every completed sale, tracked in your dashboard</li>
+            <li>Commission on qualifying completed sales, tracked in your dashboard</li>
             <li>Paid after the customer receives the order</li>
-            <li>What you earn depends on what you sell. There's no salary and nothing is guaranteed.</li>
+            <li>Your income varies with actual sales. There is no salary or guaranteed earnings.</li>
           </ul>
         )}
       </div>
@@ -280,14 +285,18 @@ export function Apply() {
         </div>
       </details>
 
+      {!isVendor && <p className="small muted">Want to understand the programme first? <Link to="/affiliates">Read how affiliate selling and Academy training work</Link>.</p>}
+
       {!user && (
         <div className="stack card">
           <div className="big-label">Make your login</div>
           <BigText label="Email" type="email" value={f.email || ''} onChange={set('email')} required autoComplete="email" />
           <BigText label="Password" type="password" value={f.password || ''} onChange={set('password')} required minLength={6} autoComplete="new-password" hint="At least 6 letters or numbers" />
-          <span className="small muted">Already have a login? <Link to={`/login?next=/apply/${kind}`}>Sign in</Link></span>
+          <span className="small muted">Prefer Google or already have an account? <Link to={loginPath}>Continue with Google or sign in</Link></span>
         </div>
       )}
+
+      {!isVendor && <p className="tiny muted">We use your application details to evaluate your request and contact you about the affiliate programme. Please provide only your own information. <Link to="/about">See our business details and contact information.</Link></p>}
 
       <label className="check big-check">
         <input type="checkbox" required />

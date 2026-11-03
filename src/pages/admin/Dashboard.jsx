@@ -5,6 +5,7 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, num, pct } from '../../lib/format'
 import { Stat, Loading, Segmented, Breakdown, Table } from '../../components/ui'
+import Icon from '../../lib/icons'
 
 const RANGES = { 7: 'This week', 30: '30 days', 90: '90 days', 365: 'This year' }
 
@@ -12,7 +13,7 @@ export default function Dashboard() {
   const { advanced, profile } = useAuth()
   const [days, setDays] = useState(30)
   const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
-  const { data, loading } = useData(async () => {
+  const { data, loading, error, reload } = useData(async () => {
     const [s, quotes, pending, top] = await Promise.all([
       q(supabase.rpc('dashboard_summary', { p_from: from })),
       q(supabase.from('quotes').select('text,author')),
@@ -21,31 +22,53 @@ export default function Dashboard() {
     ])
     const byProduct = {}
     for (const it of top) { const k = it.product?.name || '?'; byProduct[k] = byProduct[k] || { name: k, units: 0, revenue: 0 }; byProduct[k].units += it.quantity; byProduct[k].revenue += Number(it.line_total) }
-    return { s, quote: quotes[Math.floor(Math.random() * quotes.length)], pending, top: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 5) }
+    return { s, quote: quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : null, pending, top: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 5) }
   }, [from])
 
-  if (loading || !data) return <Loading />
+  if (loading) return <Loading />
+  if (error || !data) return (
+    <div className="card stack-sm" role="alert">
+      <h2>Dashboard could not load</h2>
+      <p className="muted">The latest marketplace figures are temporarily unavailable. No values have been estimated.</p>
+      <button className="btn primary" onClick={reload}>Try again</button>
+    </div>
+  )
   const s = data.s
   const grossProfit = s.revenue_completed - s.cogs - s.commissions + s.marketplace_fees
   const netProfit = grossProfit + s.delivery_income - s.delivery_costs - s.ad_spend - s.expenses
   const marginPct = s.revenue_completed > 0 ? (netProfit / s.revenue_completed) * 100 : 0
   const aov = s.orders > 0 ? s.revenue / s.orders : 0
+  const priorities = [
+    { label: 'Confirm new orders', value: Number(s.pending_orders) || 0, to: '/admin/orders?status=pending', kind: 'orders' },
+    { label: 'Arrange pending deliveries', value: Number(s.pending_deliveries) || 0, to: '/admin/deliveries', kind: 'deliveries' },
+    { label: 'Check low-stock products', value: Number(s.low_stock) || 0, to: '/admin/inventory', kind: 'stock' },
+  ].filter(item => item.value > 0)
 
   return (
     <div className="stack">
-      <div className="page-head">
-        <div>
-          <h1>Hello, {profile?.full_name?.split(' ')[0] || 'founder'}</h1>
-          {data.quote && <p className="quote">"{data.quote.text}"{data.quote.author ? ` — ${data.quote.author}` : ''}</p>}
+      <div className="page-head workspace-page-head">
+        <div><span className="eyebrow"><span className="status-dot" /> OPERATIONS OVERVIEW</span>
+          <h1>Good to see you, {profile?.full_name?.split(' ')[0] || 'there'}.</h1>
+          <p>One clear view of orders, stock and marketplace performance.</p>
         </div>
         <Segmented options={Object.entries(RANGES)} value={String(days)} onChange={(v) => setDays(Number(v))} />
       </div>
 
-      <div className="quick">
-        <Link to="/admin/add-stock" className="main"><span className="qi">📦</span>I bought goods</Link>
-        <Link to="/admin/orders?new=1"><span className="qi">🧾</span>Record a sale</Link>
-        <Link to="/admin/orders?status=pending"><span className="qi">🔔</span><span>New orders {s.pending_orders > 0 && <span className="count">{s.pending_orders}</span>}</span></Link>
+      <div className="quick premium-quick">
+        <Link to="/admin/orders?status=pending" className="main"><span className="qi"><Icon.cart /></span><span>Review new orders</span>{s.pending_orders > 0 && <span className="count">{s.pending_orders}</span>}<Icon.arrow /></Link>
+        <Link to="/admin/add-stock"><span className="qi"><Icon.box /></span>Record stock purchase <Icon.arrow /></Link>
+        <Link to="/admin/studio"><span className="qi"><Icon.sparkles /></span>Make a promotion <Icon.arrow /></Link>
       </div>
+
+      <section className="card stack-sm" aria-label="Today's operational priorities">
+        <div className="card-title"><h3>Action queue</h3><span className="small muted">Live counts from marketplace records</span></div>
+        {priorities.length ? priorities.map(item => (
+          <Link key={item.kind} to={item.to} className="between" style={{ color: 'inherit', padding: '8px 0' }}>
+            <span>{item.label}</span><span className="strong warn">{num(item.value)} →</span>
+          </Link>
+        )) : <p className="muted small">No outstanding order, delivery, or low-stock alerts in this summary.</p>}
+        <div className="btn-row"><Link className="btn" to="/admin/products">Review product listings</Link><button className="btn ghost" onClick={reload}>Refresh figures</button></div>
+      </section>
 
       <div className="grid-4">
         <Stat hero label={<>Net profit · {RANGES[days].toLowerCase()} <Link to="/admin/earnings" style={{ color: '#9fd8bd' }}>chart ›</Link></>} value={money(netProfit)} sub={`${pct(marginPct)} of completed revenue`} />

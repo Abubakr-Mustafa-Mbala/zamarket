@@ -4,6 +4,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { Loading, useToast } from '../../components/ui'
+import AcademyExtras, { LessonResources, useAcademyContent } from './AcademyExtras'
 
 // Short, plain lessons. Nothing here promises income.
 export const LESSONS = [
@@ -103,6 +104,7 @@ export default function Training() {
   const { user } = useAuth()
   const toast = useToast()
   const [open, setOpen] = useState(LESSONS[0].key)
+  const academy = useAcademyContent()
   const { data, loading, reload } = useData(() => q(supabase.from('training_progress').select('lesson').eq('user_id', user.id)), [user.id])
   if (loading) return <Loading />
   const done = new Set((data || []).map((r) => r.lesson))
@@ -124,8 +126,8 @@ export default function Training() {
     <div className="stack">
       <div className="page-head">
         <div>
-          <h1>Training</h1>
-          <p>Nine short lessons. Do one a day and you will know more than most people selling anything in Lusaka.</p>
+          <p className="academy-kicker">ZA MARKET ACADEMY</p><h1>Your affiliate Academy</h1>
+          <p>Build your skills with nine starter lessons, recordings, live calls and questions answered by the team.</p>
         </div>
       </div>
 
@@ -146,6 +148,7 @@ export default function Training() {
               <div className="sh-body">
                 <ul>{l.points.map((p, k) => <li key={k}>{p}</li>)}</ul>
                 <p className="small"><strong>Do this now:</strong> {l.doIt}</p>
+                <LessonResources resource={academy.lessons.find((v) => v.lesson_key === l.key)} />
                 <button className={`btn sm ${done.has(l.key) ? 'ghost' : 'primary'}`} onClick={() => toggle(l.key)}>
                   {done.has(l.key) ? 'Mark as not done' : 'I have done this'}
                 </button>
@@ -154,6 +157,8 @@ export default function Training() {
           </div>
         ))}
       </div>
+
+      <AcademyExtras sessions={academy.sessions} questions={academy.questions} error={academy.error} unavailable={!!academy.error} reload={academy.reload} />
 
       {pct === 100 && (
         <div className="card ok-card">

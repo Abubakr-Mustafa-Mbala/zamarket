@@ -275,9 +275,9 @@ export default function AddStock() {
                 <dt>What it cost you (buy, bring, store)</dt><dd>−{money(unitCost)}</dd>
                 <dt>Bag / delivery per sale</dt><dd>−{money(n(f.per_sale_cost))}</dd>
                 {k.paymentFee > 0 && <><dt>Payment fee</dt><dd>−{money(k.paymentFee)}</dd></>}
-                <dt className="strong">You keep (you sell)</dt><dd className="strong">{money(k.you)}</dd>
+                <dt className="strong">Estimated retained revenue (direct sale)</dt><dd className="strong">{money(k.you)}</dd>
                 <dt>Affiliate's cut</dt><dd>−{money(k.commission)}</dd>
-                <dt className="strong">You keep (reseller sells)</dt><dd className="strong">{money(k.withReseller)}</dd>
+                <dt className="strong">Estimated retained revenue (affiliate sale)</dt><dd className="strong">{money(k.withReseller)}</dd>
                 <dt>Your target</dt><dd>{target}% on {money(pr.cost)} = {money(pr.cost * target / 100)} each</dd>
               </dl>
             </details>

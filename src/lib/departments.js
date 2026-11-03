@@ -12,7 +12,8 @@ export function useShopInfo() {
     if (shopCache) return
     supabase.from('settings').select('key,value').in('key', ['delivery_included', 'local_delivery_fee']).then(({ data }) => {
       const m = Object.fromEntries((data || []).map((r) => [r.key, r.value]))
-      shopCache = { deliveryIncluded: m.delivery_included === true || m.delivery_included === 'true', localFee: Number(m.local_delivery_fee ?? 30) }
+      const rawFee = Number(m.local_delivery_fee ?? 30)
+      shopCache = { deliveryIncluded: m.delivery_included === true || m.delivery_included === 'true', localFee: Number.isFinite(rawFee) && rawFee >= 0 ? rawFee : 30 }
       setInfo(shopCache)
     })
   }, [])

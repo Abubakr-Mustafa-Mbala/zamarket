@@ -28,6 +28,27 @@ class Doc {
   bold(on) { return this.raw(bytes(ESC, 0x45, on ? 1 : 0)) }
   big(on) { return this.raw(bytes(GS, 0x21, on ? 0x11 : 0x00)) }
   line(char = '-') { return this.text(char.repeat(this.width)) }
+  wrap(value, indent = '') {
+    const words = plain(value).split(/\s+/).filter(Boolean)
+    let line = indent
+    for (const word of words) {
+      if (line.trim() && line.length + word.length + 1 > this.width) { this.text(line); line = indent + word }
+      else line += (line.trim() ? ' ' : '') + word
+    }
+    if (line.trim()) this.text(line)
+    return this
+  }
+  qr(value) {
+    const data = enc.encode(String(value || ''))
+    if (!data.length || data.length > 700) return this
+    const len = data.length + 3
+    this.raw(bytes(GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00))
+    this.raw(bytes(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x04))
+    this.raw(bytes(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31))
+    this.raw(bytes(GS, 0x28, 0x6b, len & 255, len >> 8, 0x31, 0x50, 0x30))
+    this.raw(data)
+    return this.raw(bytes(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30))
+  }
   // left text and right text on one line
   row(left, right) {
     const l = plain(left), r = plain(right)
@@ -54,6 +75,7 @@ export function receiptBytes(o, opts = {}) {
   const money = (v) => `K${Number(v || 0).toFixed(2)}`
   const d = new Doc(width)
   d.align('center').bold(true).big(true).text(opts.business || 'ZaMarket').big(false)
+  d.text(opts.site || 'zamarket.shop')
   if (opts.phone) d.text(opts.phone)
   d.bold(false)
   const paid = (o.payments || []).reduce((t, p) => t + Number(p.amount || 0), 0)
@@ -64,13 +86,19 @@ export function receiptBytes(o, opts = {}) {
   d.row('Printed', new Date().toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }))
   if (o.needed_by) d.row('Needed by', new Date(`${o.needed_by}T00:00:00`).toLocaleDateString('en-GB'))
   d.line()
-  d.bold(true).text(o.customer?.full_name || 'Customer').bold(false)
+  d.bold(true).text('SOLD BY').bold(false)
+  const sellers = [...new Set((o.items || []).map(i => opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'))]
+  sellers.forEach(name => d.wrap(name))
+  d.line()
+  d.bold(true).text('CUSTOMER').bold(false)
+  d.wrap(o.customer?.full_name || 'Customer')
   if (o.customer?.phone) d.text(o.customer.phone)
   const place = [o.address, o.area, o.district?.name].filter(Boolean).join(', ')
   if (place) d.text(place)
   d.line()
   for (const i of o.items || []) {
-    d.text(`${i.quantity} x ${i.product?.name || 'Item'}`)
+    d.wrap(`${i.quantity} x ${i.product?.name || 'Item'}`)
+    d.wrap(`Sold by: ${opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'}`)
     if (i.choices) for (const [k, v] of Object.entries(i.choices)) d.text(`  ${k}: ${v}`)
     if (i.note) d.text(`  "${i.note}"`)
     d.row(`  @ ${money(i.unit_price)}`, money(i.line_total))
@@ -88,7 +116,9 @@ export function receiptBytes(o, opts = {}) {
   d.text('Delivered by: _______________')
   d.line()
   d.align('center')
-  if (opts.footer) d.text(opts.footer)
+  if (opts.orderUrl) { d.qr(opts.orderUrl); d.text('Scan to view order') }
+  d.text(opts.site || 'zamarket.shop')
+  if (opts.footer) d.wrap(opts.footer)
   if (opts.reviewLink) { d.text('Rate your order:'); d.text(opts.reviewLink) }
   d.feedCut()
   return d.build()

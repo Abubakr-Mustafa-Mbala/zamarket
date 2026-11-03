@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
@@ -70,7 +70,7 @@ function TermsCell({ v, onDone }) {
                   placeholder="An hour out of town, so delivery costs more" />
               </Field>
             </div>
-            <TermsMaths fee={f.fee || t?.fee_pct} allowance={f.allowance || t?.allowance_pct} />
+            <TermsMaths fee={f.fee === '' || f.fee == null ? t?.fee_pct : f.fee} allowance={f.allowance === '' || f.allowance == null ? t?.allowance_pct : f.allowance} />
             <button className="btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save terms'}</button>
           </div>
         </Modal>
@@ -83,22 +83,45 @@ function TermsCell({ v, onDone }) {
 // the deal. Uses a round K100 so the numbers are easy to read off.
 function TermsMaths({ fee, allowance }) {
   const [p, setP] = useState(null)
+  const [errorMessage, setErrorMessage] = useState('')
+  const requestNumber = useRef(0)
   useEffect(() => {
-    supabase.rpc('shelf_price', { p_take: 100, p_fee_pct: Number(fee || 0), p_allowance_pct: Number(allowance || 0) })
-      .then(({ data, error }) => { if (!error) setP(Number(data)) })
-      .catch(() => {})
+    const currentRequest = ++requestNumber.current
+    setP(null)
+    setErrorMessage('')
+    const feeNumber = Number(fee)
+    const allowanceNumber = Number(allowance)
+    if (fee == null || allowance == null || !Number.isFinite(feeNumber) || !Number.isFinite(allowanceNumber)) {
+      return () => { requestNumber.current++ }
+    }
+    supabase.rpc('shelf_price', { p_take: 100, p_fee_pct: feeNumber, p_allowance_pct: allowanceNumber })
+      .then(({ data, error }) => {
+        if (currentRequest !== requestNumber.current) return
+        const amount = Number(data)
+        if (error || data == null || !Number.isFinite(amount) || amount <= 0) {
+          setErrorMessage('Price preview unavailable. Please verify the terms before saving.')
+          return
+        }
+        setP(amount)
+      })
+      .catch(() => {
+        if (currentRequest === requestNumber.current) setErrorMessage('Price preview unavailable. Please verify the terms before saving.')
+      })
+    return () => { requestNumber.current++ }
   }, [fee, allowance])
-  if (!p) return null
-  const aff = Math.round(p * Number(allowance || 0)) / 100
+  if (errorMessage) return <p className="small muted" role="status">{errorMessage}</p>
+  if (p == null) return <p className="small muted" role="status">Calculating example…</p>
+  const aff = Math.round(p * Number(allowance) ) / 100
   return (
     <div className="price-maths">
       <div className="pm-row"><span>If they ask for</span><strong>K100.00</strong></div>
       <div className="pm-row lead"><span>The shopper pays</span><strong>K{p.toFixed(2)}</strong></div>
       <div className="pm-row"><span>They always receive</span><span>K100.00</span></div>
       <div className="pm-row"><span>An affiliate would earn up to</span><span>K{aff.toFixed(2)}</span></div>
-      <div className="pm-row total"><span>You keep</span>
-        <strong>K{(p - 100 - aff).toFixed(2)} — or K{(p - 100).toFixed(2)} if nobody referred it</strong>
+      <div className="pm-row total"><span>Estimated marketplace remainder before delivery and other costs</span>
+        <strong>K{(p - 100 - aff).toFixed(2)} with referral; K{(p - 100).toFixed(2)} without referral</strong>
       </div>
+      <p className="tiny muted">Example only. Actual charges, delivery allocations, refunds and owner distributions are calculated separately.</p>
     </div>
   )
 }
@@ -211,7 +234,7 @@ function VendorModal({ v: initial, onClose, onReview, onSave, canReview }) {
   return (
     <Modal title={v.business_name} onClose={onClose}>
       <div className="stack">
-        <div className="between"><div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div><div className="btn-row">{v.status === 'approved' && <Link className="btn sm primary" to={`/admin/vendors/${v.id}/shop`}>Set up their shop</Link>}{v.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/vendor/${v.id}`}>View earnings</Link>}</div></div>
+        <div className="between"><div className="row"><Badge status={v.status} />{v.status === 'approved' && <Badge status={v.health} />}</div>{v.status === 'approved' && <Link className="btn sm primary" to={`/admin/vendors/${v.id}/shop`}>Set up their shop</Link>}{v.status !== 'pending' && <Link className="btn sm" to={`/admin/earnings/vendor/${v.id}`}>View earnings</Link>}</div>
         <Breakdown items={[['Owner', v.owner_name || '—'], ['Phone', v.phone], ['Email', v.email || '—'], ['Location', v.location || '—'], ['Category', v.category || '—'], ['Delivers?', v.delivery_capability || '—'], ['Returns policy', v.return_policy || '—'], ['Links', v.links || '—'], ['Licences', v.licenses || '—'], ['Payout details', v.payout_info || '—'], ['Agreed to terms', v.agreed_terms ? 'Yes' : 'No']]} />
         {v.description && <div className="small"><span className="strong">What they sell:</span> {v.description}</div>}
         {v.slug && v.status === 'approved' && (

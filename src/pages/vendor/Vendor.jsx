@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
+import { useActingVendor, useActingSaved } from '../../lib/actingVendor'
 import { money, date, n, title } from '../../lib/format'
 import { Badge, Table, Loading, Stat, Empty, useToast, Stars, Tabs, CopyLine, Field, Input, Select, Textarea, Segmented } from '../../components/ui'
 import { niceDate } from '../../lib/madeToOrder'
@@ -10,20 +11,20 @@ import { ProductEditor } from '../admin/Products'
 import { PHOTO_TIPS } from '../../lib/photos'
 import PhotoUpload from '../../components/PhotoUpload'
 import BigActions from '../../components/BigActions'
+import DashboardTrend from '../../components/DashboardTrend'
 import Icon from '../../lib/icons'
 import { THEMES, STYLES, themeVars, readableOn } from '../../lib/storeTheme'
 import PayoutRequest from '../../components/PayoutRequest'
 import ShareThis from '../../components/ShareThis'
+import ShareStore from '../../components/ShareStore'
 import QrCode from '../../components/QrCode'
 import Statement from '../../components/Statement'
 import CreativeStudio from '../shared/CreativeStudio'
-import { useActingVendor, useActingSaved } from '../../lib/actingVendor'
 
 // Normally the shop belongs to whoever is signed in. When a staff member is
 // setting a shop up on a seller's behalf, the acting context names that shop
-// instead and these same screens point at it.
-// Both hooks run on every render — short-circuiting with `||` would skip
-// useAuth whenever a staff member is acting, and React counts hooks.
+// instead and these same screens point at it. Both hooks run every render —
+// short-circuiting with || would skip one, and React counts hooks.
 const useVendor = () => {
   const acting = useActingVendor()
   const { profile } = useAuth()
@@ -36,7 +37,8 @@ export function VendorHome() {
   const { data, loading } = useData(async () => v ? {
     sum: await q(supabase.rpc('vendor_summary')),
     setts: await q(supabase.from('settlements').select('marketplace_fee,net_payable,status').eq('vendor_id', v.id)),
-    products: await q(supabase.from('products').select('status').eq('vendor_id', v.id)),
+    products: await q(supabase.from('products').select('id,name,status,images,category,featured,rating,fulfilment').eq('vendor_id', v.id)),
+    sections: await q(supabase.from('store_sections').select('id,name,sort').eq('vendor_id', v.id).order('sort')),
     store: await q(supabase.rpc('vendor_store_stats')),
   } : null, [v?.id])
   if (!v) return <Empty title="No vendor profile">Your account isn't linked to an approved vendor application.</Empty>
@@ -47,7 +49,7 @@ export function VendorHome() {
   const fees = data.setts.filter((s) => s.status !== 'cancelled').reduce((t, s) => t + n(s.marketplace_fee), 0)
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>{v.business_name}</h1><p>You keep what you ask for on every sale. ZaMarket adds its share on top.</p></div></div>
+      <div className="page-head workspace-page-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR BUSINESS, AT A GLANCE</span><h1>Welcome back, {v.business_name}.</h1><p>Stay on top of orders, keep your catalogue fresh and grow your storefront.</p></div><div className="btn-row"><Link className="btn" to="/vendor/shopfront">Edit shopfront</Link><Link className="btn primary" to="/vendor/products">Manage products <Icon.arrow /></Link></div></div>
 
       <BigActions items={[
         {
@@ -81,17 +83,15 @@ export function VendorHome() {
         <div className="card stack-sm">
           <div className="between"><h3>Your store link</h3><Link to="/vendor/marketing" className="small">Share and advertise</Link></div>
           <CopyLine text={`${window.location.origin}/${data.store.slug}`} />
-          {/* In take-home pricing the vendor is settled at the price they set, so a
-              reduced fee changes nothing for them — claiming otherwise is a promise
-              the settlement does not keep. The honest benefit is the traffic. */}
           <p className="small muted">Share it on Instagram, WhatsApp or Facebook. It takes people straight into your shop instead of the marketplace. So far: {data.store.own_orders} order{data.store.own_orders === 1 ? '' : 's'}, {money(data.store.own_sales)}.</p>
         </div>
       )}
+      <DashboardTrend scope="vendor" id={v.id} href="/vendor/earnings" />
       <VendorTraffic />
       <section className="card stack-sm">
         <h3>Your link to ZaMarket</h3>
-        <p className="small muted">Share this with anyone. If they buy from your store, you receive exactly what you asked for, as always. If they buy from another seller here, you earn {settings.vendor_referral_pct}% of what they spend.</p>
-        <ShareThis store={v} products={[]} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
+        <p className="small muted">Share this with anyone. If they buy from your store, you receive exactly what you asked for, as always. If they buy from another seller here, you still earn {settings.vendor_referral_pct}% of what they spend.</p>
+        <ShareStore store={v} products={(data.products || []).filter((x) => x.status === 'published')} sections={data.sections || []} settings={settings} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
         <div className="store-qr">
           <QrCode value={`${window.location.origin}/${v.slug}`} size={132} />
           <div>
@@ -136,6 +136,16 @@ export function VendorProducts() {
         <div><h1>My products</h1><p>Add products and send them for review. We publish them once approved.</p></div>
         <button className="btn primary" onClick={() => setEdit({ status: 'draft', owner_type: 'vendor', benefits: [], images: [], faqs: [] })}>Add product</button>
       </div>
+      <section className="card stack-sm" aria-label="Getting started with selling">
+        <h2>Start selling in four steps</h2>
+        <p className="small muted">You can begin with one product. Your draft is private until you send it for review.</p>
+        <ol className="vendor-start-steps">
+          <li><strong>Add your product</strong><span>Give it a clear name and choose the right department.</span></li>
+          <li><strong>Set the price</strong><span>Enter the amount you want to receive and describe the item accurately.</span></li>
+          <li><strong>Add real photos</strong><span>Show the actual product, including important details and condition.</span></li>
+          <li><strong>Review and submit</strong><span>Check the listing checklist, save your work, then send it for approval.</span></li>
+        </ol>
+      </section>
       {loading ? <Loading /> : (
         <Table rows={data} onRow={(p) => ['draft', 'submitted', 'rejected'].includes(p.status) ? setEdit(p) : null} empty="No products yet" cols={[
           { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
@@ -424,7 +434,7 @@ export function VendorMarketing() {
       <div className="page-head"><div><h1>Share and advertise</h1><p>Bring your own customers with your links, or ask our team to run ads for you.</p></div></div>
       <div className="card stack-sm">
         <h3>Your links</h3>
-        <p className="small muted">People who arrive through these links are credited to you. If they buy from another seller on ZaMarket, you earn a share of that too.</p>
+        <p className="small muted">People who arrive through these links are credited to you, If they buy from another seller on ZaMarket, you earn a share of that too.</p>
         <div className="tiny muted">Your store</div>
         <CopyLine text={base} />
         {data.products.map((p) => (<div key={p.id}><div className="tiny muted">{p.name}</div><CopyLine text={`${base}/${p.slug}`} /></div>))}
@@ -480,8 +490,6 @@ export function VendorStore() {
   const v = useVendor()
   const toast = useToast()
   const { refresh } = useAuth()
-  const acting = useActingVendor()
-  const actingSaved = useActingSaved()
   const [busy, setBusy] = useState('')
   const [f, setF] = useState(() => ({
     tagline: v?.tagline || '', about: v?.about || v?.description || '',
@@ -509,11 +517,8 @@ export function VendorStore() {
     }
     const { error } = await supabase.from('vendors').update(row).eq('id', v.id)
     if (error) return toast(error.message, true)
-    // A staff member saving somebody else's shop has no own profile to refresh;
-    // the admin page reloads the shop it is working on instead.
-    if (actingSaved) await actingSaved()
-    else await refresh()
-    toast(acting ? 'Shop updated' : 'Your shop is updated')
+    await refresh()
+    toast('Your shop is updated')
   }
 
   return (

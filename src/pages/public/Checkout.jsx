@@ -8,30 +8,19 @@ import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
 import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
 import { useShopInfo } from '../../lib/departments'
 
-export function useLocations() {
-  const [provinces, setProvinces] = useState([])
-  const [districts, setDistricts] = useState([])
-  useEffect(() => {
-    supabase.from('provinces').select('*').order('name').then(({ data }) => setProvinces(data || []))
-    supabase.from('districts').select('*').order('name').then(({ data }) => setDistricts(data || []))
-  }, [])
-  return { provinces, districts }
-}
-
 // What the customer will actually be charged for delivery.
 //
-// Reading local_delivery_fee straight from settings showed the base figure and
-// left out the delivery margin, so the checkout quoted one number and the order
-// charged another. delivery_charge() is the same function the order uses, so
-// the two cannot drift apart.
+// Reading local_delivery_fee straight from settings shows the base figure and
+// leaves out the delivery margin and any per-seller delivery fee, so the
+// checkout quotes one number and the order charges another. delivery_charge()
+// is the same function the order uses, so the two cannot drift apart. One trip
+// has to reach the furthest seller in the basket, so the highest applies.
 function useLocalFee(vendorIds = []) {
   const [fee, setFee] = useState(null)
   const key = vendorIds.filter(Boolean).sort().join(',')
   useEffect(() => {
     let alive = true
     const ids = key ? key.split(',') : []
-    // One trip has to reach the furthest seller in the basket, so the highest
-    // of their fees is the one that applies — the same rule the order uses.
     Promise.all(ids.length
       ? ids.map((id) => supabase.rpc('delivery_charge', { p_vendor: id }))
       : [supabase.rpc('delivery_charge')])
@@ -44,6 +33,16 @@ function useLocalFee(vendorIds = []) {
     return () => { alive = false }
   }, [key])
   return fee
+}
+
+export function useLocations() {
+  const [provinces, setProvinces] = useState([])
+  const [districts, setDistricts] = useState([])
+  useEffect(() => {
+    supabase.from('provinces').select('*').order('name').then(({ data }) => setProvinces(data || []))
+    supabase.from('districts').select('*').order('name').then(({ data }) => setDistricts(data || []))
+  }, [])
+  return { provinces, districts }
 }
 
 function CartLine({ it, setQty, onRemove }) {
@@ -176,7 +175,6 @@ export function Checkout() {
   const freeDelivery = fdOffers.some((o) => subtotal >= Number(o.config?.minSpend || 0))
   const fdNext = !freeDelivery && fdOffers.length ? Math.min(...fdOffers.map((o) => Number(o.config?.minSpend || 0))) : null
   const { provinces, districts } = useLocations()
-  const localFee = useLocalFee(items.map((i) => i.vendor_id))
   const nav = useNavigate()
   const toast = useToast()
   const [busy, setBusy] = useState(false)
@@ -200,6 +198,7 @@ export function Checkout() {
   const district = districts.find((d) => String(d.id) === String(f.district_id))
   const local = district?.is_local_zone
   const shop = useShopInfo()
+  const localFee = useLocalFee(items.map((i) => i.vendor_id))
   const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : (localFee ?? 0)) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
@@ -283,13 +282,13 @@ export function Checkout() {
           <span>{!needsDelivery ? 'Not needed' : shop.deliveryIncluded ? <span className="save">Free</span> : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : localFee == null ? '…' : money(localFee)) : 'Confirmed by phone'}</span>
         </div>
         {fdNext != null && (!f.district_id || local) && <div className="tiny save">Add {money(fdNext - subtotal)} more for free delivery in Lusaka</div>}
-        <div className="between strong mt"><span>Total</span><span className="money">{money(subtotal + fee)}{f.district_id && !local ? ' + delivery' : ''}</span></div>
+        <div className="between strong mt"><span>Estimated total</span><span className="money">{money(subtotal + fee)}{needsDelivery && f.district_id && !local && !shop.deliveryIncluded ? ' + delivery to confirm' : ''}</span></div>
         {deposit && <div className="tiny muted mt">Deposit plan: you'll pay a deposit when we confirm, the rest on delivery.</div>}
       </div>
       {needsDelivery && !shop.deliveryIncluded && f.district_id && !local && (
         <div className="card flat small">You're outside our standard Lusaka delivery area. Place the order anyway — we'll call to confirm whether we can deliver and what it will cost before you pay anything.</div>
       )}
-      <p className="small muted">No payment is taken now. We'll contact you to confirm the order and arrange payment and delivery. Offer prices are confirmed when you place the order.</p>
+      <p className="small muted">No payment is taken now. This is a checkout estimate; the order confirmation will show the server-calculated total. We'll contact you to confirm payment and delivery.</p>
       <button className="btn primary block" disabled={busy || (rules && rules.allowed.length === 0)}>{busy ? 'Placing order…' : 'Place order'}</button>
     </form>
   )

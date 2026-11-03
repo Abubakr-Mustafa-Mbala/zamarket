@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { money } from '../lib/format'
 import { productCard, storeCard, sharePicture } from '../lib/shareCard'
 import { Modal, useToast } from './ui'
@@ -10,20 +10,40 @@ export default function ShareThis({ product, store, products, link, sellerName, 
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
+  const previewUrl = useRef(null)
+  const generation = useRef(0)
+  const releasePreview = () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current)
+    previewUrl.current = null
+  }
+  useEffect(() => () => { generation.current++; releasePreview() }, [])
+  const close = () => {
+    generation.current++
+    releasePreview()
+    setImg(null)
+    setBlob(null)
+    setBusy(false)
+    setOpen(false)
+  }
 
   const text = caption || (product
     ? `${product.name} — ${money(product.price)}. Delivered in Lusaka. We call to confirm before any money moves.\n${link}`
     : `${store?.business_name} on ZaMarket. Order online and we call you to confirm.\n${link}`)
 
   const make = async () => {
+    const request = ++generation.current
     setBusy(true); setOpen(true)
     try {
       const b = product
         ? await productCard({ product, link, sellerName })
         : await storeCard({ store, products, link })
+      if (request !== generation.current) return
+      releasePreview()
+      const url = URL.createObjectURL(b)
+      previewUrl.current = url
       setBlob(b)
-      setImg(URL.createObjectURL(b))
-    } catch (e) { toast('Could not make the picture', true); setOpen(false) } finally { setBusy(false) }
+      setImg(url)
+    } catch (e) { if (request === generation.current) { toast('Could not make the picture', true); close() } } finally { if (request === generation.current) setBusy(false) }
   }
 
   const filename = `${(product?.name || store?.business_name || 'zamarket').toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`
@@ -48,7 +68,7 @@ export default function ShareThis({ product, store, products, link, sellerName, 
     <>
       <button type="button" className={className} onClick={make}>{label}</button>
       {open && (
-        <Modal title="Share this" onClose={() => setOpen(false)}>
+        <Modal title="Share this" onClose={close}>
           <div className="stack share-this">
             {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt="" />}
             <div className="share-box">{text}</div>

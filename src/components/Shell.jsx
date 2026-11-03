@@ -1,9 +1,10 @@
 import { useState, Suspense } from 'react'
-import { NavLink, Outlet, Link } from 'react-router-dom'
+import { NavLink, Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { Loading } from './ui'
 import ErrorBoundary from './ErrorBoundary'
 import ActionBell from './ActionBell'
+import Icon from '../lib/icons'
 
 const I = {
   home: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 11 12 3l9 8v10H3z" /></svg>,
@@ -35,6 +36,8 @@ const STAFF_NAV = [
   { group: 'Growth' },
   { to: '/admin/offers', label: 'Offers' },
   { to: '/admin/resellers', label: 'Affiliates' },
+  { to: '/admin/affiliate-recruiting', label: 'Affiliate recruitment' },
+  { to: '/admin/affiliate-academy', label: 'Affiliate Academy' },
   { to: '/admin/vendors', label: 'Vendors' },
   { to: '/admin/marketing', label: 'Marketing' },
   { to: '/admin/reviews', label: 'Reviews' },
@@ -52,7 +55,7 @@ const STAFF_NAV = [
 const RESELLER_NAV = [
   { to: '/sell', label: 'My sales', end: true },
   { to: '/sell/find-customers', label: 'Find customers' },
-  { to: '/sell/training', label: 'Training' },
+  { to: '/sell/training', label: 'Affiliate Academy' },
   { to: '/sell/products', label: 'Products to sell' },
   { to: '/sell/earnings', label: 'My earnings' },
   { to: '/sell/commissions', label: 'Commissions' },
@@ -75,6 +78,11 @@ const MARKETING_NAV = [
   { to: '/admin/marketing/today', label: 'Today' },
   { to: '/admin/marketing/leads', label: 'Leads' },
   { to: '/admin/marketing/campaigns', label: 'Campaigns' },
+  { to: '/admin/marketing/launch', label: 'Campaign Launchpad' },
+  { to: '/admin/affiliate-recruiting', label: 'Affiliate recruitment' },
+  { to: '/admin/affiliate-academy', label: 'Affiliate Academy' },
+  { to: '/admin/marketing/seo', label: 'Search (SEO)' },
+  { to: '/admin/marketing/blog', label: 'Blog & guides' },
   { to: '/admin/marketing/content', label: 'Content' },
   { to: '/admin/marketing/magnets', label: 'Lead magnets' },
   { to: '/admin/marketing/referrals', label: 'Referrals' },
@@ -98,7 +106,7 @@ const MOBILE_TABS = {
   reseller: [
     { to: '/sell', label: 'Sales', icon: I.home, end: true },
     { to: '/sell/find-customers', label: 'Sell', icon: I.box },
-    { to: '/sell/find-customers', label: 'Promote', icon: I.cart },
+    { to: '/sell/products', label: 'Promote', icon: I.cart },
     { to: '/sell/earnings', label: 'Earnings', icon: I.coins },
   ],
   vendor: [
@@ -113,6 +121,11 @@ export default function Shell({ kind }) {
   const { profile, isFounder, advanced, setAdvanced, signOut } = useAuth()
   const [more, setMore] = useState(false)
   const { role } = useAuth()
+  const { pathname } = useLocation()
+  const roleName = marketerRole(role)
+  const navTitle = (kind === 'staff' && role === 'marketing' ? MARKETING_NAV : kind === 'staff' ? STAFF_NAV : kind === 'reseller' ? RESELLER_NAV : VENDOR_NAV)
+    .filter(item => item.to && (pathname === item.to || pathname.startsWith(`${item.to}/`)))
+    .sort((a,b) => b.to.length - a.to.length)[0]?.label || 'Overview'
   const marketer = kind === 'staff' && role === 'marketing'
   const nav = (marketer ? MARKETING_NAV : kind === 'staff' ? STAFF_NAV : kind === 'reseller' ? RESELLER_NAV : VENDOR_NAV).filter(
     (n) => (!n.founder || isFounder) && (!n.advanced || advanced) && (advanced || marketer || !SIMPLE_HIDES.includes(n.to))
@@ -123,30 +136,30 @@ export default function Shell({ kind }) {
   return (
     <div className="shell">
       <aside className="sidenav">
-        <div className="brand">Za<span>Market</span></div>
-        {nav.map((n, i) => n.group ? <div key={i} className="group">{n.group}</div> : (
-          <NavLink key={n.to} to={n.to} end={n.end}>{n.label}</NavLink>
-        ))}
-        <div className="group">Account</div>
-        <Link to="/">Marketplace</Link>
-        <a href="#" onClick={(e) => { e.preventDefault(); signOut() }}>Sign out</a>
+        <Link to="/" className="workspace-brand" aria-label="ZA Market marketplace"><span className="workspace-mark">Z</span><span><strong>ZA Market</strong><small>BUSINESS WORKSPACE</small></span></Link>
+        <div className="workspace-sidenav-label">{roleName} workspace</div>
+        <nav className="sidenav-links" aria-label="Workspace navigation">
+          {nav.map((n, i) => n.group ? <div key={i} className="group">{n.group}</div> : (
+            <NavLink key={n.to} to={n.to} end={n.end}><span className="nav-icon" aria-hidden>{navIcon(n.label)}</span><span>{n.label}</span></NavLink>
+          ))}
+        </nav>
+        <div className="workspace-sidenav-footer">
+          <Link to="/"><Icon.house /> View marketplace <Icon.arrow /></Link>
+          <button onClick={signOut}><Icon.user /> Sign out</button>
+        </div>
       </aside>
 
       <div className="main">
         <header className="topbar">
-          <div className="row">
-            <div className="brand hide-mobile" style={{ padding: 0, fontSize: '1rem', color: 'var(--ink)' }} />
-            <span className="strong">{profile?.full_name || profile?.email}</span>
-            <span className="badge">{profile?.role}</span>
-          </div>
-          <ActionBell />
+          <div className="workspace-current"><span className="workspace-top-kicker">ZA MARKET / {roleName.toUpperCase()}</span><strong>{navTitle}</strong></div>
+          <div className="workspace-top-actions"><Link className="workspace-store-link" to="/"><Icon.house /> <span>View store</span></Link><ActionBell /><span className="workspace-avatar" aria-label="Signed in account">{(profile?.full_name || profile?.email || 'Z').slice(0, 1).toUpperCase()}</span></div>
           {kind === 'staff' && !marketer && (
             <div className="mode-switch">
               <div className="segmented">
                 <button className={!advanced ? 'on' : ''} onClick={() => setAdvanced(false)} title="Only what you need for daily work">Simple</button>
                 <button className={advanced ? 'on' : ''} onClick={() => setAdvanced(true)} title="Adds costs, margins, marketing and the history of every change">Advanced</button>
               </div>
-              <span className="mode-note hide-mobile">{advanced ? 'Costs, margins and history showing' : 'Daily work only'}</span>
+              <span className="mode-note hide-mobile">{advanced ? 'Advanced tools enabled' : 'Focused workspace'}</span>
             </div>
           )}
         </header>
@@ -179,4 +192,18 @@ export default function Shell({ kind }) {
       )}
     </div>
   )
+}
+
+function marketerRole(role) {
+  return ({ founder: 'Founder', ops: 'Operations', finance: 'Finance', delivery: 'Delivery', marketing: 'Marketing', vendor: 'Vendor', reseller: 'Affiliate' })[role] || 'Business'
+}
+function navIcon(label) {
+  if (/marketing|campaign|advert|studio|creative/i.test(label)) return <Icon.sparkles />
+  if (/product|inventory|stock|supplie|purchases/i.test(label)) return <Icon.box />
+  if (/orders|sale|checkout|deliver/i.test(label)) return <Icon.cart />
+  if (/earnings|finance|payout|commission|money/i.test(label)) return <Icon.tag />
+  if (/customer|vendor|affiliate|people|team|lead/i.test(label)) return <Icon.user />
+  if (/reports|audit|review/i.test(label)) return <Icon.grid />
+  if (/setting|shopfront|shop|store/i.test(label)) return <Icon.house />
+  return <Icon.arrow />
 }

@@ -1292,6 +1292,32 @@ drop trigger if exists trg_guard_vendors on vendors;
 create trigger trg_guard_vendors before update on vendors for each row execute function guard_partner_fields();
 drop trigger if exists trg_guard_profiles on profiles;
 create trigger trg_guard_profiles before update on profiles for each row execute function guard_partner_fields();
+-- Publishing a seller's product without waiting for a person.
+--
+-- A founder who must approve every product is a bottleneck the day the second
+-- seller joins, and an order cannot happen while a product sits unseen. With
+-- auto_publish_vendor_products on, a product a seller sends goes straight to
+-- the shop. It is deliberately off by default: it should be a decision, taken
+-- once you know a seller's work, not something that happened quietly.
+--
+-- The high-value guard still applies, so turning this on cannot push an
+-- expensive item live past a check that verification would have required.
+create or replace function auto_publish_vendor_product() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.owner_type = 'vendor'
+     and new.status = 'submitted'
+     and coalesce(setting_text('auto_publish_vendor_products'), 'false') = 'true' then
+    new.status := 'published';
+    new.rejection_reason := null;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists trg_auto_publish on products;
+create trigger trg_auto_publish before insert or update of status on products
+  for each row execute function auto_publish_vendor_product();
+
 drop trigger if exists trg_guard_products on products;
 create trigger trg_guard_products before update on products for each row execute function guard_partner_fields();
 
@@ -1779,6 +1805,24 @@ begin
       end if;
     end if;
   end loop;
+
+  -- Delivery is quoted from the sellers actually in this order, not from the
+  -- global figure alone. A seller further out carries a higher delivery fee in
+  -- their terms, and somebody has to collect from them, so an order containing
+  -- a Kitwe shop costs what the Kitwe trip costs. The highest applies, because
+  -- one trip has to reach the furthest of them.
+  --
+  -- This has to run after the items exist: when the fee was first worked out
+  -- above, the order had no lines yet and there was no seller to ask.
+  if local_zone
+     and not coalesce((payload->>'collect')::boolean, false)
+     and setting_text('delivery_included') <> 'true' then
+    select coalesce(max(delivery_charge(d.vendor_id)), delivery_charge())
+      into fee
+      from (select distinct vendor_id from order_items
+             where order_id = o.id and vendor_id is not null) d;
+    fee := coalesce(fee, delivery_charge());
+  end if;
 
   -- free delivery: any live free-delivery offer on a product in this order whose minimum spend is met
   -- (local zone only; elsewhere the fee is still confirmed by phone)
@@ -3170,24 +3214,24 @@ begin
   select jsonb_build_object('orders', (select count(*) from orders), 'customers', (select count(*) from customers),
                             'leads', (select count(*) from leads), 'products', (select count(*) from products)) into counts;
 
-  delete from lead_activities; delete from leads;
-  delete from referrals; delete from reviews; delete from bonus_credits; delete from payouts;
-  delete from commissions; delete from settlements; delete from payments; delete from deliveries;
-  delete from deal_events; delete from deals;
-  delete from order_items; delete from orders;
-  delete from customers; delete from stock_requests;
-  delete from inventory_movements; delete from purchase_items; delete from purchases;
-  delete from expenses; delete from marketing_spend; delete from content_posts;
-  delete from funnels; delete from lead_magnets; delete from ad_requests; delete from campaigns;
-  delete from founder_contributions; delete from founder_withdrawals;
-  delete from offers;
+  delete from lead_activities where true; delete from leads where true;
+  delete from referrals where true; delete from reviews where true; delete from bonus_credits where true; delete from payouts where true;
+  delete from commissions where true; delete from settlements where true; delete from payments where true; delete from deliveries where true;
+  delete from deal_events where true; delete from deals where true;
+  delete from order_items where true; delete from orders where true;
+  delete from customers where true; delete from stock_requests where true;
+  delete from inventory_movements where true; delete from purchase_items where true; delete from purchases where true;
+  delete from expenses where true; delete from marketing_spend where true; delete from content_posts where true;
+  delete from funnels where true; delete from lead_magnets where true; delete from ad_requests where true; delete from campaigns where true;
+  delete from founder_contributions where true; delete from founder_withdrawals where true;
+  delete from offers where true;
   if not p_keep_products then
-    delete from product_packages; delete from products; delete from suppliers;
+    delete from product_packages where true; delete from products where true; delete from suppliers where true;
   else
     update products set stock_available = 0, stock_reserved = 0, stock_sold = 0, stock_returned = 0,
       stock_damaged = 0, stock_lost = 0, landed_cost_total = 0, landed_units = 0;
   end if;
-  delete from audit_logs;
+  delete from audit_logs where true;
   perform setval('order_number_seq', 1000, true);
   perform set_config('zm.reset', 'off', true);
   perform log_audit('data.reset', 'settings', null, counts, jsonb_build_object('kept_products', p_keep_products));
@@ -4422,7 +4466,8 @@ end $$;
 -- ============================================================================
 
 insert into settings (key, value, description) values
-  ('verification_on', '"off"', 'Seller verification layer. Keep "off" until ZaMarket is registered and real background checks exist; "on" restores identity checks, the high-value publishing block and the verified-seller count.')
+  ('verification_on', '"off"', 'Seller verification layer. Keep "off" until ZaMarket is registered and real background checks exist; "on" restores identity checks, the high-value publishing block and the verified-seller count.'),
+  ('auto_publish_vendor_products', 'false', 'Publish a seller''s product the moment they send it, instead of waiting for someone to approve it. Saves the founder being a bottleneck once you trust a seller; everything they publish is still yours to unpublish.')
 on conflict (key) do nothing;
 
 create or replace function verification_on() returns boolean
@@ -4572,27 +4617,27 @@ begin
     'sellers', (select count(*) from vendors), 'affiliates', (select count(*) from resellers),
     'reviews', (select count(*) from reviews), 'creatives', (select count(*) from creatives)) into counts;
 
-  delete from lead_activities; delete from leads;
-  delete from referrals; delete from reviews; delete from bonus_credits; delete from payouts;
-  delete from commissions; delete from settlements; delete from payments; delete from deliveries;
-  delete from deal_events; delete from deals;
-  delete from order_items; delete from orders;
-  delete from customers; delete from stock_requests;
-  delete from inventory_movements; delete from purchase_items; delete from purchases;
-  delete from expenses; delete from marketing_spend; delete from content_posts;
-  delete from funnels; delete from lead_magnets; delete from ad_requests; delete from campaigns;
-  delete from founder_contributions; delete from founder_withdrawals;
-  delete from offers;
+  delete from lead_activities where true; delete from leads where true;
+  delete from referrals where true; delete from reviews where true; delete from bonus_credits where true; delete from payouts where true;
+  delete from commissions where true; delete from settlements where true; delete from payments where true; delete from deliveries where true;
+  delete from deal_events where true; delete from deals where true;
+  delete from order_items where true; delete from orders where true;
+  delete from customers where true; delete from stock_requests where true;
+  delete from inventory_movements where true; delete from purchase_items where true; delete from purchases where true;
+  delete from expenses where true; delete from marketing_spend where true; delete from content_posts where true;
+  delete from funnels where true; delete from lead_magnets where true; delete from ad_requests where true; delete from campaigns where true;
+  delete from founder_contributions where true; delete from founder_withdrawals where true;
+  delete from offers where true;
 
   -- everything built since the first reset was written
-  begin delete from stock_count_items; delete from stock_counts; exception when undefined_table then null; end;
-  begin delete from money_checks; exception when undefined_table then null; end;
-  begin delete from creatives; exception when undefined_table then null; end;
-  begin delete from media_assets; exception when undefined_table then null; end;
-  begin delete from featured_slots; exception when undefined_table then null; end;
+  begin delete from stock_count_items where true; delete from stock_counts where true; exception when undefined_table then null; end;
+  begin delete from money_checks where true; exception when undefined_table then null; end;
+  begin delete from creatives where true; exception when undefined_table then null; end;
+  begin delete from media_assets where true; exception when undefined_table then null; end;
+  begin delete from featured_slots where true; exception when undefined_table then null; end;
 
   if not p_keep_products then
-    delete from product_packages; delete from products; delete from suppliers;
+    delete from product_packages where true; delete from products where true; delete from suppliers where true;
   else
     update products set stock_available = 0, stock_reserved = 0, stock_sold = 0, stock_returned = 0,
       stock_damaged = 0, stock_lost = 0, landed_cost_total = 0, landed_units = 0,
@@ -4604,11 +4649,11 @@ begin
   if not p_keep_sellers then
     delete from product_packages where product_id in (select id from products where vendor_id is not null);
     delete from products where vendor_id is not null;
-    delete from vendors;
-    delete from resellers;
+    delete from vendors where true;
+    delete from resellers where true;
   end if;
 
-  delete from audit_logs;
+  delete from audit_logs where true;
   perform setval('order_number_seq', 1000, true);
   perform set_config('zm.reset', 'off', true);
   perform log_audit('data.reset', 'settings', null, counts,

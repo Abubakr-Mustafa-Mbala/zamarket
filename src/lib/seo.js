@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { canonicalHref, PUBLIC_SITE } from './canonical'
 
 const set = (selector, attrs) => {
   let el = document.head.querySelector(selector)
@@ -13,14 +14,21 @@ const set = (selector, attrs) => {
 // The HTML the crawler first receives is filled in by the Netlify edge function.
 export function useSeo({ title, description, image, canonical, noIndex } = {}) {
   useEffect(() => {
-    if (title) document.title = title
-    if (description) {
-      set('meta[name="description"]', { name: 'description', content: description })
-      set('meta[property="og:description"]', { property: 'og:description', content: description })
-    }
-    if (title) set('meta[property="og:title"]', { property: 'og:title', content: title })
-    if (image) set('meta[property="og:image"]', { property: 'og:image', content: image })
-    const url = canonical || window.location.origin + window.location.pathname
+    // Netlify includes structured data for the initial URL. Remove it when
+    // React Router navigates to a different page, so stale product/article
+    // JSON-LD does not describe the new page.
+    const initialSchema = document.head.querySelector('script[data-zm-edge-jsonld]')
+    if (initialSchema && initialSchema.getAttribute('data-zm-edge-path') !== window.location.pathname) initialSchema.remove()
+    const activeTitle = title || 'ZA Market — Shop online in Lusaka, Zambia'
+    const activeDescription = description || 'Discover products and services from local sellers in Lusaka, Zambia on ZA Market.'
+    document.title = activeTitle
+    set('meta[name="description"]', { name: 'description', content: activeDescription })
+    set('meta[property="og:description"]', { property: 'og:description', content: activeDescription })
+    set('meta[property="og:title"]', { property: 'og:title', content: activeTitle })
+    // Reset on every navigation so a former product photo does not bleed
+    // into a later article or category preview.
+    set('meta[property="og:image"]', { property: 'og:image', content: image || `${PUBLIC_SITE}/social.png` })
+    const url = canonicalHref(canonical || window.location.pathname)
     set('link[rel="canonical"]', { rel: 'canonical', href: url })
     set('meta[property="og:url"]', { property: 'og:url', content: url })
     set('meta[name="robots"]', { name: 'robots', content: noIndex ? 'noindex,follow' : 'index,follow' })

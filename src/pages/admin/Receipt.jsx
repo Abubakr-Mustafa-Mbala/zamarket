@@ -15,7 +15,7 @@ export default function Receipt() {
   const [printing, setPrinting] = useState(false)
   const toast = useToast()
   const { data: o, loading, error } = useData(() => q(
-    supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,choices,note,product:products(name,normal_price,price),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
+    supabase.from('orders').select('*,customer:customers(full_name,phone),district:districts(name),province:provinces(name),reseller:resellers(full_name),items:order_items(quantity,unit_price,line_total,choices,note,vendor_id,vendor:vendors(business_name),product:products(name,normal_price,price,vendor_id,vendor:vendors(business_name)),offer:offers(name)),payments(amount,method,reference,created_at)').eq('id', id).single()
   ), [id])
   // Never spin forever: if the order cannot be loaded, say so and offer a way back.
   if (!loading && (error || !o)) return (
@@ -32,14 +32,19 @@ export default function Receipt() {
   const paid = o.payments.reduce((t, p) => t + n(p.amount), 0)
   const balance = Math.max(0, n(o.total) - paid)
   const savings = o.items.reduce((t, i) => t + Math.max(0, n(i.product?.normal_price || i.product?.price) * i.quantity - n(i.line_total)), 0)
-  const biz = settings.business_name || 'ZaMarket'
+  const biz = 'ZA MARKET'
+  const vendorNames = [...new Set(o.items.map(i => i.vendor?.business_name || i.product?.vendor?.business_name).filter(Boolean))]
+  const sellerFor = (i) => i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'
   const pick = (v) => { setSize(v); localStorage.setItem('zm-receipt-size', v) }
   const bluetooth = async () => {
     setPrinting(true)
     try {
       const data = receiptBytes(o, {
         width: size === '58' ? 32 : 48,
-        business: settings.business_name || 'ZaMarket',
+        business: biz,
+        site: 'zamarket.shop',
+        orderUrl: `${window.location.origin}/order/${o.order_number}${o.verify_code ? `?v=${o.verify_code}` : ''}`,
+        sellerFor,
         phone: settings.business_phone,
         footer: settings.receipt_footer || 'Thank you!',
         reviewLink: `${window.location.host}/review`,
@@ -67,6 +72,7 @@ export default function Receipt() {
       <div className="receipt">
         <div className="r-center">
           <div className="r-biz">{biz}</div>
+          <div className="r-site">zamarket.shop</div>
           {settings.business_phone && <div>{settings.business_phone}</div>}
           <div className="r-title">{o.payment_status === 'paid' || balance === 0 ? 'RECEIPT' : 'DELIVERY NOTE'}</div>
         </div>
@@ -76,6 +82,10 @@ export default function Receipt() {
         <div className="r-row"><span>Printed</span><span>{datetime(new Date())}</span></div>
         {o.needed_by && <div className="r-row r-strong"><span>Needed by</span><span>{new Date(o.needed_by + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>}
         <div className="r-rule" />
+        <div className="r-strong">SOLD BY</div>
+        <div>{vendorNames.length ? vendorNames.join(" / ") : "ZA Market"}</div>
+        <div className="r-rule" />
+        <div className="r-strong">CUSTOMER</div>
         <div className="r-strong">{o.customer?.full_name}</div>
         <div>{o.customer?.phone}</div>
         <div>{[o.address, o.area, o.district?.name, o.province?.name].filter(Boolean).join(', ')}</div>
@@ -83,6 +93,7 @@ export default function Receipt() {
         {o.items.map((i, k) => (
           <div key={k} className="r-item">
             <div className="r-row"><span className="r-strong">{i.product?.name}</span><span>{money(i.line_total)}</span></div>
+            <div className="r-sub">Sold by: {sellerFor(i)}</div>
             <div className="r-sub">{i.quantity} × {money(i.unit_price)}{i.offer ? ` · ${i.offer.name}` : ''}</div>
             {i.choices && Object.keys(i.choices).length > 0 && <div className="r-sub">{Object.entries(i.choices).map(([k, v]) => `${k}: ${v}`).join(', ')}</div>}
             {i.note && <div className="r-sub">"{i.note}"</div>}
@@ -114,7 +125,8 @@ export default function Receipt() {
         </div>
         <div className="r-center r-foot">
           <div>{settings.receipt_footer || 'Thank you for shopping with us!'}</div>
-          <div>Rate your order: {window.location.host}/review</div>
+          <div>zamarket.shop</div>
+          <div>Rate your order: zamarket.shop/review</div>
           <div>Order #{o.order_number} · phone {o.customer?.phone}</div>
         </div>
       </div>
