@@ -7,11 +7,15 @@ test('premium design layer loads after existing CSS and retains financial logic 
   assert.ok(main.indexOf("import './premium.css'") > main.indexOf("import './styles.css'"))
   assert.match(get('premium.css'), /@media\(max-width:760px\)/)
 })
-test('homepage has a single deliberate storefront h1 and explicit discovery actions', () => {
+// The long welcome block this once asserted was removed on purpose: it was
+// taking most of the first screen before a shopper saw a single product. What
+// still matters is that there is exactly one h1 and it is the storefront.
+test('homepage leads with one storefront heading, not a sales pitch', () => {
   const source = get('pages/public/Marketplace.jsx')
-  assert.match(source, /Discover more\. Shop/)
+  const storefront = source.split('export function Storefront()')[1].split('function OpeningSoon()')[0]
+  assert.equal((storefront.match(/<h1>/g) || []).length, 1)
+  assert.match(storefront, /home-market-head/)
   assert.match(source, /<h2>\{f\.headline\}<\/h2>/)
-  assert.match(source, /Skip to products/)
 })
 test('creative editor connects each tile to actual renderer instead of making nine catalogues', () => {
   const source = get('pages/shared/CreativeStudio.jsx')

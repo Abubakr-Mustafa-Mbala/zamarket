@@ -3,8 +3,13 @@ import { money, title } from '../lib/format'
 import { TONE } from '../lib/statuses'
 
 export function Stat({ label, value, sub, hero, tone }) {
+  // The emphasised variant used to be `.stat.hero`, which also matched the
+  // marketplace's own `.hero` banner rule — a two-column grid. That quietly
+  // laid the label and the figure out side by side in a 202px card, so the
+  // net profit on the founder dashboard was shown as "K14,44". It has its
+  // own class now; `hero` stays as the prop name so callers are unchanged.
   return (
-    <div className={`card stat ${hero ? 'hero' : ''}`}>
+    <div className={`card stat ${hero ? 'stat-lead' : ''}`}>
       <div className="label">{label}</div>
       <div className={`value ${tone || ''}`}>{value}</div>
       {sub && <div className="sub">{sub}</div>}

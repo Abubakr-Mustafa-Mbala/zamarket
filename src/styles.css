@@ -106,7 +106,10 @@ h2 { font-size: 1.2rem; font-weight: 700; }
 h3 { font-size: 1rem; font-weight: 600; }
 p { margin: 0; }
 a { color: var(--green); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* No underlines anywhere. A phone fires :hover on tap and leaves it stuck,
+   which is where the underline-on-tap came from. Links are told apart by
+   colour and weight instead. */
+a:hover { text-decoration: none; color: var(--brass-text); }
 button, input, select, textarea { font: inherit; color: inherit; }
 img { max-width: 100%; display: block; }
 :focus-visible { outline: 2px solid var(--green); outline-offset: 2px; }
@@ -155,9 +158,9 @@ img { max-width: 100%; display: block; }
 .stat .label { color: var(--muted); font-size: 0.85rem; }
 .stat .value { font-size: 1.45rem; font-weight: 700; margin-top: 2px; letter-spacing: -0.02em; }
 .stat .sub { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
-.stat.hero { background: var(--green-deep); color: #fff; border-color: var(--green-deep); }
-.stat.hero .label, .stat.hero .sub { color: rgba(255, 255, 255, 0.72); }
-.stat.hero .value { font-size: 2rem; }
+.stat-lead { background: var(--green-deep); color: #fff; border-color: var(--green-deep); }
+.stat-lead .label, .stat-lead .sub { color: rgba(255, 255, 255, 0.72); }
+.stat-lead .value { font-size: 2rem; }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -1980,7 +1983,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .oc-save:active { transform: scale(0.92); }
 
 /* Skeletons — the page arriving, not a blank screen. */
-.sk { display: block; border-radius: 10px; background: linear-gradient(90deg, #EEF2F1 25%, #F7FAF9 37%, #EEF2F1 63%); background-size: 400% 100%; animation: sk 1.3s ease infinite; }
+.sk { display: block; border-radius: 10px; background: linear-gradient(90deg, var(--coal-2) 25%, var(--coal-3) 37%, var(--coal-2) 63%); background-size: 400% 100%; animation: sk 1.3s ease infinite; }
 @keyframes sk { 0% { background-position: 100% 50% } 100% { background-position: 0 50% } }
 .sk-card { border: 1px solid var(--line); border-radius: 16px; padding: 0 0 14px; overflow: hidden; display: flex; flex-direction: column; gap: 8px; background: var(--paper); }
 .sk-img { aspect-ratio: 1; border-radius: 0; }
@@ -2156,7 +2159,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .article p { margin: 0 0 16px; }
 .article ul, .article ol { margin: 0 0 16px; padding-left: 22px; }
 .article li { margin-bottom: 7px; }
-.article a { color: var(--brass-text); text-decoration: underline; text-underline-offset: 2px; }
+.article a { color: var(--brass-text); text-decoration: none; font-weight: 600; }
 .article blockquote { margin: 0 0 16px; padding: 10px 16px; border-left: 3px solid var(--brass);
   background: var(--coal-2); border-radius: 0 10px 10px 0; color: var(--ink); }
 .article code { background: var(--coal-2); padding: 1px 5px; border-radius: 5px; font-size: 0.9em; }
@@ -2588,6 +2591,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .ss-chip:hover { border-color: var(--line-strong); color: var(--ink); }
 .ss-chip.on { background: var(--brass-soft); border-color: var(--brass); color: var(--brass-text); font-weight: 600; }
 .ss-chip:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+/* A design this product cannot fill yet. Shown rather than hidden, so the
+   seller can see what adding a photo or a description would unlock. */
+.ss-chip.off, .ss-chip:disabled {
+  opacity: 0.42; cursor: not-allowed; text-decoration: none;
+}
+.ss-chip.off:hover, .ss-chip:disabled:hover { border-color: var(--line); color: var(--ink-2); }
 
 .ss-thin {
   background: var(--warn-soft); border: 1px solid var(--warn);

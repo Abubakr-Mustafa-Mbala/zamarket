@@ -82,6 +82,7 @@ insert into settings (key, value, description) values
   ('marketplace_fee_pct', '10', 'Fee charged to vendors on each sale (%)'),
   ('affiliate_click_days', '30', 'How long after clicking an affiliate link a purchase still counts for them'),
   ('affiliate_repeat_bonus', '5', 'Flat thank-you paid to the affiliate when their customer orders again after the full-commission window (K)'),
+  ('training_url', '""', 'Link to the academy where affiliates are trained. Training is not inside ZaMarket. Leave empty to hide the link.'),
   ('assumed_delivery_cost', '25', 'What a delivery really costs you when nobody records the actual amount (K)'),
   ('monthly_fixed_costs', '0', 'What the business must cover every month before any profit: rent, airtime, transport, data, subscriptions (K)'),
   ('home_sections', '["deals","just_added","popular","under_100","services","courses","vehicles","events","made_to_order","local_sellers"]', 'Which homepage sections show, and in what order'),
@@ -2271,6 +2272,10 @@ select p.id, p.boost_pct, p.boost_until, p.featured_in_store, p.promo_blocked, p
        p.service_location, p.duration_text, p.time_slots, p.slot_capacity, v.slug as vendor_slug,
        p.offering_type, p.sales_model, p.page, p.commission_type, p.commission_value, p.featured_for_resellers,
        p.section_id,
+       -- The seller's own mark and where they are. Both are already public on
+       -- their shop page; they are here so a product share poster can carry the
+       -- seller's branding instead of looking like it came from nobody.
+       v.logo_url as vendor_logo, v.location as vendor_location, v.category as vendor_category,
        (select count(*) from product_packages pk where pk.product_id = p.id and pk.active) as package_count
 from products p left join vendors v on v.id = p.vendor_id
 where p.status in ('published','out_of_stock') and (p.vendor_id is null or v.status = 'approved');

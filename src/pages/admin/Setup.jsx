@@ -266,6 +266,12 @@ const GROUPS = [
       { key: 'payout_minimum', label: 'Smallest payout (K)', type: 'number', help: 'Resellers and vendors can ask to be paid once they have at least this much.' },
       { key: 'commission_grace_hours', label: 'Hours to wait before paying a commission', type: 'number', help: 'Time for the customer to report a problem. 24 is normal.' },
       { key: 'referral_reward', label: 'Reward when a customer brings a friend (K)', type: 'number', help: 'Paid after the friend\'s first order is completed.' },
+      { key: 'training_url', label: 'Link to the academy where affiliates are trained', type: 'text', help: 'Training is not inside ZaMarket \u2014 it runs in your academy. Paste the https address affiliates should open, and it appears on their Training page. Leave it empty and no link is shown at all, rather than a dead page.' },
+      { key: 'analytics_id', label: 'Google Analytics measurement ID', type: 'text', help: 'Looks like G-XXXXXXXXXX. Leave it empty and no Google script is loaded on the site at all \u2014 that is the default. It is for seeing how people move around; the money figures always come from your own order records, not from Google.' },
+      { key: 'search_console_verified', label: 'Verified in Google Search Console', type: 'switch', words: [['no', 'Not yet'], ['yes', 'Verified']], help: 'Tick this once zamarket.shop is verified, so the Growth page stops asking.' },
+      { key: 'alert_email', label: 'Email to tell when an order arrives', type: 'text', help: 'A message lands here the moment an order is placed, with every tab closed. Leave empty for none.' },
+      { key: 'alert_whatsapp', label: 'WhatsApp number for order alerts', type: 'text', help: 'Full international form, e.g. 260970000000. Needs a Meta WhatsApp Business account and an approved template, and Meta charges for each message \u2014 phone alerts and email are free, so set those up first.' },
+      { key: 'alert_min_total', label: 'Only alert for orders of at least (K)', type: 'number', help: '0 alerts for every order. Raise it later if small orders become noise.' },
     ],
   },
 ]

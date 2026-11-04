@@ -1,5 +1,5 @@
 import { OfferingPage } from './Offering'
-import { Suspense, useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
@@ -18,8 +18,10 @@ import PromoKit from '../../components/PromoKit'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
+import { detectChannel, rememberChannel } from '../../lib/channel'
+import { startAnalytics, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
 import { useSeo, productSeo } from '../../lib/seo'
-import ShareThis from '../../components/ShareThis'
+import ShareProduct from '../../components/ShareProduct'
 import ShareStore from '../../components/ShareStore'
 import { productRelevance } from '../../lib/productDiscovery'
 import { fetchCataloguePages } from '../../lib/paginatedCatalogue'
@@ -265,7 +267,7 @@ function FounderHero() {
             {v.rating ? <span className="fh-rating"><Icon.star /> {v.rating}</span> : null}
           </span>
         )}
-        <Link to={f.link} className="btn hero-cta" onClick={() => supabase.rpc('featured_click', { p_slot: f.id })}>
+        <Link to={f.product?.slug ? `/p/${f.product.slug}` : f.link} className="btn hero-cta" onClick={() => supabase.rpc('featured_click', { p_slot: f.id })}>
           {f.cta} <Icon.arrow />
         </Link>
         {f.product && (
@@ -323,7 +325,7 @@ function byVendor(products) {
   return m
 }
 
-function Merchandised({ products, vendors, offersBy }) {
+function Merchandised({ products, vendors, offersBy, excludeIds = [] }) {
   const [sections, setSections] = useState(null)
   useEffect(() => {
     supabase.rpc('home_sections', { p_min: 2 })
@@ -336,22 +338,23 @@ function Merchandised({ products, vendors, offersBy }) {
 
   return (
     <>
-      {sections.map((s) => {
+      {[...sections].sort((a, b) => Number(a.kind === 'vendors') - Number(b.kind === 'vendors')).map((s) => {
         if (s.kind === 'vendors') {
           if (!vendors?.length) return null
           return (
-            <section key={s.key} className="sellers-band">
-              <div className="shelf-head"><h2>{s.title}<span className="sub">{s.sub}</span></h2><Link to={s.link}>All sellers</Link></div>
+            <section key={s.key} className="sellers-band home-sellers-bottom">
+              <div className="shelf-head"><h2>Shop by store</h2><Link to="/sellers">All stores</Link></div>
               <div className="seller-strip">
-                {vendors.slice(0, 8).map((v) => <SellerCard key={v.id} v={v} shelf={shelves[v.id] || []} />)}
+                {vendors.slice(0, 5).map((v) => <SellerCard key={v.id} v={v} shelf={shelves[v.id] || []} />)}
               </div>
             </section>
           )
         }
-        const items = (s.ids || []).map((id) => byId[id]).filter(Boolean)
+        const excluded = new Set(excludeIds)
+        const items = (s.ids || []).map((id) => byId[id]).filter((p) => p && !excluded.has(p.id))
         if (items.length < 2) return null
         return (
-          <Row key={s.key} title={s.title} sub={s.sub} link={s.link} weighted={sections.indexOf(s) < 2 && items.length >= 5}>
+          <Row key={s.key} title={s.title} link={s.link} weighted={false}>
             {items.slice(0, 12).map((p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} />)}
           </Row>
         )
@@ -429,7 +432,7 @@ function ShopFooter({ user, home }) {
           <Link to="/search">All products</Link>
           <Link to="/search?deals=1">Today's deals</Link>
           <Link to="/sellers">Sellers</Link>
-          <Link to="/blog">Journal</Link>
+          <Link to="/blog">Blog &amp; guides</Link>
           <Link to="/review">Rate an order</Link>
         </FooterGroup>
         <FooterGroup title="ZaMarket">
@@ -465,7 +468,7 @@ function BottomBar() {
     { to: '/', label: 'Home', icon: <Icon.house />, end: true },
     { to: '/categories', label: 'Categories', icon: <Icon.grid /> },
     { to: '/search?deals=1', label: 'Deals', icon: <Icon.tag /> },
-    { to: '/saved', label: 'My list', icon: <Icon.heart />, badge: saved.count },
+    { to: '/saved', label: 'Saved', icon: <Icon.heart />, badge: saved.count },
     { to: '/cart', label: 'Cart', icon: <Icon.cart />, badge: count },
   ]
   return (
@@ -487,13 +490,31 @@ export function PublicShell() {
   const DEPARTMENTS = useDepartments()
   const stocked = useStockedDepartments(DEPARTMENTS)
   const { count, subtotal } = useCart()
-  const { user, role, profile } = useAuth()
+  const { user, role, profile, settings: siteSettings } = useAuth()
   const { pathname } = useLocation()
   const nav = useNavigate()
   const [sp] = useSearchParams()
   const [q, setQ] = useState(sp.get('q') || '')
   const [cat, setCat] = useState(sp.get('cat') || '')
   useEffect(() => { setQ(sp.get('q') || ''); setCat(sp.get('cat') || '') }, [sp])
+
+  // Remember which platform this visit came from, once, on arrival. It is
+  // read from ?src= on the link rather than from the referrer, because
+  // WhatsApp — where most of this will be shared — sends no referrer and
+  // would otherwise be indistinguishable from someone typing the address in.
+  // Kept for 30 days, so a status seen on Monday still gets Thursday's order.
+  // Analytics loads only if a measurement ID has been saved in Settings, and
+  // page views are sent by hand because the URL changes without a page load.
+  useEffect(() => {
+    if (startAnalytics(siteSettings)) trackPage(pathname)
+  }, [siteSettings, pathname])
+
+  const seenChannel = useRef(false)
+  useEffect(() => {
+    if (seenChannel.current) return
+    const found = detectChannel(window.location.search, document.referrer)
+    if (found) { rememberChannel(found); seenChannel.current = true }
+  }, [sp])
   const showBar = count > 0 && !['/cart', '/checkout'].includes(pathname)
   const home = role === 'reseller' ? '/sell' : role === 'vendor' ? '/vendor' : ['founder', 'ops', 'finance', 'delivery'].includes(role) ? '/admin' : '/account'
   const go = (e) => {
@@ -535,12 +556,10 @@ export function PublicShell() {
             <span className="dt-big hide-mobile">Cart</span>
           </Link>
         </div>
-        <nav className="dept-strip" aria-label="Departments">
+        <nav className="dept-strip" aria-label="Shopping departments">
           <Link to="/search?deals=1">Today's deals</Link>
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
-          <Link to="/sellers">Sellers</Link>
-          <Link to="/blog">Journal</Link>
-          <Link to="/affiliates">Affiliate programme</Link>
+          <Link to="/sellers">Stores</Link>
         </nav>
       </header>
 
@@ -568,8 +587,12 @@ export function ReferralCapture() {
   const { code, product } = useParams()
   const { setRef } = useCart()
   const nav = useNavigate()
-  useEffect(() => { if (code) setRef(code.toLowerCase()); nav(product ? `/p/${product}` : '/', { replace: true }) }, [code, product])
-    if (code) supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null })
+  useEffect(() => {
+    if (!code) return
+    setRef(code.toLowerCase())
+    supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null })
+    nav(product ? `/p/${product}` : '/', { replace: true })
+  }, [code, product, nav])
   return null
 }
 
@@ -629,57 +652,51 @@ export function Storefront() {
 
   return (
     <div className="home">
-      <section className="home-welcome" aria-label="Welcome to ZA Market">
-        <div><span className="eyebrow"><span className="status-dot" /> THE MARKETPLACE FOR REAL FINDS</span>
-          <h1>Discover more. Shop <em>local.</em></h1>
-          <p>From everyday essentials to standout finds, explore what independent sellers are offering on ZA Market.</p>
+      <section className="home-market-head" aria-label="Shop ZA Market">
+        <div>
+          <h1>Shop ZA Market</h1>
+          <p>Explore products from local sellers.</p>
         </div>
-        <div className="home-welcome-actions"><Link to="/search" className="btn primary">Explore products <Icon.arrow /></Link><Link to="/sellers" className="btn">Meet our sellers</Link></div>
+        <Link to="/search" className="home-see-all">All products <Icon.arrow /></Link>
       </section>
-      <FounderHero />
-      {ref && <p className="tiny hero-ref">You're shopping through an affiliate's link. They get credit for your order.</p>}
-      <div className="home-value-bar" aria-label="How shopping works">
-        <div><Icon.search /><span><strong>Browse the real catalogue</strong><small>Explore products and local businesses</small></span></div>
-        <div><Icon.phone /><span><strong>Order confirmation</strong><small>Our team confirms your order details</small></span></div>
-        <div><Icon.shield /><span><strong>Support from ZA Market</strong><small>Contact us about your order</small></span></div>
-      </div>
-      <HelpStrip />
-
+      {ref && <p className="tiny hero-ref">You arrived through an affiliate link. Your purchase can credit the affiliate.</p>}
       {products.length === 0 ? <OpeningSoon /> : (
-        <Merchandised products={products} vendors={vendors} offersBy={offersBy} />
+        <>
+          <section className="home-product-first" aria-label="Recently listed products">
+            <div className="home-product-grid">
+              {products.slice(0, 8).map(card)}
+            </div>
+          </section>
+          {deals.length >= 2 && (
+            <Row title="Deals worth a look" link="/search?deals=1">
+              {deals.slice(0, 8).map(card)}
+            </Row>
+          )}
+          {/* Promotions are still supported, but never displace real products
+              from the first screen of the marketplace. */}
+          <div className="home-featured-lower"><FounderHero /></div>
+          <Merchandised products={products} vendors={vendors} offersBy={offersBy}
+            excludeIds={products.slice(0, 8).map((p) => p.id)} />
+        </>
       )}
-
-      {/* One quiet line rather than a block of reassurance above the shelves.
-          The full version lives on its own page for anyone who wants it. */}
-      <Link to="/how-it-works" className="trust-line">
-        <span className="tl-icon" aria-hidden><Icon.shield /></span>
-        <span>
-          <strong>Confirmed by phone before you pay, delivered by us</strong>
-          <em>If something goes wrong you come to ZaMarket, not to the seller — here's how that works</em>
-        </span>
-        <Icon.arrow />
-      </Link>
-
-      {stocked.length > 1 && (
-        <section className="depts" aria-label="Shop by department">
-          {stocked.map((d) => (
-            <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`} className="dept">
-              <span className="dept-icon">{d.icon}</span>
-              <span className="dept-name">{d.name}</span>
-              <span className="dept-count">{counts[d.name]} item{counts[d.name] > 1 ? 's' : ''}</span>
-            </Link>
-          ))}
-        </section>
-      )}
-
-      <section className="home-explore" aria-label="Explore ZA Market">
-        <div className="home-explore-copy"><span className="eyebrow">DISCOVER MORE</span><h2>Good finds start with a good search.</h2><p>See the latest listings, discover the businesses behind them, or read buying guides before deciding.</p></div>
-        <div className="home-explore-links"><Link to="/search">Browse all products <Icon.arrow /></Link><Link to="/sellers">Meet the sellers <Icon.arrow /></Link><Link to="/blog">Read the journal <Icon.arrow /></Link></div>
-      </section>
-
       {/* "Grow with ZaMarket" used to sit here as well as in the footer. A
           shopper does not need to be recruited twice on one page, so the
           recruitment lives in the footer only. */}
+
+      {/* The reassurance about phone confirmation belongs at the bottom, after
+          someone has seen the products — not above them, where it was taking a
+          third of the first screen. One line, and the full version is its own
+          page for anyone who wants it. */}
+      {products.length > 0 && (
+        <Link to="/how-it-works" className="trust-line">
+          <span className="tl-icon" aria-hidden><Icon.shield /></span>
+          <span>
+            <strong>Confirmed by phone before you pay, delivered by us</strong>
+            <em>If something goes wrong you come to ZaMarket, not to the seller — here&rsquo;s how that works</em>
+          </span>
+          <Icon.arrow />
+        </Link>
+      )}
     </div>
   )
 }
@@ -689,8 +706,13 @@ export function Storefront() {
 // thing to do — leave a number so we can tell them. The "sell with us" pitch is
 // in the footer, where it belongs.
 function OpeningSoon() {
-  const stocked = useStockedDepartments(useDepartments())
-  const coming = (stocked.length ? stocked : useDepartments()).slice(0, 6)
+  // Both hooks must run on every render. Calling useDepartments() a second
+  // time inside the `stocked.length ? …` expression made the second call
+  // conditional, and React threw error #310 the moment a department went out
+  // of stock — which is a blank page, not a missing section.
+  const departments = useDepartments()
+  const stocked = useStockedDepartments(departments)
+  const coming = (stocked.length ? stocked : departments).slice(0, 6)
   return (
     <section className="opening">
       <div className="opening-head">
@@ -755,6 +777,7 @@ function SellerCard({ v, shelf = [] }) {
 
   return (
     <Link to={`/${v.slug}`} className="seller">
+      {v.cover_url && <span className="seller-cover-mini" style={{ backgroundImage: `url(${v.cover_url})` }} aria-hidden="true" />}
       <span className="seller-top">
         {v.logo_url
           ? <img className="seller-mark" src={v.logo_url} alt="" loading="lazy" />
@@ -936,7 +959,14 @@ export function SearchPage() {
 // ---------- product page ----------
 function ProductSeo({ p }) {
   useSeo(productSeo(p))
-  useEffect(() => { if (p?.id) supabase.rpc('track_hit', { p_kind: 'product_view', p_vendor: p.vendor_id || null, p_product: p.id }) }, [p?.id])
+  // Two records of the same visit, on purpose. track_hit is ours and always
+  // works; the Analytics event is for behaviour reporting and only fires when
+  // a measurement ID has been configured.
+  useEffect(() => {
+    if (!p?.id) return
+    supabase.rpc('track_hit', { p_kind: 'product_view', p_vendor: p.vendor_id || null, p_product: p.id })
+    trackViewItem(p)
+  }, [p?.id])
   return null
 }
 
@@ -1016,7 +1046,7 @@ export function ProductPage() {
   const conditions = offers.filter((o) => CONDITION_TYPES.includes(o.type))
   const save = p.normal_price && Number(p.normal_price) > Number(p.price) ? Number(p.normal_price) - Number(p.price) : 0
   const cta = p.fulfilment === 'service' ? 'Book now' : p.fulfilment === 'made_to_order' ? 'Order now' : 'Buy now'
-  const addToCart = guard(() => { add(p, qty, condition, { choices, note }); toast('Added to cart') })
+  const addToCart = guard(() => { add(p, qty, condition, { choices, note }); trackAddToCart(p, qty); toast('Added to cart') })
   const buyNow = guard(() => { add(p, qty, condition, { choices, note }); nav('/cart') })
   const more = (catalogue?.products || []).filter((x) => x.id !== p.id && (p.vendor_id ? x.vendor_id === p.vendor_id : x.category === p.category)).slice(0, 10)
   const availability = out ? 'Out of stock' : scheduled ? howText(p) : p.owner_type === 'founder' && p.stock_available <= 5 ? `Only ${p.stock_available} left in stock` : 'In stock'
@@ -1049,7 +1079,20 @@ export function ProductPage() {
           <button className="btn buy block" onClick={buyNow}>{cta}</button>
         </>
       )}
-      <ShareThis product={p} link={window.location.href.split('?')[0]} sellerName={p.vendor_name} className="btn block" label="Share this" />
+      {/* The seller's own branding travels with the poster: their name, their
+          mark and where they are, all of which are already public on their
+          shop page. */}
+      <ShareProduct
+        product={p}
+        store={p.vendor_name ? {
+          business_name: p.vendor_name,
+          logo_url: p.vendor_logo,
+          location: p.vendor_location,
+          category: p.vendor_category,
+        } : null}
+        settings={shop.settings || {}}
+        link={window.location.href.split('?')[0]}
+        className="btn block" label="Share this" />
       {p.vendor_slug && <TrustPanel slug={p.vendor_slug} compact />}
       <div className="bb-meta">
         <div><span>Payment</span><span>After we confirm by phone</span></div>

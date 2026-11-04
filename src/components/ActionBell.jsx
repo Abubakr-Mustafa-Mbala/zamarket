@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
 import { chime, soundOn, setSound } from '../lib/chime'
+import { pushSupported, needsHomeScreen, enablePush, disablePush, currentSubscription } from '../lib/push'
 
 // Remembering what you have seen, kept out of the component so a private
 // window or blocked storage cannot take the bell down with it.
@@ -51,6 +52,23 @@ export default function ActionBell() {
   const [open, setOpen] = useState(false)
   const [sound, setSoundOn] = useState(soundOn())
   const [perm, setPerm] = useState(notifyState())
+  // Phone notifications: separate from the browser notification above,
+  // because this one keeps working with every tab closed.
+  const [pushOn, setPushOn] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
+  const [pushNote, setPushNote] = useState('')
+  useEffect(() => { currentSubscription().then((sub) => setPushOn(!!sub)) }, [])
+  const togglePush = async () => {
+    setPushBusy(true); setPushNote('')
+    if (pushOn) {
+      await disablePush()
+      setPushOn(false)
+    } else {
+      const r = await enablePush(import.meta.env.VITE_VAPID_PUBLIC_KEY)
+      if (r.ok) setPushOn(true); else setPushNote(r.reason)
+    }
+    setPushBusy(false)
+  }
   const box = useRef(null)
   // The badge counts what has arrived SINCE YOU LAST LOOKED, not everything
   // outstanding. The list underneath still shows all the work until it is
@@ -158,9 +176,20 @@ export default function ActionBell() {
                   {perm === 'denied' ? '🔕 Blocked' : '🔔 Alert me'}
                 </button>
               )}
+              {pushSupported() && (
+                <button className="btn sm ghost" disabled={pushBusy} aria-pressed={pushOn}
+                  title={pushOn ? 'This device is alerted even when ZaMarket is closed' : 'Be told about orders with the app closed'}
+                  onClick={togglePush}>
+                  {pushBusy ? '…' : pushOn ? '📱 Phone alerts on' : '📱 Alert my phone'}
+                </button>
+              )}
               <button className="btn sm ghost" onClick={load}>Refresh</button>
             </span>
           </div>
+          {pushNote && <p className="bell-note">{pushNote}</p>}
+          {!pushNote && pushSupported() && !pushOn && needsHomeScreen() && (
+            <p className="bell-note">On an iPhone, add ZaMarket to your home screen first — then turn phone alerts on from there.</p>
+          )}
           {groups.length === 0 ? (
             <div className="bell-clear">
               <span aria-hidden>✓</span>

@@ -1,0 +1,288 @@
+/* ---------------------------------------------------------------------------
+   Correction layer. Loaded last, after styles.css and premium.css.
+
+   This exists so the fixes below can win on source order without rewriting the
+   files underneath them. Two rules for anything added here:
+
+   1. Use the tokens. Every colour is a var() from :root. The first draft of
+      this file hard-coded about sixty hex values — slightly lighter cards,
+      slightly lighter borders, a lighter accent — and the result was a site
+      that was recognisably "not the same dark violet as before" without any
+      single thing being wrong. Tokens keep one palette.
+   2. Layout and structure only. If a colour genuinely needs to change, change
+      the token in styles.css so everything follows, rather than patching one
+      component here.
+   --------------------------------------------------------------------------- */
+
+/* Pre-paint background, so changing page never flashes white. The same values
+   are inlined in index.html for the moment before any CSS has loaded. */
+html, body, #root { min-height: 100%; background-color: var(--black); color-scheme: dark; }
+#root { min-height: 100vh; }
+html { scroll-behavior: auto; }
+
+/* A phone fires :hover on tap and leaves it stuck, which is where the
+   underline-on-tap came from. Links are told apart by colour and weight.
+   Keyboard focus stays clearly visible — that is not decoration. */
+a:hover, a:active, a:focus, a:focus-visible,
+.shop a:hover, .shop a:active, .shell a:hover, .shell a:active,
+.article a:hover, .article a:active { text-decoration: none; }
+a, button { -webkit-tap-highlight-color: transparent; }
+:focus-visible { outline: 2px solid var(--brass-text); outline-offset: 3px; }
+
+/* Photographs are never dimmed or filtered. A seller's picture is the best
+   thing they have; anything applied on top of it is a cost they did not agree
+   to, and it is why the photos looked darker than before. */
+.shop .oc-media img, .shop .seller-shelf img, .shop .store-logo,
+.shop .store-cat-img img, .shop .gallery img { filter: none; opacity: 1; }
+
+/* ---- Product-first storefront ----------------------------------------
+   Products are on screen before a single promotion. */
+.home-market-head { display: flex; justify-content: space-between; gap: 15px; align-items: flex-end; margin: 10px 0 14px; }
+.home-market-head h1 { font-family: var(--font); font-size: clamp(1.35rem, 2.2vw, 1.95rem); font-weight: 800; letter-spacing: -0.04em; }
+.home-market-head p { font-size: 0.82rem; color: var(--ink-2); margin-top: 4px; line-height: 1.35; }
+.home-see-all { display: flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 0.82rem; font-weight: 750; color: var(--brass-text); }
+.home-see-all svg { font-size: 1rem; }
+
+.home-product-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(9px, 1.5vw, 17px); }
+.home-product-first { margin: 0 0 25px; }
+.home-product-first .oc { height: 100%; }
+
+/* The featured promotion, now below the products rather than instead of them. */
+.home-featured-lower { margin: 24px 0; }
+.home-featured-lower:empty { display: none; }
+.home-featured-lower .vhero-stage { grid-template-columns: 1.2fr 1fr; }
+.home-featured-lower .vhero-photo { max-height: 300px; }
+.home-featured-lower .vhero-copy { padding: 24px; }
+.home-featured-lower .vhero-name { font-size: clamp(1.3rem, 2.3vw, 1.85rem); }
+.home-featured-lower .featured-hero { min-height: 230px; }
+.home-featured-lower .fh-body { padding: 22px 28px; }
+.home-featured-lower .fh-body h2 { font-size: clamp(1.35rem, 2.5vw, 2rem); }
+.home-featured-lower .fh-media { opacity: 1; filter: none; }
+.home-featured-lower .fh-product { background: color-mix(in srgb, var(--coal) 80%, transparent); }
+.home-sellers-bottom { margin-top: 32px; }
+.home-sellers-bottom .seller-strip { grid-auto-columns: minmax(220px, 275px); }
+
+/* ---- Product cards: wider, calmer, easier to scan on a phone ---------- */
+.shop .shelf { margin: 25px 0; }
+.shop .shelf-head { margin-bottom: 13px; }
+.shop .shelf-head h2 { font-family: var(--font); font-size: clamp(1.14rem, 2vw, 1.45rem); }
+.shop .oc-name {
+  font-family: var(--font); font-weight: 750; font-size: 0.91rem; line-height: 1.43;
+  min-height: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; color: var(--ink);
+}
+.shop .oc-desc {
+  color: var(--ink-2); line-height: 1.4; font-size: 0.79rem;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.shop .oc-body { padding: 12px; gap: 7px; }
+.shop .oc-seller { color: var(--muted); font-size: 0.77rem; }
+.shop .oc-price { min-width: 0; flex-wrap: wrap; gap: 4px; }
+.shop .oc-price b { font-size: 1.31rem; line-height: 1.16; }
+.shop .oc-action-btn { margin-top: auto; min-height: 42px; }
+.shop .oc-chip { font-size: 0.69rem; max-width: 100%; }
+
+/* ---- A seller's shop keeps its own colours ----------------------------
+   The marketplace card treatment was overriding .store-themed on source
+   order alone, which left a seller with their buttons coloured and nothing
+   else — the shop looked dead. Inside a store, the store's variables win. */
+.shop .store-themed { color: var(--store-ink); }
+.shop .store-themed.style-tinted, .shop .store-themed.style-bold { background: var(--store-bg); }
+.shop .store-themed .oc, .shop .store-themed .listing, .shop .store-themed .seller,
+.shop .store-themed .store-top, .shop .store-themed .store-id,
+.shop .store-themed .buybox { background: var(--store-card); border-color: var(--store-line); color: var(--store-ink); }
+.shop .store-themed .oc-name, .shop .store-themed .oc-desc, .shop .store-themed .store-name h1,
+.shop .store-themed .shelf-head h2, .shop .store-themed .store-facts { color: var(--store-ink); }
+.shop .store-themed .oc-desc, .shop .store-themed .oc-seller, .shop .store-themed .store-tag { color: var(--store-ink-2); }
+.shop .store-themed .oc-media { background: var(--store-raised); }
+.shop .store-themed .oc-chip { background: var(--brand-soft); color: var(--brand-text); }
+.shop .store-themed .oc-action-btn, .shop .store-themed .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-on); }
+.shop .store-themed .oc-price, .shop .store-themed .oc-price b { color: var(--store-ink); }
+.shop .store-themed .store-tabs a.on { color: var(--brand-text); border-bottom-color: var(--brand); }
+.shop .store-themed .store-top { overflow: hidden; border-radius: 19px; }
+/* The seller's wallpaper, at full strength and a real size. */
+.shop .store-themed .store-cover {
+  height: clamp(145px, 24vw, 260px); background-repeat: no-repeat; background-size: cover;
+  background-position: center; filter: none; opacity: 1;
+}
+.shop .store-themed .store-id { padding: clamp(18px, 2.8vw, 26px); gap: 18px; }
+.shop .store-themed .store-logo { border-color: var(--store-card); }
+.shop .store-themed .store-name h1 { font: 800 clamp(1.4rem, 2.4vw, 2.15rem)/1.15 var(--font); letter-spacing: -0.04em; }
+.shop .store-themed .store-tag { font-size: 0.93rem; line-height: 1.55; max-width: 66ch; }
+.shop .store-themed .store-facts { font-size: 0.78rem; line-height: 1.6; }
+.shop .store-themed .store-cta .tiny { color: var(--store-muted); }
+.shop .store-themed .store-tabs { border-color: var(--store-line); }
+.shop .store-themed .store-tabs a { color: var(--store-ink-2); }
+
+/* Seller discovery cards show the seller's own wallpaper when they have one. */
+.shop .seller-cover-mini {
+  display: block; width: 100%; height: 98px; background-size: cover; background-position: center;
+  background-color: var(--coal-2); border-radius: 11px; flex-shrink: 0;
+}
+.shop .seller { gap: 10px; }
+.shop .seller-name { font-family: var(--font); font-weight: 800; font-size: 0.91rem; line-height: 1.3; }
+.shop .seller-tag { color: var(--ink-2); line-height: 1.5; }
+
+/* ---- Founder dashboard: bounded tiles, not plain text rows ------------ */
+.admin-priority-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.admin-priority-tile {
+  display: flex; flex-direction: column; justify-content: space-between; gap: 12px;
+  min-height: 108px; padding: 16px; background: var(--coal-2); border: 1px solid var(--line-strong);
+  border-radius: 15px; color: var(--ink);
+}
+.admin-priority-tile:hover { background: var(--coal-3); border-color: var(--brass); }
+.admin-priority-name { font-size: 0.77rem; color: var(--ink-2); line-height: 1.45; font-weight: 650; }
+.admin-priority-value { font-size: clamp(1.12rem, 1.8vw, 1.55rem); font-weight: 850; color: var(--ink); letter-spacing: -0.04em; }
+.admin-priority-value.warn { color: var(--warn); }
+.admin-priority-value.copper { color: var(--copper); }
+
+.admin-order-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 13px; border: 1px solid var(--line); border-radius: 11px;
+  background: var(--coal-2); color: var(--ink);
+}
+.admin-order-item:hover { background: var(--coal-3); }
+.admin-order-item .money { white-space: nowrap; }
+
+/* "Where the money went" as bars rather than a list of numbers. The figures
+   and the net-profit formula are untouched; only the drawing changed. */
+.finance-visual { display: grid; gap: 12px; }
+.finance-visual-line { padding: 11px 13px; background: var(--coal-2); border: 1px solid var(--line); border-radius: 11px; }
+.finance-visual-label { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; font-size: 0.81rem; color: var(--ink-2); }
+.finance-visual-label strong { font-size: 0.9rem; color: var(--ink); white-space: nowrap; }
+.finance-visual-line.expense .finance-visual-label strong { color: var(--bad); }
+.finance-visual-track { height: 5px; border-radius: 99px; background: var(--coal-3); overflow: hidden; margin-top: 9px; }
+.finance-visual-track span { display: block; height: 100%; border-radius: 99px; background: var(--brass); min-width: 2px; }
+.finance-visual-line.expense .finance-visual-track span { background: var(--bad); }
+.finance-visual-total {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 17px; border-radius: 13px; border: 1px solid var(--brass-deep);
+  background: var(--brass-soft); font-weight: 800;
+}
+.finance-visual-total strong { font-size: 1.3rem; }
+
+/* ---- The "More" sheet, grouped by job rather than a wall of links ----- */
+.sheet { max-height: min(82dvh, 680px); overflow-y: auto; }
+.sheet-sections { display: grid; gap: 17px; }
+.sheet-section { border: 1px solid var(--line); background: var(--coal); border-radius: 13px; padding: 12px; }
+.sheet-section h4 {
+  font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--brass-text); margin: 2px 3px 12px;
+}
+.sheet-section .sheet-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sheet-grid a, .sheet-grid button {
+  display: grid; place-items: center; text-align: center; min-height: 49px;
+  border: 1px solid var(--line); background: var(--coal-2); border-radius: 9px;
+  padding: 9px; color: var(--ink); font-size: 0.78rem; font-weight: 650;
+  font-family: inherit;
+}
+.sheet-grid a.active { border-color: var(--brass); background: var(--brass-soft); color: var(--brass-text); }
+.sheet-grid button { cursor: pointer; }
+
+/* ---- Empty states should not look like a broken page ------------------ */
+.shop .empty-state {
+  max-width: 550px; min-height: 310px; margin: 28px auto; display: flex; align-items: center;
+  flex-direction: column; justify-content: center; gap: 13px; text-align: center;
+  background: var(--coal); border: 1px solid var(--line); border-radius: 18px; padding: 30px;
+}
+.shop .empty-state h1 { font: 800 1.5rem/1.2 var(--font); color: var(--ink); }
+.shop .empty-state p { color: var(--ink-2); max-width: 330px; font-size: 0.9rem; }
+.shop .empty-state-icon {
+  display: grid; place-items: center; background: var(--brass-soft); color: var(--brass-text);
+  border-radius: 15px; width: 55px; height: 55px; font-size: 1.7rem;
+}
+.shop .empty-state .btn { margin-top: 8px; }
+
+@media (max-width: 1000px) {
+  .home-product-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .home-product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .home-market-head { margin: 4px 0 12px; }
+  .home-market-head h1 { font-size: 1.38rem; }
+  .home-market-head p { font-size: 0.76rem; }
+  .home-see-all { font-size: 0.73rem; }
+  .shop .oc-body { padding: 10px; gap: 6px; }
+  .shop .oc-name { font-size: 0.84rem; line-height: 1.35; }
+  .shop .oc-desc { font-size: 0.72rem; }
+  .shop .oc-price b { font-size: 1.2rem; }
+  .shop .oc-action-btn { padding: 8px; min-height: 40px; font-size: 0.79rem; }
+  .home-featured-lower .vhero-stage { grid-template-columns: 1fr; }
+  .home-featured-lower .vhero-photo { aspect-ratio: 16/8; max-height: 190px; }
+  .home-featured-lower .vhero-copy { padding: 16px; gap: 6px; }
+  .home-featured-lower .vhero-name { font-size: 1.3rem; }
+  .home-featured-lower .featured-hero { min-height: 210px; }
+  .shop .store-themed .store-cover { height: 150px; }
+  .admin-priority-tile { min-height: 100px; padding: 13px; }
+  .admin-priority-value { font-size: 1.14rem; }
+  .admin-order-item { flex-wrap: wrap; }
+}
+@media (max-width: 380px) {
+  .shop .oc-chip { display: none; }
+  .home-market-head p { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto; }
+}
+
+/* ---- Stat cards -------------------------------------------------------
+   `.stat` is `overflow:hidden`, so a figure wider than its card was simply
+   cut off rather than wrapping — and on the founder dashboard the figure
+   being cut off was the net profit. Long numbers now shrink and wrap
+   instead of disappearing. */
+.stat .value { min-width: 0; }
+.stat-lead .value { font-size: clamp(1.45rem, 2.2vw, 2.1rem); }
+.stat .label { overflow-wrap: anywhere; }
+.stat .sub a { color: var(--brass-text); font-weight: 600; white-space: nowrap; }
+
+/* ---- Vendor "who visited" panel ---------------------------------------
+   These class names existed in the markup with no stylesheet behind them,
+   so the figure and its label ran together — "K0.00completed sales". */
+.mini-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px;
+}
+.mini-stats > div {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 11px 12px; background: var(--coal-2);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+}
+.mini-stats b { font-size: 1.12rem; font-weight: 800; letter-spacing: -0.02em; color: var(--ink); }
+.mini-stats b:empty::after { content: '0'; color: var(--muted); }
+.mini-stats span { font-size: 0.76rem; color: var(--muted); line-height: 1.35; }
+
+
+/* ---- Account menu in the top bar --------------------------------------
+   Same menu on every dashboard — founder, vendor and affiliate — so the
+   avatar means the same thing wherever you are. */
+.account-menu { position: relative; }
+button.workspace-avatar { cursor: pointer; font-family: inherit; }
+button.workspace-avatar:hover { filter: brightness(1.15); }
+.account-pop {
+  position: absolute; right: 0; top: calc(100% + 9px); z-index: 60;
+  min-width: 212px; display: grid; gap: 2px; padding: 8px;
+  background: var(--coal); border: 1px solid var(--line-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.account-who {
+  display: grid; gap: 2px; padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--line); margin-bottom: 4px;
+}
+.account-who strong { font-size: 0.9rem; color: var(--ink); overflow-wrap: anywhere; }
+.account-who span { font-size: 0.74rem; color: var(--muted); }
+.account-pop a, .account-pop button {
+  display: block; width: 100%; text-align: left; padding: 9px 10px;
+  border: 0; background: none; border-radius: var(--radius-sm);
+  color: var(--ink-2); font: inherit; font-size: 0.86rem; cursor: pointer;
+}
+.account-pop a:hover, .account-pop button:hover { background: var(--coal-2); color: var(--ink); }
+.account-signout { color: var(--bad) !important; }
+@media (max-width: 700px) { .account-pop { min-width: 190px; } }
+
+/* A short line under the bell's buttons explaining why notifications could
+   not be turned on — the browser blocked them, or an iPhone needs the site
+   on the home screen first. Silence there is the worst outcome. */
+.bell-note {
+  margin: 0 12px 10px; padding: 9px 11px; font-size: 0.8rem; line-height: 1.5;
+  color: var(--ink-2); background: var(--coal-2);
+  border: 1px solid var(--line); border-radius: var(--radius-sm);
+}

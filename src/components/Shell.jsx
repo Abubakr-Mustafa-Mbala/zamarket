@@ -1,4 +1,4 @@
-import { useState, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { Loading } from './ui'
@@ -37,7 +37,6 @@ const STAFF_NAV = [
   { to: '/admin/offers', label: 'Offers' },
   { to: '/admin/resellers', label: 'Affiliates' },
   { to: '/admin/affiliate-recruiting', label: 'Affiliate recruitment' },
-  { to: '/admin/affiliate-academy', label: 'Affiliate Academy' },
   { to: '/admin/vendors', label: 'Vendors' },
   { to: '/admin/marketing', label: 'Marketing' },
   { to: '/admin/reviews', label: 'Reviews' },
@@ -55,7 +54,7 @@ const STAFF_NAV = [
 const RESELLER_NAV = [
   { to: '/sell', label: 'My sales', end: true },
   { to: '/sell/find-customers', label: 'Find customers' },
-  { to: '/sell/training', label: 'Affiliate Academy' },
+  { to: '/sell/training', label: 'Training' },
   { to: '/sell/products', label: 'Products to sell' },
   { to: '/sell/earnings', label: 'My earnings' },
   { to: '/sell/commissions', label: 'Commissions' },
@@ -75,12 +74,12 @@ const VENDOR_NAV = [
 const MARKETING_NAV = [
   { group: 'Marketing' },
   { to: '/admin/marketing', label: 'Overview', end: true },
+  { to: '/admin/marketing/growth', label: 'Growth' },
   { to: '/admin/marketing/today', label: 'Today' },
   { to: '/admin/marketing/leads', label: 'Leads' },
   { to: '/admin/marketing/campaigns', label: 'Campaigns' },
   { to: '/admin/marketing/launch', label: 'Campaign Launchpad' },
   { to: '/admin/affiliate-recruiting', label: 'Affiliate recruitment' },
-  { to: '/admin/affiliate-academy', label: 'Affiliate Academy' },
   { to: '/admin/marketing/seo', label: 'Search (SEO)' },
   { to: '/admin/marketing/blog', label: 'Blog & guides' },
   { to: '/admin/marketing/content', label: 'Content' },
@@ -117,6 +116,73 @@ const MOBILE_TABS = {
   ],
 }
 
+// The avatar in the top bar used to be a plain <span> — it looked like a
+// button on every dashboard and did nothing on any of them. It is a real
+// account menu now, and it is the same menu for the founder, a vendor and an
+// affiliate: who you are signed in as, the settings page that role actually
+// has, the way back to the marketplace, and sign out.
+//
+// A vendor's "settings" is their shopfront and their payout details; an
+// affiliate has no settings of their own, so they simply get fewer items
+// rather than a link to a page they cannot open.
+const ACCOUNT_LINKS = {
+  staff: [
+    { to: '/admin/settings', label: 'Settings', founder: true },
+    { to: '/admin/team', label: 'Team', founder: true },
+  ],
+  vendor: [
+    { to: '/vendor/shopfront', label: 'My shopfront' },
+    { to: '/vendor/payouts', label: 'Payout details' },
+  ],
+  reseller: [],
+}
+
+function AccountMenu({ kind, profile, roleName, isFounder, signOut }) {
+  const [open, setOpen] = useState(false)
+  const box = useRef(null)
+
+  // Close on a click anywhere else, or on Escape. Both listeners are removed
+  // when the menu closes, so nothing is left attached to the document.
+  useEffect(() => {
+    if (!open) return
+    const away = (e) => { if (box.current && !box.current.contains(e.target)) setOpen(false) }
+    const esc = (e) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', away)
+    document.addEventListener('keydown', esc)
+    return () => {
+      document.removeEventListener('mousedown', away)
+      document.removeEventListener('keydown', esc)
+    }
+  }, [open])
+
+  const name = profile?.full_name || profile?.email || 'Signed in'
+  const initial = String(profile?.full_name || profile?.email || 'Z').slice(0, 1).toUpperCase()
+  const links = (ACCOUNT_LINKS[kind] || []).filter((l) => !l.founder || isFounder)
+
+  return (
+    <div className="account-menu" ref={box}>
+      <button type="button" className="workspace-avatar" aria-haspopup="menu"
+        aria-expanded={open} aria-label="Your account"
+        onClick={() => setOpen((v) => !v)}>{initial}</button>
+      {open && (
+        <div className="account-pop" role="menu">
+          <div className="account-who">
+            <strong>{name}</strong>
+            <span>{roleName}</span>
+          </div>
+          {links.map((l) => (
+            <Link key={l.to} to={l.to} role="menuitem" onClick={() => setOpen(false)}>{l.label}</Link>
+          ))}
+          <Link to="/account" role="menuitem" onClick={() => setOpen(false)}>Your account</Link>
+          <Link to="/" role="menuitem" onClick={() => setOpen(false)}>View the marketplace</Link>
+          <button type="button" role="menuitem" className="account-signout"
+            onClick={() => { setOpen(false); signOut() }}>Sign out</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Shell({ kind }) {
   const { profile, isFounder, advanced, setAdvanced, signOut } = useAuth()
   const [more, setMore] = useState(false)
@@ -131,7 +197,16 @@ export default function Shell({ kind }) {
     (n) => (!n.founder || isFounder) && (!n.advanced || advanced) && (advanced || marketer || !SIMPLE_HIDES.includes(n.to))
   ).filter((n, i, arr) => !n.group || (arr[i + 1] && arr[i + 1].to))
   const tabs = marketer ? MOBILE_TABS.marketing : MOBILE_TABS[kind]
-  const links = nav.filter((n) => n.to)
+  // The "More" sheet used to be one grid of unrelated links. The nav array
+  // already carries { group: 'Money' } markers for the sidebar, so the same
+  // markers are reused to section the sheet by job. Access rules are
+  // unchanged: this groups the links that `nav` already allowed through.
+  const moreGroups = nav.reduce((groups, item) => {
+    if (item.group) { groups.push({ title: item.group, links: [] }); return groups }
+    if (!groups.length) groups.push({ title: 'Navigation', links: [] })
+    if (item.to) groups[groups.length - 1].links.push(item)
+    return groups
+  }, []).filter((g) => g.links.length)
 
   return (
     <div className="shell">
@@ -152,7 +227,7 @@ export default function Shell({ kind }) {
       <div className="main">
         <header className="topbar">
           <div className="workspace-current"><span className="workspace-top-kicker">ZA MARKET / {roleName.toUpperCase()}</span><strong>{navTitle}</strong></div>
-          <div className="workspace-top-actions"><Link className="workspace-store-link" to="/"><Icon.house /> <span>View store</span></Link><ActionBell /><span className="workspace-avatar" aria-label="Signed in account">{(profile?.full_name || profile?.email || 'Z').slice(0, 1).toUpperCase()}</span></div>
+          <div className="workspace-top-actions"><Link className="workspace-store-link" to="/"><Icon.house /> <span>View store</span></Link><ActionBell /><AccountMenu kind={kind} profile={profile} roleName={roleName} isFounder={isFounder} signOut={signOut} /></div>
           {kind === 'staff' && !marketer && (
             <div className="mode-switch">
               <div className="segmented">
@@ -181,11 +256,17 @@ export default function Shell({ kind }) {
         <>
           <div className="sheet-backdrop" onClick={() => setMore(false)} />
           <div className="sheet">
-            <div className="between mb"><h3>Everything</h3><button className="btn ghost sm" onClick={() => setMore(false)}>Close</button></div>
-            <div className="sheet-grid">
-              {links.map((n) => <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setMore(false)}>{n.label}</NavLink>)}
-              <Link to="/" onClick={() => setMore(false)}>Marketplace</Link>
-              <a href="#" onClick={(e) => { e.preventDefault(); signOut() }}>Sign out</a>
+            <div className="between mb"><h3>Menu</h3><button type="button" className="btn ghost sm" onClick={() => setMore(false)}>Close</button></div>
+            <div className="sheet-sections">
+              {moreGroups.map((group) => (
+                <section key={group.title} className="sheet-section">
+                  <h4>{group.title}</h4>
+                  <div className="sheet-grid">
+                    {group.links.map((n) => <NavLink key={n.to} to={n.to} end={n.end} onClick={() => setMore(false)}>{n.label}</NavLink>)}
+                  </div>
+                </section>
+              ))}
+              <div className="sheet-grid"><Link to="/" onClick={() => setMore(false)}>Marketplace</Link><button type="button" onClick={() => { setMore(false); signOut() }}>Sign out</button></div>
             </div>
           </div>
         </>

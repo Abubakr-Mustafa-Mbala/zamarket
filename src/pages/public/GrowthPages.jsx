@@ -219,15 +219,16 @@ export function SavedPage() {
 
   if (!items) return <Loading />
   if (!items.length) return (
-    <div className="empty-shop">
-      <h2>Your list is empty</h2>
-      <p>Tap the heart on anything you want to come back to. It stays on this phone.</p>
-      <Link to="/" className="btn primary">Start looking</Link>
+    <div className="empty-shop empty-state">
+      <span className="empty-state-icon" aria-hidden><Icon.heart /></span>
+      <h1>No saved products yet</h1>
+      <p>Tap the heart on products you want to revisit.</p>
+      <Link to="/search" className="btn primary">Browse products</Link>
     </div>
   )
   return (
     <div className="stack">
-      <div className="page-head"><div><h1>My list</h1><p>{items.length} saved</p></div>
+      <div className="page-head"><div><h1>Saved products</h1><p>{items.length} saved</p></div>
         <button className="btn ghost sm" onClick={saved.clear}>Clear the list</button></div>
       <div className="grid-products">{items.map((p) => <OfferingCard key={p.id} p={p} />)}</div>
     </div>
@@ -290,11 +291,10 @@ export function CategoriesPage() {
         </section>
       )}
       <section className="stack-sm">
-        <h2>More</h2>
+        <h2>More to shop</h2>
         <div className="cat-grid">
-          <Link to="/sellers" className="cat-tile"><span className="cat-tile-icon"><Icon.briefcase /></span><span>Local businesses</span><em>Browse sellers</em></Link>
-          <Link to="/search?deals=1" className="cat-tile"><span className="cat-tile-icon"><Icon.tag /></span><span>Today's deals</span><em>What's on offer</em></Link>
-          <Link to="/about" className="cat-tile"><span className="cat-tile-icon"><Icon.info /></span><span>About ZaMarket</span><em>Who we are</em></Link>
+          <Link to="/sellers" className="cat-tile"><span className="cat-tile-icon"><Icon.briefcase /></span><span>Stores</span><em>Shop by seller</em></Link>
+          <Link to="/search?deals=1" className="cat-tile"><span className="cat-tile-icon"><Icon.tag /></span><span>Deals</span><em>Shop offers</em></Link>
         </div>
       </section>
     </div>

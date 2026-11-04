@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
@@ -7,6 +7,7 @@ import { Field, Input, Select, Textarea, useToast, Loading } from '../../compone
 import { offerCopy, CHECKOUT_TYPES } from '../../lib/offers'
 import { dateRules, checkDate, daysText, niceDate, LOCATION_TEXT } from '../../lib/madeToOrder'
 import { useShopInfo } from '../../lib/departments'
+import { trackBeginCheckout, trackPurchase } from '../../lib/analytics'
 
 // What the customer will actually be charged for delivery.
 //
@@ -100,9 +101,11 @@ export function Cart() {
   )
 
   if (!items.length) return (
-    <div className="stack" style={{ maxWidth: 640 }}>
+    <div className="empty-shop empty-state">
       {downsellCard}
-      <div className="card empty"><h3>Your cart is empty</h3><Link to="/">Browse products</Link></div>
+      <h1>Your cart is empty</h1>
+      <p>Choose a product to start your order.</p>
+      <Link to="/search" className="btn primary">Browse products</Link>
     </div>
   )
   return (
@@ -202,6 +205,16 @@ export function Checkout() {
   const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : (localFee ?? 0)) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
+  // Sent once when the checkout is opened with something in the basket. The
+  // gap between this and the purchase event is the abandonment rate, which is
+  // the number worth watching in the first weeks.
+  const announced = useRef(false)
+  useEffect(() => {
+    if (announced.current || !items.length) return
+    announced.current = true
+    trackBeginCheckout(items, subtotal)
+  }, [items, subtotal])
+
   if (!items.length) return <div className="card empty"><h3>Your cart is empty</h3><Link to="/">Browse products</Link></div>
 
   const submit = async (e) => {
@@ -213,12 +226,26 @@ export function Checkout() {
         needed_by: rules ? neededBy : null,
         customer: { ...f, province_id: f.province_id || null, district_id: f.district_id || null },
         items: payload(),
+        // attribution() already carries the channel the visitor arrived
+        // through. A hard-coded 'marketplace' used to sit here, after the
+        // spread, which quietly overwrote it — every order was recorded as
+        // having come from nowhere in particular.
         ...attribution(),
-        channel: 'marketplace',
       },
     })
     setBusy(false)
     if (error) return toast(error.message, true)
+    trackPurchase(data.order_number, data.total, items)
+    // Ask the server to announce the order. Deliberately not awaited and
+    // deliberately allowed to fail: the customer must never wait on it, and
+    // a notification that does not send must never break a real order. If
+    // this call is lost the database webhook announces it a moment later,
+    // and the claim in the database stops it being announced twice.
+    fetch('/api/order-alert', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ order_number: data.order_number }),
+    }).catch(() => {})
     clear()
     nav(`/order/${data.order_number}?local=${data.is_local ? 1 : 0}&total=${data.total}`)
   }

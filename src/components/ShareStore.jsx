@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal, useToast } from './ui'
 import { sharePicture } from '../lib/shareCard'
+import { tagLink } from '../lib/channel'
 import {
   renderStorePoster, storeCaption, directionFor,
   STORE_FORMATS, DESIGNS, offersOf, reasonsOf, photosOf,
@@ -16,6 +17,19 @@ import {
 //
 // The seller's brand leads. ZaMarket is the footer: where you find them, not
 // the headline.
+// Where this poster is going. The link and the QR code are tagged with it, so
+// a completed order can be traced back to the platform it came from — which
+// is the only way to find out whether the status posts or the Facebook posts
+// are actually doing the work.
+const POST_TO = [
+  ['status', 'WhatsApp status'],
+  ['whatsapp', 'WhatsApp chat'],
+  ['facebook', 'Facebook'],
+  ['instagram', 'Instagram'],
+  ['tiktok', 'TikTok'],
+  ['qr', 'Printing it'],
+]
+
 export default function ShareStore({
   store, products = [], sections = [], settings = {}, link,
   label = 'Share this shop', className = 'btn',
@@ -24,6 +38,7 @@ export default function ShareStore({
   const [open, setOpen] = useState(false)
   const [design, setDesign] = useState(null)
   const [format, setFormat] = useState('portrait')
+  const [postTo, setPostTo] = useState('status')
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -42,13 +57,16 @@ export default function ShareStore({
   const offers = offersOf(store, products, sections)
   const reasons = reasonsOf(store, products, settings)
   const shots = photosOf(store, products, 4)
-  const caption = storeCaption({ store, products, sections, settings, link })
+  // Everything the viewer receives — the QR on the poster, the link in the
+  // caption, the copied link — carries the same tag.
+  const shareLink = tagLink(link, postTo)
+  const caption = storeCaption({ store, products, sections, settings, link: shareLink })
 
   // Redraw whenever the modal opens or the design or size changes. The store
   // data is read through a ref so a parent re-render does not redraw the
   // poster for no reason — rendering one is not free.
-  const inputs = useRef({ store, products, sections, settings, link })
-  inputs.current = { store, products, sections, settings, link }
+  const inputs = useRef({ store, products, sections, settings, link: shareLink })
+  inputs.current = { store, products, sections, settings, link: shareLink }
 
   useEffect(() => {
     if (!open) return
@@ -64,7 +82,7 @@ export default function ShareStore({
       .catch(() => { if (alive) toast('Could not make the poster', true) })
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
-  }, [open, chosen, format, toast])
+  }, [open, chosen, format, postTo, toast])
 
   useEffect(() => () => { if (url.current) URL.revokeObjectURL(url.current) }, [])
 
@@ -91,7 +109,7 @@ export default function ShareStore({
     catch { toast('Could not copy', true) }
   }
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText(link || ''); toast('Shop link copied') }
+    try { await navigator.clipboard.writeText(shareLink || ''); toast('Shop link copied') }
     catch { toast('Could not copy', true) }
   }
   const another = () => {
@@ -132,6 +150,22 @@ export default function ShareStore({
               </div>
             </div>
             <p className="tiny muted">{DESIGNS[chosen]?.note} {chosen === recommended && '★ suits this kind of business.'}</p>
+
+            <div className="ss-row">
+              <span className="ss-label">Posting to</span>
+              <div className="ss-chips">
+                {POST_TO.map(([key, label]) => (
+                  <button key={key} type="button"
+                    className={`ss-chip ${postTo === key ? 'on' : ''}`}
+                    onClick={() => setPostTo(key)}>{label}</button>
+                ))}
+              </div>
+            </div>
+            <p className="tiny muted">
+              The link and the QR code carry this, so when an order comes in you
+              can see which platform it came from. Nothing about the person is
+              recorded &mdash; only where the link was posted.
+            </p>
 
             <div className="ss-row">
               <span className="ss-label">Size</span>

@@ -8,6 +8,7 @@ import { SavedProvider } from './lib/saved'
 import { ToastProvider } from './components/ui'
 import './styles.css'
 import './premium.css'
+import './refinements.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
 import { validAttributionTouch } from './referralExpiry'
+import { storedChannel } from './channel'
 
 const Ctx = createContext(null)
 const KEY = 'zm-cart'
@@ -80,6 +81,10 @@ export function CartProvider({ children }) {
     invite_code: activeTouch?.type === 'invite' ? activeTouch.code : null,
     vendor_ref: activeTouch?.type === 'vendor_ref' ? activeTouch.code : null,
     source: activeTouch?.type === 'reseller' ? `reseller:${activeTouch.code}` : activeTouch?.type === 'store' ? `vendor:${activeTouch.code}` : activeTouch?.type === 'campaign' ? `campaign:${activeTouch.code}` : activeTouch?.type === 'invite' ? `referral:${activeTouch.code}` : activeTouch?.type === 'vendor_ref' ? `vendor_ref:${activeTouch.code}` : 'organic',
+    // Which platform they came from, separate from who gets the credit. An
+    // affiliate link shared on WhatsApp is both a reseller sale and a
+    // WhatsApp sale, and you want to be able to ask either question.
+    channel: storedChannel() || 'marketplace',
     }
   }
   const count = items.reduce((s, x) => s + x.qty * (x.units || 1), 0)

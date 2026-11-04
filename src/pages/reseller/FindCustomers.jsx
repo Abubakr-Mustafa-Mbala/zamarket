@@ -7,6 +7,7 @@ import { money, n } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
 import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
 import ShareThis from '../../components/ShareThis'
+import ShareProduct from '../../components/ShareProduct'
 import { trustPosts, POST_KINDS } from '../../lib/trustPosts'
 import { Loading, Empty, CopyLine, useToast, Select, Field } from '../../components/ui'
 
@@ -222,7 +223,17 @@ function PostIdeas({ products, code, settings }) {
               <ol className="pi-shots">{idea.shots.map((sh, i) => <li key={i}>{sh}</li>)}</ol>
               <div className="share-box">{idea.caption}</div>
               <div className="btn-row">
-                <ShareThis product={idea.product} link={`${window.location.origin}/r/${code}/${idea.product.slug}`} caption={idea.caption} className="btn sm primary" label="Create promotion" />
+                <ShareProduct
+                  product={idea.product}
+                  store={idea.product.vendor_name ? {
+                    business_name: idea.product.vendor_name,
+                    logo_url: idea.product.vendor_logo,
+                    location: idea.product.vendor_location,
+                    category: idea.product.vendor_category,
+                  } : null}
+                  settings={settings}
+                  link={`${window.location.origin}/r/${code}/${idea.product.slug}`}
+                  className="btn sm primary" label="Create promotion" />
                 <button className="btn sm" onClick={() => copy(idea.caption)}>Copy caption</button>
                 <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(idea.caption)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
               </div>

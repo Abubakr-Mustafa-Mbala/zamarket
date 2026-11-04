@@ -1,172 +1,92 @@
-import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase, q } from '../../lib/supabase'
-import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { Loading, useToast } from '../../components/ui'
-import AcademyExtras, { LessonResources, useAcademyContent } from './AcademyExtras'
 
-// Short, plain lessons. Nothing here promises income.
-export const LESSONS = [
-  {
-    key: 'what', title: 'What you actually do', minutes: 3,
-    points: [
-      'You share products with people. When someone buys through your link, you earn a commission on that sale.',
-      'You never buy stock, hold anything, or deliver. ZaMarket confirms the order, collects the money and delivers.',
-      'You are paid after the customer receives the order and the 24-hour check passes.',
-      'What you earn depends on what you sell. There is no salary and no guaranteed amount.',
-    ],
-    doIt: 'Open "Products to sell" and find one product you would happily use yourself.',
-  },
-  {
-    key: 'link', title: 'Your link, and why it matters', minutes: 3,
-    points: [
-      'Your link is how the system knows a sale was yours. No link, no commission.',
-      'Use the product link when you talk about one product, and your main link otherwise.',
-      'If someone asks you in person, take their number and send them the link on WhatsApp.',
-      'Never buy through your own link. It is not paid, and it is easy to spot.',
-    ],
-    doIt: 'Copy your link and send it to yourself on WhatsApp, so you know exactly what a customer sees.',
-  },
-  {
-    key: 'who', title: 'Who to talk to first', minutes: 4,
-    points: [
-      'Start with people who already know you: family, friends, church, work, neighbours, old classmates.',
-      'Write a list of 30 names before you message anybody.',
-      'One person at a time, with their name in the message. Never a broadcast.',
-      'Ask about them first. Then mention what you sell, once.',
-    ],
-    doIt: 'Write your list of 30. Message the first 10 today.',
-  },
-  {
-    key: 'say', title: 'What to say', minutes: 4,
-    points: [
-      'Say what the product does for them, not what it is. "It charges your phone when ZESCO is off" beats "10000mAh power bank".',
-      'Give the price early. Hiding it wastes everyone\u2019s time.',
-      'Say where you deliver and that they pay when they receive it.',
-      'Ask one clear question at the end: "Should I put you down for one?"',
-    ],
-    doIt: 'Open "Find customers" and copy the ready message for a product you like.',
-  },
-  {
-    key: 'no', title: 'When they say no', minutes: 3,
-    points: [
-      'Most people will say no or not reply. That is normal and not personal.',
-      '"Too expensive" often means "I don\u2019t see the value yet". Explain what is included.',
-      '"I\u2019ll think about it" — ask what they need to know, then agree a day to check back.',
-      'Never argue, never beg, never promise what the product cannot do. Ask if they know someone else who might need it.',
-    ],
-    doIt: 'Read the objection answers on the Find customers page once, slowly.',
-  },
-  {
-    key: 'followup', title: 'The follow-up is where the money is', minutes: 3,
-    points: [
-      'Most sales happen on the second or third contact, not the first.',
-      'If someone shows interest, agree when you will check back, and do it.',
-      'Keep it short: "Hi Bwalya, still want the lamp? I can have it delivered tomorrow."',
-      'After two follow-ups with no reply, leave it and move on.',
-    ],
-    doIt: 'Pick three people you messaged this week and follow up today.',
-  },
-  {
-    key: 'posting', title: 'Posting without annoying people', minutes: 3,
-    points: [
-      'One good post a day beats ten in one morning.',
-      'Real photos of the real product, not designed posters.',
-      'Say the price, the area you deliver to, and how to order.',
-      'In groups, read the rules first and answer questions before you sell anything.',
-    ],
-    doIt: 'Post one product on your WhatsApp status today, with your link.',
-  },
-  {
-    key: 'honest', title: 'Staying honest, staying paid', minutes: 3,
-    points: [
-      'Never promise results a product cannot deliver. One angry customer costs more than one sale.',
-      'Do not collect money yourself. ZaMarket collects and pays you.',
-      'Do not create fake orders or use your own number. Those are not paid.',
-      'If you are unsure about a claim, ask us before you say it.',
-    ],
-    doIt: 'Read the affiliate rules on your account page.',
-  },
-  {
-    key: 'track', title: 'Knowing your own numbers', minutes: 3,
-    points: [
-      'Your dashboard shows sales, commission earned, what is waiting and what is paid.',
-      'Waiting means the order is not complete yet. It is not guaranteed until it clears.',
-      'Count how many people you message each week, not just sales. Messages are the part you control.',
-      'If 50 messages bring no sales, change the product or the message, not the effort.',
-    ],
-    doIt: 'Open My earnings and look at this month.',
-  },
-]
-
+// Training is NOT in ZaMarket.
+//
+// Affiliates are trained in Al-Halaqa Academy, which is its own system. The
+// nine lessons, the recorded sessions and the Q&A that used to live on this
+// page have been removed on purpose — ZaMarket's job is the selling, the
+// links and the money, and teaching belongs where the teaching already
+// happens. This page is only the door: it tells an affiliate where training
+// is and sends them there.
+//
+// The link comes from the training_url setting (Settings → Vendors and
+// affiliates). If it is empty, nothing is linked — an affiliate is told the
+// team will send details rather than being dropped on a dead page.
 export default function Training() {
-  const { user } = useAuth()
-  const toast = useToast()
-  const [open, setOpen] = useState(LESSONS[0].key)
-  const academy = useAcademyContent()
-  const { data, loading, reload } = useData(() => q(supabase.from('training_progress').select('lesson').eq('user_id', user.id)), [user.id])
-  if (loading) return <Loading />
-  const done = new Set((data || []).map((r) => r.lesson))
-  const pct = Math.round((done.size / LESSONS.length) * 100)
+  const { settings } = useAuth()
+  const raw = String(settings?.training_url || '').trim()
 
-  const toggle = async (key) => {
-    if (done.has(key)) {
-      const { error } = await supabase.from('training_progress').delete().eq('user_id', user.id).eq('lesson', key)
-      if (error) return toast(error.message, true)
-    } else {
-      const { error } = await supabase.from('training_progress').insert({ user_id: user.id, lesson: key })
-      if (error) return toast(error.message, true)
-      toast('Marked as done')
-    }
-    reload()
-  }
+  // Only an external https address is ever linked from here. Anything else is
+  // treated as not set, so a bad or unsafe value can never become a link.
+  let href = ''
+  try {
+    const url = new URL(raw)
+    if (url.protocol === 'https:' && !url.username && !url.password) href = url.href
+  } catch { href = '' }
 
   return (
     <div className="stack">
       <div className="page-head">
         <div>
-          <p className="academy-kicker">ZA MARKET ACADEMY</p><h1>Your affiliate Academy</h1>
-          <p>Build your skills with nine starter lessons, recordings, live calls and questions answered by the team.</p>
+          <h1>Training</h1>
+          <p>Where to learn how to do this properly.</p>
         </div>
       </div>
 
-      <div className="train-progress">
-        <div className="progress"><div style={{ width: `${pct}%` }} /></div>
-        <span className="small">{done.size} of {LESSONS.length} done{pct === 100 ? ' — finished' : ''}</span>
-      </div>
-
-      <div className="steps-list">
-        {LESSONS.map((l, i) => (
-          <div key={l.key} className={`sh-step ${open === l.key ? 'open' : ''} ${done.has(l.key) ? 'ticked' : ''}`}>
-            <button type="button" className="sh-head" onClick={() => setOpen(open === l.key ? '' : l.key)}>
-              <span className="sh-n">{done.has(l.key) ? '✓' : i + 1}</span>
-              <span className="grow"><strong>{l.title}</strong><span className="small muted">{l.minutes} min read</span></span>
-              <span aria-hidden>{open === l.key ? '−' : '+'}</span>
-            </button>
-            {open === l.key && (
-              <div className="sh-body">
-                <ul>{l.points.map((p, k) => <li key={k}>{p}</li>)}</ul>
-                <p className="small"><strong>Do this now:</strong> {l.doIt}</p>
-                <LessonResources resource={academy.lessons.find((v) => v.lesson_key === l.key)} />
-                <button className={`btn sm ${done.has(l.key) ? 'ghost' : 'primary'}`} onClick={() => toggle(l.key)}>
-                  {done.has(l.key) ? 'Mark as not done' : 'I have done this'}
-                </button>
+      <div className="card stack-sm">
+        <h2>Training happens in the Academy</h2>
+        <p>
+          The lessons are not here. Affiliate training runs in our academy, as a
+          proper course with an instructor, rather than as pages inside the
+          marketplace. You keep using ZaMarket for the selling itself: your link,
+          the products, your earnings.
+        </p>
+        {href
+          ? (
+            <>
+              <div className="btn-row">
+                <a className="btn primary" href={href} target="_blank" rel="noopener noreferrer">Open the Academy</a>
               </div>
-            )}
-          </div>
-        ))}
+              <p className="small muted">
+                Opens in a new tab. You sign in there separately — your ZaMarket
+                password is not used, and it is not shared with the academy.
+              </p>
+            </>
+          )
+          : (
+            <p className="small muted">
+              The team will send you the academy details after your application is
+              approved. If you have been approved and have not received them, ask
+              on the support number in the footer.
+            </p>
+          )}
       </div>
 
-      <AcademyExtras sessions={academy.sessions} questions={academy.questions} error={academy.error} unavailable={!!academy.error} reload={academy.reload} />
-
-      {pct === 100 && (
-        <div className="card ok-card">
-          <h3>That is the whole course.</h3>
-          <p className="small">Now it is just the work: 10 messages a day, one post, and follow up with anyone who replied. Check your numbers every Saturday.</p>
-          <Link className="btn primary" to="/sell/find-customers">Go to Find customers</Link>
-        </div>
-      )}
+      <div className="card stack-sm">
+        <h2>While you wait</h2>
+        <p>Three things you can do today without any lesson:</p>
+        <ol>
+          <li>
+            Open <Link to="/sell/products">Products to sell</Link> and find one
+            product you would happily use yourself. It is far easier to sell
+            something you actually believe in.
+          </li>
+          <li>
+            Copy your link and send it to yourself on WhatsApp, so you see
+            exactly what a customer sees before anyone else does.
+          </li>
+          <li>
+            Write a list of thirty people who already know you — family, church,
+            work, neighbours, old classmates — before you message anybody.
+          </li>
+        </ol>
+        <p className="small muted">
+          Never promise an income, a delivery date or a discount that is not on
+          the product page. What you earn depends on what you sell, and there is
+          no salary and no guaranteed amount.
+        </p>
+      </div>
     </div>
   )
 }

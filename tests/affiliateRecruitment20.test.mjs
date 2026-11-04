@@ -42,9 +42,23 @@ test('public recruitment route and SEO are visible to search engines', () => {
   assert.match(read('../netlify/functions/sitemap.js'), /\$\{SITE\}\/affiliates/)
 })
 
-test('private academy content is only readable by eligible affiliates and marketing staff', () => {
-  const sql = read('../supabase/migrations/20261103_affiliate_academy_recruitment_REVIEW.sql')
-  assert.match(sql, /academy_session_read[\s\S]*public\.is_approved_affiliate\(\) or public\.can_market\(\)/)
-  assert.match(sql, /academy_question_insert[\s\S]*user_id = auth\.uid\(\) and public\.is_approved_affiliate\(\)/)
+// Training lives in Al-Halaqa, not in the marketplace. An earlier draft built
+// lesson, session and Q&A tables inside ZaMarket; those were removed on
+// purpose. This test exists to stop them coming back by accident, which is
+// exactly how they arrived the first time.
+test('the academy is not rebuilt inside the marketplace', () => {
+  const sql = read('../supabase/migrations/20261103_affiliate_recruitment_REVIEW.sql')
   assert.match(sql, /create or replace function public\.affiliate_recruitment_report/)
+  assert.doesNotMatch(sql, /create table[\s\S]{0,40}academy_/)
+  assert.match(sql, /drop table if exists public\.academy_lessons cascade/)
+  // Recruitment itself is kept — that part he does want.
+  assert.match(sql, /application_source/)
+  assert.match(sql, /application_campaign/)
+  for (const f of ['../src/pages/admin/AffiliateAcademy.jsx', '../src/pages/reseller/AcademyExtras.jsx']) {
+    assert.throws(() => read(f), 'in-marketplace academy page should not exist')
+  }
+  // Affiliates are pointed outwards instead, and only to a real https link.
+  const training = read('../src/pages/reseller/Training.jsx')
+  assert.match(training, /training_url/)
+  assert.match(training, /protocol === 'https:'/)
 })

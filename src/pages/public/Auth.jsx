@@ -6,6 +6,25 @@ import { Field, Input, Select, useToast, Loading } from '../../components/ui'
 import { useDepartments } from '../../lib/departments'
 import { recruitmentAttribution } from '../../lib/affiliateRecruitment'
 
+// A path is only safe if it is a path on this site. Resolving it against our
+// own origin is the check that cannot be talked around: a scheme, a
+// protocol-relative "//host", a backslash variant or an encoded one all end
+// up pointing somewhere else, and are rejected.
+export function safeNext(value) {
+  const raw = String(value || '')
+  if (!raw || raw.length > 512) return ''
+  // Reject control characters and backslashes before parsing; some browsers
+  // treat a backslash as a slash, and the parser may not.
+  if (/[\\\u0000-\u001f\u007f]/.test(raw)) return ''
+  if (!raw.startsWith('/') || raw.startsWith('//')) return ''
+  try {
+    const origin = window.location.origin
+    const url = new URL(raw, origin)
+    if (url.origin !== origin) return ''
+    return url.pathname + url.search + url.hash
+  } catch { return '' }
+}
+
 export function homeFor(role) {
   if (role === 'marketing') return '/admin/marketing'
   if (['founder', 'ops', 'finance', 'delivery'].includes(role)) return '/admin'
@@ -26,7 +45,22 @@ export function Login() {
   const [busy, setBusy] = useState(false)
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v }))
 
-  useEffect(() => { if (!loading && user && role) nav(next && next.startsWith('/') ? next : homeFor(role), { replace: true }) }, [user, role, loading])
+  // Where to go after signing in.
+  //
+  // This used to accept anything starting with "/", which is not the same as
+  // "somewhere on this site". A browser reads "//evil.com" as a full address
+  // on another domain, and "/\\evil.com" the same way — both start with a
+  // slash and both leave ZaMarket. A link like
+  // zamarket.shop/login?next=//evil.com would therefore land somebody on a
+  // stranger's page at the exact moment they had just typed their password,
+  // which is the whole shape of a phishing attack.
+  //
+  // So the destination is resolved against our own origin and only used if it
+  // actually stays here. Anything else quietly goes to the normal home page.
+  useEffect(() => {
+    if (loading || !user || !role) return
+    nav(safeNext(next) || homeFor(role), { replace: true })
+  }, [user, role, loading])
 
   // Google handles the password. ZaMarket never sees it.
   const google = async () => {
@@ -285,7 +319,7 @@ export function Apply() {
         </div>
       </details>
 
-      {!isVendor && <p className="small muted">Want to understand the programme first? <Link to="/affiliates">Read how affiliate selling and Academy training work</Link>.</p>}
+      {!isVendor && <p className="small muted">Want to understand the programme first? <Link to="/affiliates">Read how affiliate selling and the training work</Link>.</p>}
 
       {!user && (
         <div className="stack card">

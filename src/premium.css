@@ -64,12 +64,12 @@ tbody tr:nth-child(even) { background:rgba(255,255,255,.012); }
 tbody tr.click:hover { background:#24273a; }
 .stat { min-height:136px; padding:22px; position:relative; overflow:hidden; }
 .stat:before { content:''; position:absolute; left:20px; top:0; width:46px; height:2px; border-radius:3px; background:#6c5aa0; }
-.stat.hero { background:linear-gradient(138deg,#50398a,#30275a 60%,#1e2040); border:1px solid #7663b1; }
-.stat.hero:before { background:#cbbcff; }
-.stat.hero .label,.stat.hero .sub { color:#ddd5fb; }
+.stat-lead { background:linear-gradient(138deg,#50398a,#30275a 60%,#1e2040); border:1px solid #7663b1; }
+.stat-lead:before { background:#cbbcff; }
+.stat-lead .label,.stat-lead .sub { color:#ddd5fb; }
 .stat .label { font-size:.77rem; font-weight:700; letter-spacing:.03em; }
 .stat .value { margin-top:10px; font-size:clamp(1.45rem,2.3vw,1.95rem); letter-spacing:-.055em; }
-.stat.hero .value { font-size:clamp(1.6rem,2.6vw,2.25rem); }
+.stat-lead .value { font-size:clamp(1.6rem,2.6vw,2.25rem); }
 .grid-4 { gap:14px; }
 .grid-2 { gap:16px; }
 .page-head { margin-bottom:24px; }
@@ -447,6 +447,48 @@ tbody tr.click:hover { background:#24273a; }
   .shop .of-hero h1 { font-size:1.85rem; }
 }
 /* Affiliate Academy: clear lessons, class schedule and questions on small screens. */
-.academy-kicker{font-size:.72rem;font-weight:850;letter-spacing:.14em;color:#baa6ff;text-transform:uppercase}.academy-resource-card{background:rgba(130,100,220,.08);border:1px solid rgba(175,150,255,.19);border-radius:13px;padding:17px;margin:15px 0}.academy-resource-card p{line-height:1.65}.academy-resource-card .btn-row{display:flex;flex-wrap:wrap;gap:8px}.academy-section-head{display:flex;justify-content:space-between;align-items:center}.academy-section-head h2,.academy-qa h2{margin:7px 0}.academy-extras{margin-top:28px;gap:24px}.academy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:15px}.academy-session{display:flex;flex-direction:column;gap:12px}.academy-session h3{margin:0}.academy-session .btn{align-self:flex-start}.academy-qa{max-width:100%}.academy-qa textarea{width:100%;font:inherit;min-height:96px;resize:vertical}.academy-question-list{display:grid;gap:10px}.academy-question{padding:16px;border:1px solid var(--border,rgba(180,170,255,.15));border-radius:12px}.academy-question p{margin-top:8px;white-space:pre-wrap;line-height:1.6}@media(max-width:600px){.academy-session .btn{align-self:stretch}.academy-resource-card .btn{width:100%}}
 /* Academy publishing / recruiting controls */
-.affiliate-admin .page-head{flex-wrap:wrap;gap:15px}.academy-admin-channels{display:grid;gap:12px}.academy-admin-channel,.academy-admin-lesson{border:1px solid var(--border,rgba(180,160,255,.18));border-radius:13px;padding:16px;overflow-wrap:anywhere}.academy-admin-channel{display:flex;justify-content:space-between;align-items:center;gap:15px}.academy-admin-channel code{font-size:.75rem;overflow-wrap:anywhere}.academy-admin-channel .btn{flex-shrink:0}.academy-admin-lesson summary{font-weight:800;cursor:pointer}.academy-admin-lesson summary .tiny{float:right}.academy-admin-lesson[open]>div{padding-top:15px}.academy-admin-lesson label,.academy-admin-form label{display:grid;gap:7px;font-size:.85rem}.affiliate-admin .big-input{width:100%;padding:12px;border-radius:9px;font:inherit}.academy-admin-lesson textarea,.academy-admin-form textarea{resize:vertical}.academy-admin-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.academy-admin-form .academy-wide{grid-column:1/-1}.academy-admin-form>button{justify-self:start}.academy-caption{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.86rem;line-height:1.7;padding:18px;border-radius:10px;background:rgba(120,100,200,.08)}@media(max-width:650px){.academy-admin-form{grid-template-columns:1fr}.academy-admin-channel{align-items:flex-start;flex-direction:column}.academy-admin-channel .btn{width:100%}}
+
+/* ---------------------------------------------------------------
+   A seller's shop keeps its own colours.
+   The premium card and button treatments above are deliberate for the
+   marketplace itself, but inside a themed storefront they were painting
+   over the background the seller chose, leaving only the buttons coloured.
+   Within a store, the store's own variables win again.
+   --------------------------------------------------------------- */
+.store-themed .card {
+  background: var(--store-card);
+  border-color: var(--store-line);
+}
+.store-themed .input,
+.store-themed select.input,
+.store-themed textarea.input {
+  background: var(--store-raised);
+  border-color: var(--store-line-strong);
+  color: var(--store-ink);
+}
+.store-themed .badge { background: var(--store-raised); color: var(--store-ink-2); }
+.store-themed .btn.primary,
+.store-themed .btn.buy {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-on, #fff);
+  box-shadow: none;
+}
+.store-themed .btn.primary:hover:not(:disabled),
+.store-themed .btn.buy:hover:not(:disabled) { background: var(--brand); filter: brightness(1.08); }
+
+/* Affiliate recruitment screen. These were named academy-* when the
+   academy still lived in the marketplace; the academy is gone and these
+   are recruitment styles, so they are named for what they are. */
+.recruit-kicker { font-size:.72rem;font-weight:850;letter-spacing:.14em;color:#baa6ff;text-transform:uppercase }
+.affiliate-admin .page-head { flex-wrap:wrap;gap:15px }
+.recruit-channels { display:grid;gap:12px }
+.recruit-channel { border:1px solid var(--border,rgba(180,160,255,.18));border-radius:13px;padding:16px;overflow-wrap:anywhere }
+.recruit-channel { display:flex;justify-content:space-between;align-items:center;gap:15px }
+.recruit-channel code { font-size:.75rem;overflow-wrap:anywhere }
+.recruit-channel .btn { flex-shrink:0 }
+.affiliate-admin .big-input { width:100%;padding:12px;border-radius:9px;font:inherit }
+.recruit-caption { white-space:pre-wrap;overflow-wrap:anywhere;font-size:.86rem;line-height:1.7;padding:18px;border-radius:10px;background:rgba(120,100,200,.08) }
+.recruit-channel { align-items:flex-start;flex-direction:column }
+.recruit-channel .btn { width:100% }
