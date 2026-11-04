@@ -297,6 +297,10 @@ alter table products add column if not exists order_days int[];
 alter table products add column if not exists daily_limit int;
 alter table products add column if not exists options jsonb not null default '[]';
 alter table products add column if not exists note_label text;
+-- A vendor can count their stock if counting makes sense for what they sell.
+-- A baker working to order has no shelf to count, so this is off by default
+-- and turned on per product rather than imposed on everybody.
+alter table products add column if not exists tracks_stock boolean not null default false;
 alter table products add column if not exists service_location text;
 alter table products add column if not exists offering_type text not null default 'product';
 alter table products add column if not exists sales_model text not null default 'buy';
@@ -1358,7 +1362,12 @@ begin
     when 'adjustment' then update products set stock_available = stock_available + p_qty where id = p_product;
   end case;
 
-  update products set status = 'out_of_stock' where id = p_product and stock_available <= 0 and status = 'published' and owner_type = 'founder' and fulfilment = 'in_stock';
+  -- Sold out flips the listing by itself, for a founder product or for a
+  -- vendor product that counts its stock. A vendor who does not count keeps
+  -- the manual switch they had.
+  update products set status = 'out_of_stock'
+   where id = p_product and stock_available <= 0 and status = 'published'
+     and fulfilment = 'in_stock' and (owner_type = 'founder' or tracks_stock);
   update products set status = 'published' where id = p_product and stock_available > 0 and status = 'out_of_stock' and fulfilment = 'in_stock';
 end $$;
 
@@ -1791,12 +1800,15 @@ begin
     if coalesce(item->>'package_id', '') = '' then pkg := null; end if;
     insert into order_items (order_id, product_id, offer_id, vendor_id, quantity, unit_price, unit_cost_snapshot, line_total, reserved_qty, choices, note, package_id, package_name, vendor_take)
     values (o.id, prod.id, off.id, prod.vendor_id, qty, v_line / qty, product_effective_cost(prod), v_line,
-            case when prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then least(qty, greatest(prod.stock_available, 0)) else 0 end,
+            case when (prod.owner_type = 'founder' or prod.tracks_stock) and prod.fulfilment = 'in_stock' then least(qty, greatest(prod.stock_available, 0)) else 0 end,
             v_choices, nullif(left(coalesce(item->>'note', ''), 300), ''), pkg.id, pkg.name,
             -- what this vendor was promised per unit, frozen now
             case when prod.owner_type = 'vendor' then prod.vendor_price else null end);
     sub := sub + v_line;
-    if prod.owner_type = 'founder' and prod.fulfilment = 'in_stock' then
+    -- Counted stock is held the moment the order is placed, whoever owns the
+    -- product. Without this a giveaway prize, or the last one on a shelf, can
+    -- be sold twice over while the first order is still being confirmed.
+    if (prod.owner_type = 'founder' or prod.tracks_stock) and prod.fulfilment = 'in_stock' then
       if prod.stock_available > 0 then
         perform apply_movement(prod.id, 'reserve', least(qty, prod.stock_available), 'Order ' || o.order_number, 'order', o.id);
       end if;

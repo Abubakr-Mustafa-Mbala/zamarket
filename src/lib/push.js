@@ -45,6 +45,23 @@ const deviceLabel = () => {
   return `${os} · ${browser}`
 }
 
+// Ask the server for the public key. Replaces the old build-time VITE_
+// variable, which silently stayed empty until the site was rebuilt.
+export async function serverPushKey() {
+  try {
+    const res = await fetch('/api/push-key', { cache: 'no-store' })
+    if (!res.ok) return { key: '', reason: 'The server did not answer.' }
+    const body = await res.json()
+    if (body.key) return { key: body.key, reason: '' }
+    if (body.configured && !body.valid) {
+      return { key: '', reason: 'The notification key on the server does not look right — check VAPID_PUBLIC_KEY in Netlify for a missing or extra character.' }
+    }
+    return { key: '', reason: 'Add VAPID_PUBLIC_KEY in Netlify, then try again. No rebuild is needed.' }
+  } catch {
+    return { key: '', reason: 'Could not reach the server.' }
+  }
+}
+
 export async function registerWorker() {
   if (!pushSupported()) return null
   try { return await navigator.serviceWorker.register('/sw.js', { scope: '/' }) } catch { return null }
@@ -60,14 +77,13 @@ export async function currentSubscription() {
 
 // Ask, subscribe, and save. Returns a short reason on failure so the screen
 // can say what actually went wrong instead of "something went wrong".
-export async function enablePush(vapidPublicKey) {
+export async function enablePush() {
   if (!pushSupported()) return { ok: false, reason: 'This browser cannot do phone notifications.' }
   if (needsHomeScreen()) {
     return { ok: false, reason: 'On an iPhone, add ZaMarket to your home screen first, then turn this on from there.' }
   }
-  if (!vapidPublicKey) {
-    return { ok: false, reason: 'Notifications are not set up on the server yet.' }
-  }
+  const { key: vapidPublicKey, reason: keyProblem } = await serverPushKey()
+  if (!vapidPublicKey) return { ok: false, reason: keyProblem }
 
   let permission
   try { permission = await Notification.requestPermission() } catch { permission = 'denied' }

@@ -187,12 +187,18 @@ export function scoreDraft(draft = {}) {
   }
 
   // ---- length -------------------------------------------------------------
-  if (total < 300) {
-    add('length', FAIL, 'Too short to rank',
-      `${total} words. Under about 300 there is not enough on the page to compete. Aim for 600 to 900.`, 2)
+  //
+  // This used to say "Too short to rank" below 300 words, which is wrong.
+  // Google has no minimum word count, and a short page that answers the
+  // question completely beats a long one padded to hit a number. Chasing a
+  // word count is how a useful 200-word answer becomes a useless 700-word
+  // one. So length is a prompt to check completeness, never a failure.
+  if (total < 150) {
+    add('length', WARN, 'Very short — does it answer the question?',
+      `${total} words. There is no minimum length for ranking, so this is fine IF it fully answers what the title promises. If it leaves the obvious follow-up unanswered, that is the problem — not the word count.`, 1)
   } else if (total < 600) {
-    add('length', WARN, 'On the short side',
-      `${total} words. It can work for a very specific question, but 600 to 900 gives you more room to answer properly.`, 1)
+    add('length', PASS, 'Short and focused',
+      `${total} words. Fine, as long as the reader leaves without a question you left unanswered.`)
   } else {
     add('length', PASS, 'Good length', `${total} words.`)
   }

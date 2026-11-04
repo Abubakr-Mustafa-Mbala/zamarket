@@ -19,6 +19,7 @@ import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { detectChannel, rememberChannel } from '../../lib/channel'
+import { frontPageOrder, justAdded } from '../../lib/frontPage'
 import { startAnalytics, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareProduct from '../../components/ShareProduct'
@@ -638,6 +639,10 @@ export function Storefront() {
   }, [data])
   if (!data) return <CatalogueUnavailable error={error} retry={retry} />
   const { products, offersBy, vendors } = data
+  // The first row: one seller at a time, photographs required, rotated daily.
+  // See src/lib/frontPage.js for why it is not simply newest-first.
+  const frontRow = frontPageOrder(products).slice(0, 8)
+  const fresh = justAdded(products, 8).filter((p) => !frontRow.some((f) => f.id === p.id))
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
   const rated = products.filter((p) => p.rating).sort((a, b) => b.rating - a.rating || b.review_count - a.review_count)
@@ -662,11 +667,16 @@ export function Storefront() {
       {ref && <p className="tiny hero-ref">You arrived through an affiliate link. Your purchase can credit the affiliate.</p>}
       {products.length === 0 ? <OpeningSoon /> : (
         <>
-          <section className="home-product-first" aria-label="Recently listed products">
+          <section className="home-product-first" aria-label="Products from local sellers">
             <div className="home-product-grid">
-              {products.slice(0, 8).map(card)}
+              {frontRow.map(card)}
             </div>
           </section>
+          {fresh.length >= 4 && (
+            <Row title="Just added" link="/search?sort=new">
+              {fresh.map(card)}
+            </Row>
+          )}
           {deals.length >= 2 && (
             <Row title="Deals worth a look" link="/search?deals=1">
               {deals.slice(0, 8).map(card)}
@@ -676,7 +686,7 @@ export function Storefront() {
               from the first screen of the marketplace. */}
           <div className="home-featured-lower"><FounderHero /></div>
           <Merchandised products={products} vendors={vendors} offersBy={offersBy}
-            excludeIds={products.slice(0, 8).map((p) => p.id)} />
+            excludeIds={frontRow.map((p) => p.id)} />
         </>
       )}
       {/* "Grow with ZaMarket" used to sit here as well as in the footer. A

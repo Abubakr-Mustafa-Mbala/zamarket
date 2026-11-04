@@ -64,7 +64,7 @@ export default function ActionBell() {
       await disablePush()
       setPushOn(false)
     } else {
-      const r = await enablePush(import.meta.env.VITE_VAPID_PUBLIC_KEY)
+      const r = await enablePush()
       if (r.ok) setPushOn(true); else setPushNote(r.reason)
     }
     setPushBusy(false)

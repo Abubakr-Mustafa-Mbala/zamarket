@@ -286,3 +286,84 @@ button.workspace-avatar:hover { filter: brightness(1.15); }
   color: var(--ink-2); background: var(--coal-2);
   border: 1px solid var(--line); border-radius: var(--radius-sm);
 }
+
+/* ---- Giveaways --------------------------------------------------------- */
+.gw-card { transition: border-color .15s; }
+.gw-card:hover { border-color: var(--brass); }
+.gw-hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: clamp(16px, 3vw, 34px); align-items: center;
+  background: var(--coal); border: 1px solid var(--line);
+  border-radius: 20px; padding: clamp(16px, 2.5vw, 26px); overflow: hidden;
+}
+.gw-photo {
+  width: 100%; aspect-ratio: 4/3; object-fit: cover;
+  border-radius: 14px; background: var(--coal-2);
+}
+.gw-photo-none { background: linear-gradient(150deg, var(--brass-soft), var(--coal-2)); }
+.gw-head h1 { margin: 10px 0 6px; }
+.gw-prize { color: var(--ink-2); line-height: 1.6; }
+.gw-prize a { color: var(--brass-text); font-weight: 650; }
+.gw-facts {
+  display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px;
+}
+.gw-facts span {
+  padding: 8px 13px; border-radius: 999px; font-size: .8rem;
+  background: var(--coal-2); border: 1px solid var(--line); color: var(--ink-2);
+}
+.gw-facts strong { color: var(--ink); }
+.gw-enter { text-align: left; }
+.gw-social { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+.gw-rules { margin: 0; padding-left: 20px; display: grid; gap: 9px; color: var(--ink-2); line-height: 1.6; }
+.gw-rules strong { color: var(--ink); }
+
+/* The wheel. The pointer sits at the top and the wheel turns under it. */
+.gw-wheel-card { align-items: center; text-align: center; }
+.gw-wheel-wrap { position: relative; width: min(100%, 340px); margin: 10px auto 4px; aspect-ratio: 1; }
+.gw-pointer {
+  position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
+  width: 0; height: 0; z-index: 2;
+  border-left: 13px solid transparent; border-right: 13px solid transparent;
+  border-top: 22px solid var(--brass);
+}
+.gw-wheel {
+  position: absolute; inset: 0; border-radius: 50%;
+  border: 3px solid var(--brass-soft);
+  background: conic-gradient(from 0deg, var(--coal-2) 0 50%, var(--coal-3) 50% 100%);
+  transform: rotate(0deg);
+}
+.gw-wheel.spin {
+  transform: rotate(var(--turn));
+  transition: transform 5s cubic-bezier(.17, .67, .18, 1);
+}
+.gw-slice {
+  position: absolute; inset: 0;
+  transform: rotate(calc(var(--i) * (360deg / var(--slices))));
+  display: flex; justify-content: center;
+}
+.gw-slice em {
+  font-style: normal; font-size: .72rem; font-weight: 700; color: var(--ink);
+  margin-top: 16px; max-width: 86px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; transform: rotate(calc(180deg / var(--slices)));
+}
+.gw-winner strong {
+  display: block; font-family: var(--font-display);
+  font-size: clamp(1.4rem, 4vw, 2.1rem); color: var(--brass-text); margin: 4px 0;
+}
+@media (prefers-reduced-motion: reduce) { .gw-wheel.spin { transition: none; } }
+@media (max-width: 760px) {
+  .gw-hero { grid-template-columns: 1fr; }
+  .gw-wheel-wrap { width: min(100%, 290px); }
+}
+
+/* The three doors on a giveaway page. The traffic is already there; sending
+   everyone away when the draw ends wastes the one moment they are looking. */
+.gw-doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+.gw-door {
+  display: grid; gap: 5px; padding: 15px;
+  background: var(--coal-2); border: 1px solid var(--line);
+  border-radius: var(--radius); color: var(--ink-2);
+}
+.gw-door:hover { border-color: var(--brass); background: var(--coal-3); }
+.gw-door strong { color: var(--ink); font-size: 0.95rem; }
+.gw-door span { font-size: 0.8rem; line-height: 1.5; }

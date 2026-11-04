@@ -75,6 +75,7 @@ const MARKETING_NAV = [
   { group: 'Marketing' },
   { to: '/admin/marketing', label: 'Overview', end: true },
   { to: '/admin/marketing/growth', label: 'Growth' },
+  { to: '/admin/marketing/giveaways', label: 'Giveaways' },
   { to: '/admin/marketing/today', label: 'Today' },
   { to: '/admin/marketing/leads', label: 'Leads' },
   { to: '/admin/marketing/campaigns', label: 'Campaigns' },

@@ -127,14 +127,26 @@ export default function CreativeStudio({ vendorId, vendor }) {
   const [busy, setBusy] = useState(false)
   const generationId = useRef(0)
 
+  // A vendor sees their own products and nothing else. Staff can promote
+  // anything on the marketplace: the marketplace does the marketing for every
+  // seller on it, and the founder having no stock of their own is the normal
+  // case, not a reason to be locked out of the tool.
+  const [scope, setScope] = useState('all')
+
   const { data, loading, error, reload } = useData(async () => {
     let sel = supabase.from('public_products')
-      .select('id,name,slug,price,normal_price,images,category,featured_in_store,offering_type,fulfilment,created_at,description,benefits,vendor_name,sales_model')
+      .select('id,name,slug,price,normal_price,images,category,featured_in_store,offering_type,fulfilment,created_at,description,benefits,vendor_name,vendor_id,sales_model')
       .eq('status', 'published').order('category').order('name')
     if (vendorId) sel = sel.eq('vendor_id', vendorId)
-    else sel = sel.eq('owner_type', 'founder')
+    else if (scope === 'mine') sel = sel.eq('owner_type', 'founder')
+    else if (scope !== 'all') sel = sel.eq('vendor_id', scope)
     return q(sel)
-  }, [vendorId])
+  }, [vendorId, scope])
+
+  // The sellers to choose between, for the staff picker.
+  const { data: sellerList } = useData(async () => (vendorId ? [] : q(
+    supabase.from('public_vendors').select('id,business_name').order('business_name'),
+  )), [vendorId])
 
   const products = data || []
   const cats = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))], [products])
@@ -159,7 +171,11 @@ export default function CreativeStudio({ vendorId, vendor }) {
 
   if (error) return <Problem error={error} what="your products" onRetry={reload} />
   if (loading) return <Loading shape="rows" />
-  if (!products.length) return <Empty title="Publish a product first">A price list is built from what you already sell, so there is nothing to put on it yet.</Empty>
+  if (!products.length) {
+    return vendorId || scope === 'mine'
+      ? <Empty title="Publish a product first">A price list is built from what you already sell, so there is nothing to put on it yet.</Empty>
+      : <Empty title="Nothing published yet">Once a seller has a published product, you can build adverts and price lists from it here.</Empty>
+  }
 
   const toggle = (id) => {
     const base = chosen === null ? products.map((p) => p.id) : chosen
@@ -247,6 +263,29 @@ export default function CreativeStudio({ vendorId, vendor }) {
       <div className="studio-back"><button className="btn sm ghost" onClick={() => setTool(null)}>← All designs</button></div>
       <div className="studio-editor-head"><span className="eyebrow">CREATIVE STUDIO / EDITOR</span><h2>{STUDIO_TOOLS[tool]?.name || 'Design your creative'}</h2><p>{STUDIO_TOOLS[tool]?.description}</p></div>
       <div className="studio-pick stack">
+        {!vendorId && (
+          <section className="card stack-sm">
+            <div className="between">
+              <h3>Whose products</h3>
+              <span className="small muted">{products.length} published</span>
+            </div>
+            <div className="chips wrap">
+              <button className={`chip ${scope === 'all' ? 'on' : ''}`}
+                onClick={() => { setScope('all'); setChosen(null) }}>Everything on ZaMarket</button>
+              <button className={`chip ${scope === 'mine' ? 'on' : ''}`}
+                onClick={() => { setScope('mine'); setChosen(null) }}>Only mine</button>
+              {(sellerList || []).map((v) => (
+                <button key={v.id} className={`chip ${scope === v.id ? 'on' : ''}`}
+                  onClick={() => { setScope(v.id); setChosen(null) }}>{v.business_name}</button>
+              ))}
+            </div>
+            <p className="tiny muted">
+              You do the marketing for the whole marketplace, so you can build an advert
+              from any seller&rsquo;s products. The poster carries ZaMarket&rsquo;s name and the
+              seller&rsquo;s, and every price comes from their live listing.
+            </p>
+          </section>
+        )}
         <section className="card stack-sm">
           <div className="between"><h3>What goes on it</h3><span className="small muted">{picked.length} chosen</span></div>
           <div className="chips wrap">

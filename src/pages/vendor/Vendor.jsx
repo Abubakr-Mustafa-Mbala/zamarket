@@ -122,6 +122,30 @@ export function VendorProducts() {
   const toast = useToast()
   const [edit, setEdit] = useState(null)
   const { data, loading, reload } = useData(() => v ? q(supabase.from('products').select('*').eq('vendor_id', v.id).order('created_at', { ascending: false })) : Promise.resolve([]), [v?.id])
+  // How many are there? A seller who counts gets the listing taken down by
+  // itself when the last one goes, instead of having to remember.
+  const setStock = async (p) => {
+    const current = p.tracks_stock ? String(p.stock_available ?? 0) : ''
+    const answer = window.prompt(
+      `How many ${p.name} do you have?\n\nLeave it empty if you make them to order and never run out.`,
+      current,
+    )
+    if (answer === null) return
+    const text = answer.trim()
+    if (text === '') {
+      const { error } = await supabase.rpc('vendor_set_stock', { p_product: p.id, p_count: 0, p_track: false })
+      if (error) return toast(error.message, true)
+      toast('No longer counting this one. Use "Mark sold out" when you run out.')
+      return reload()
+    }
+    const count = Number(text)
+    if (!Number.isInteger(count) || count < 0) return toast('Give a whole number, like 5', true)
+    const { error } = await supabase.rpc('vendor_set_stock', { p_product: p.id, p_count: count, p_track: true })
+    if (error) return toast(error.message, true)
+    toast(count === 0 ? 'Set to zero — it now shows as sold out' : `${count} in stock. It will come off sale by itself at zero.`)
+    reload()
+  }
+
   const setAvailability = async (p) => {
     const { error } = await supabase.rpc('vendor_set_availability', { p_product: p.id, p_available: p.status !== 'published' })
     if (error) return toast(error.message, true)
@@ -150,6 +174,16 @@ export function VendorProducts() {
           { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
           { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
           { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },
+          { key: 'stock', label: 'In stock', num: true, render: (p) => (
+            p.fulfilment !== 'in_stock'
+              ? <span className="muted tiny">Made to order</span>
+              : p.tracks_stock
+                ? <button className={`btn sm ghost ${p.stock_available <= 2 ? 'warn' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); setStock(p) }}>
+                    {p.stock_available}{p.stock_available <= 2 ? ' — low' : ''}
+                  </button>
+                : <button className="btn sm ghost" onClick={(e) => { e.stopPropagation(); setStock(p) }}>Count it</button>
+          ) },
           { key: 'page', label: '', render: (p) => ['draft', 'submitted', 'rejected'].includes(p.status)
             ? <a className="btn sm" href={`/vendor/products/${p.id}/page`} onClick={(e) => e.stopPropagation()}>Design the page</a>
             : ['published', 'out_of_stock'].includes(p.status)
@@ -173,6 +207,7 @@ export function VendorProducts() {
       <div className="card flat small stack-sm">
         <strong>What the words mean</strong>
         <ul className="fc-rules">
+          <li><strong>In stock</strong> — tap the number to say how many you have. The listing comes off sale by itself when the last one goes, and back on when you add more. Leave it empty if you make to order and never run out.</li>
           <li><strong>Draft</strong> — only you can see it. Keep editing until you are happy.</li>
           <li><strong>Sent for review</strong> — with the ZaMarket team. We check it and publish it, usually the same day.</li>
           <li><strong>Feature</strong> — up to six products show first when someone opens your store, and they are the ones ZaMarket puts on the front page. The homepage rotates through featured products from every shop, so choose the ones you most want to sell.</li>

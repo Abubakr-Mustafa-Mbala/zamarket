@@ -82,23 +82,66 @@ export function fulfilmentOf(product) {
   return 'In stock'
 }
 
+// Tidy up a line a seller typed. Sellers paste from everywhere, so a line
+// arrives with a leading bullet, a dash, stray dots or doubled spaces, and
+// those were going straight onto the poster and into the caption — which is
+// where "·· mess free counters — — —" came from.
+function tidy(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    // leading bullets, dashes, dots, arrows, stars
+    .replace(/^[\s•·‣▪◦*\-–—>»→.]+/, '')
+    // trailing dashes and dots, including an ellipsis the seller typed
+    .replace(/[\s\-–—·•.]+$/, '')
+    .trim()
+}
+
 // The seller's own words about why it is worth having. Their benefit lines
-// first — they wrote those — then their description, cut into short lines.
-// Nothing is generated: if they wrote nothing, the poster says nothing.
-export function sellingPoints(product, want = 4) {
+// first — they wrote those — then their description, split into whole
+// sentences. Nothing is generated: if they wrote nothing, nothing is said.
+//
+// `limit` is for the POSTER, where a line has to physically fit. A line that
+// is too long is SKIPPED rather than cut, because half a sentence ending in
+// "…" tells the reader nothing and looks broken. Only if nothing at all fits
+// is a line shortened, and then at a word boundary.
+//
+// The caption passes no limit and gets the lines whole — a caption has all
+// the room in the world, and that is what people actually read.
+export function sellingPoints(product, want = 4, limit = 0) {
+  const seen = new Set()
   const out = []
+  const add = (raw) => {
+    const t = tidy(raw)
+    if (t.length < 6) return
+    const key = t.toLowerCase()
+    if (seen.has(key)) return
+    if (limit && t.length > limit) return
+    seen.add(key)
+    out.push(t)
+  }
+
   for (const b of (product?.benefits || [])) {
-    const t = String(b || '').trim()
-    if (t) out.push(t.length > 64 ? `${t.slice(0, 63).trimEnd()}…` : t)
+    add(b)
     if (out.length === want) return out
   }
-  const desc = String(product?.description || '').trim()
-  if (!desc) return out
-  for (const part of desc.split(/[.;\n]+/)) {
-    const t = part.trim()
-    if (t.length < 8) continue
-    out.push(t.length > 64 ? `${t.slice(0, 63).trimEnd()}…` : t)
+
+  // Whole sentences: split on terminators but keep them out of the result,
+  // and never break on a decimal point or an abbreviation.
+  const desc = tidy(product?.description).replace(/\s*\n\s*/g, '. ')
+  for (const part of desc.split(/(?<![0-9])[.;!?]+(?=\s|$)/)) {
+    add(part)
     if (out.length === want) break
+  }
+
+  // Everything was too long for the poster. Rather than show nothing, take
+  // the shortest one and cut it at a word, not mid-word.
+  if (!out.length && limit) {
+    const all = [...(product?.benefits || []), ...tidy(product?.description).split(/(?<![0-9])[.;!?]+(?=\s|$)/)]
+      .map(tidy).filter((t) => t.length >= 6).sort((a, b) => a.length - b.length)
+    if (all.length) {
+      const t = all[0]
+      out.push(t.length <= limit ? t : `${t.slice(0, t.lastIndexOf(' ', limit) > 20 ? t.lastIndexOf(' ', limit) : limit).trimEnd()}…`)
+    }
   }
   return out
 }
@@ -158,7 +201,9 @@ export async function renderProductPoster({
   const name = String(product?.name || 'This item').trim()
   const price = n(product?.price)
   const saving = savingOf(product)
-  const points = sellingPoints(product, wide ? 3 : 4)
+  // 64 characters is what fits a poster line at this size. Anything longer
+  // is skipped rather than cut; the caption carries the full text.
+  const points = sellingPoints(product, wide ? 3 : 4, 64)
   const picks = shotsOf(product, wide ? 3 : 4)
   const shopName = store?.business_name || ''
   const place = String(store?.town || store?.location || '').split(',')[0].trim()
@@ -778,24 +823,39 @@ function drawStatement({ ctx, w, h, pad, dir, name, price, saving, hero, logo, q
 // actually read, so an invented line here does more damage than one on the
 // picture.
 export function productCaption({ product, store = null, settings = {}, link }) {
-  const name = String(product?.name || 'This item').trim()
+  const name = tidy(product?.name) || 'This item'
   const saving = savingOf(product)
-  const points = sellingPoints(product, 3)
-  const shop = store?.business_name
-  const place = String(store?.town || store?.location || '').split(',')[0].trim()
+  // No length limit here. A caption is read, not laid out, so the seller's
+  // sentences go in whole — cutting them with "…" was leaving people halfway
+  // through a thought with nothing to act on.
+  const points = sellingPoints(product, 4)
+  const shop = tidy(store?.business_name)
+  const place = tidy(String(store?.town || store?.location || '').split(',')[0])
 
   const out = []
   out.push(`${name} — ${money(n(product?.price))}`)
-  if (saving) out.push(`Was ${money(saving.was)}, now ${money(saving.now)}.`)
-  out.push('')
-  if (points.length) { points.forEach((p) => out.push(`• ${p}`)); out.push('') }
+  if (saving) out.push(`Was ${money(saving.was)}. You save ${money(saving.off)}.`)
 
-  const how = fulfilmentOf(product)
-  const bits = [how]
-  if (String(settings?.delivery_included) === 'true') bits.push('Delivery included')
-  if (shop) bits.push(place ? `From ${shop}, ${place}` : `From ${shop}`)
-  out.push(bits.join(' · '))
-  out.push('Order online and we call you to confirm before any money moves.')
-  if (link) { out.push(''); out.push(link) }
+  if (points.length) {
+    out.push('')
+    // Each line is a complete statement and gets a full stop, so the caption
+    // reads as sentences rather than as fragments trailing off.
+    for (const p of points) out.push(`• ${/[.!?]$/.test(p) ? p : `${p}.`}`)
+  }
+
+  const facts = [fulfilmentOf(product)]
+  if (String(settings?.delivery_included) === 'true') facts.push('Delivery included')
+  if (shop) facts.push(place ? `From ${shop}, ${place}` : `From ${shop}`)
+  out.push('')
+  out.push(`${facts.join(' · ')}.`)
+  out.push('We call to confirm before any money moves.')
+
+  // The link goes last and always, on its own line, with a plain instruction
+  // in front of it. Most people here will never scan the QR code on the
+  // poster — they tap a link. A caption without one wastes the post.
+  if (link) {
+    out.push('')
+    out.push(`Order here: ${link}`)
+  }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }

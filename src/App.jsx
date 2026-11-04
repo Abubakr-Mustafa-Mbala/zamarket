@@ -43,6 +43,8 @@ const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
 const AffiliateRecruitment = lazy(() => import('./pages/public/AffiliateRecruitment'))
 const AffiliateRecruiting = lazy(() => import('./pages/admin/AffiliateRecruiting'))
+const GiveawayList = named(() => import('./pages/public/Giveaway'), 'GiveawayList')
+const GiveawayPage = lazy(() => import('./pages/public/Giveaway'))
 const BlogIndex = named(() => import('./pages/public/Blog'), 'BlogIndex')
 const BlogPost = named(() => import('./pages/public/Blog'), 'BlogPost')
 const VendorRefCapture = named(growthPages, 'VendorRefCapture')
@@ -126,6 +128,8 @@ export default function App() {
       <Route element={<PublicShell />}>
         <Route path="/" element={<Storefront />} />
         <Route path="/p/:id" element={<ProductPage />} />
+        <Route path="/giveaways" element={<GiveawayList />} />
+        <Route path="/giveaways/:slug" element={<GiveawayPage />} />
         <Route path="/store/:id" element={<StorePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/sellers" element={<SellersPage />} />
