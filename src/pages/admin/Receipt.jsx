@@ -7,6 +7,7 @@ import { money, datetime, n, title } from '../../lib/format'
 import { Loading, Segmented, useToast } from '../../components/ui'
 import { btSupported, receiptBytes, printBytes } from '../../lib/thermal'
 import QrCode from '../../components/QrCode'
+import BrandMark from '../../components/BrandMark'
 
 export default function Receipt() {
   const { id } = useParams()
@@ -71,6 +72,10 @@ export default function Receipt() {
       {!btSupported() && <div className="no-print tiny muted" style={{ textAlign: 'center', marginBottom: 8 }}>For your Bluetooth receipt printer, open this page in Chrome on Android or on a PC.</div>}
       <div className="receipt">
         <div className="r-center">
+          {/* The mark prints too. A receipt is the one piece of paper a
+              customer keeps, so it should carry the brand, not only the name
+              set in bold. */}
+          <BrandMark size={34} title={biz} ink="#1A1420" />
           <div className="r-biz">{biz}</div>
           <div className="r-site">zamarket.shop</div>
           {settings.business_phone && <div>{settings.business_phone}</div>}

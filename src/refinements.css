@@ -318,42 +318,8 @@ button.workspace-avatar:hover { filter: brightness(1.15); }
 .gw-rules strong { color: var(--ink); }
 
 /* The wheel. The pointer sits at the top and the wheel turns under it. */
-.gw-wheel-card { align-items: center; text-align: center; }
-.gw-wheel-wrap { position: relative; width: min(100%, 340px); margin: 10px auto 4px; aspect-ratio: 1; }
-.gw-pointer {
-  position: absolute; top: -4px; left: 50%; transform: translateX(-50%);
-  width: 0; height: 0; z-index: 2;
-  border-left: 13px solid transparent; border-right: 13px solid transparent;
-  border-top: 22px solid var(--brass);
-}
-.gw-wheel {
-  position: absolute; inset: 0; border-radius: 50%;
-  border: 3px solid var(--brass-soft);
-  background: conic-gradient(from 0deg, var(--coal-2) 0 50%, var(--coal-3) 50% 100%);
-  transform: rotate(0deg);
-}
-.gw-wheel.spin {
-  transform: rotate(var(--turn));
-  transition: transform 5s cubic-bezier(.17, .67, .18, 1);
-}
-.gw-slice {
-  position: absolute; inset: 0;
-  transform: rotate(calc(var(--i) * (360deg / var(--slices))));
-  display: flex; justify-content: center;
-}
-.gw-slice em {
-  font-style: normal; font-size: .72rem; font-weight: 700; color: var(--ink);
-  margin-top: 16px; max-width: 86px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; transform: rotate(calc(180deg / var(--slices)));
-}
-.gw-winner strong {
-  display: block; font-family: var(--font-display);
-  font-size: clamp(1.4rem, 4vw, 2.1rem); color: var(--brass-text); margin: 4px 0;
-}
-@media (prefers-reduced-motion: reduce) { .gw-wheel.spin { transition: none; } }
 @media (max-width: 760px) {
   .gw-hero { grid-template-columns: 1fr; }
-  .gw-wheel-wrap { width: min(100%, 290px); }
 }
 
 /* The three doors on a giveaway page. The traffic is already there; sending
@@ -367,3 +333,37 @@ button.workspace-avatar:hover { filter: brightness(1.15); }
 .gw-door:hover { border-color: var(--brass); background: var(--coal-3); }
 .gw-door strong { color: var(--ink); font-size: 0.95rem; }
 .gw-door span { font-size: 0.8rem; line-height: 1.5; }
+
+/* Department shelves on the front page.
+   Each shelf reuses the existing product grid, so the card size, gaps and
+   mobile breakpoints stay identical to everything else on the page. The
+   heading is what makes the page read as organised rather than as a pile. */
+.home-dept { margin: 0 0 clamp(22px, 3vw, 34px); }
+.home-dept .shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.home-dept .shelf-head a { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  font-size: .82rem; font-weight: 600; color: var(--brass); }
+.home-dept .shelf-head a svg { width: 14px; height: 14px; }
+.home-dept .oc { height: 100%; }
+
+/* The brand lock-up in the header: the mark, the name, and the domain
+   underneath — the way the approved logo is built. The marigold dot that
+   used to follow the wordmark is gone; the mark is the brand now. */
+.wordmark { display: inline-flex; align-items: center; gap: 9px; line-height: 1; }
+.wordmark::after { content: none; }
+.brand-mark { flex: none; display: block; }
+.wordmark-text { display: flex; flex-direction: column; gap: 2px; }
+.wordmark-text b { font-weight: 850; font-size: 1.32rem; letter-spacing: -.055em; line-height: 1; }
+.wordmark-text i { font-style: normal; font-weight: 600; font-size: .58rem; letter-spacing: .12em;
+  text-transform: lowercase; color: var(--muted); line-height: 1; }
+@media (max-width: 760px) {
+  .wordmark { gap: 7px; }
+  .brand-mark { width: 28px; height: 28px; }
+  .wordmark-text b { font-size: 1.16rem; }
+  .wordmark-text i { font-size: .52rem; }
+}
+
+/* The mark on a printed receipt. Forced to print: browsers drop background
+   colours by default, but this is an inline SVG with its own fills, so it
+   survives — colour-adjust keeps it from being washed out on colour printers. */
+.receipt .brand-mark { margin: 0 auto 6px; display: block;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }

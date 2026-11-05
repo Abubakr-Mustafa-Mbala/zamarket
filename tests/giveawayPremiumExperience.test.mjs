@@ -14,8 +14,10 @@ test('giveaway page uses real public product photos and contains the entry journ
   const page = read('src/pages/public/Giveaway.jsx')
   assert.match(page, /gw-prize-art/)
   assert.match(page, /product\?\.images\?\.\[0\]/)
-  assert.match(page, /How it works|HOW IT WORKS/)
-  assert.match(page, /Sign in to ZaMarket/)
+  assert.match(page, /How to enter|How it works/)
+  // The first step: an account, however the button is worded.
+  assert.match(page, /Create an account/)
+  assert.match(page, /Sign in to enter/)
   assert.match(page, /Return for the result/)
   assert.match(page, /No purchase or social sharing is necessary/)
   assert.match(page, /public_products/)

@@ -62,6 +62,45 @@ function freshness(p) {
   return days <= 14 ? 2 : days <= 45 ? 1 : 0
 }
 
+// Take turns between the sellers in a given set of products.
+//
+// Shared by the whole-page order and by each department shelf, so a shelf is
+// fair between shops in exactly the way the front page is.
+function rotateBySeller(items = [], day = lusakaDay()) {
+  // Products with no vendor are the marketplace's own and are treated as one
+  // more seller, not as a privileged one.
+  const bySeller = new Map()
+  for (const p of items) {
+    const key = p.vendor_id || 'zamarket'
+    if (!bySeller.has(key)) bySeller.set(key, [])
+    bySeller.get(key).push(p)
+  }
+
+  // Each seller's own products, best first, with today's shuffle breaking
+  // ties so the same item is not always that shop's shopfront.
+  for (const [, own] of bySeller) {
+    own.sort((a, b) => (
+      (quality(b) + freshness(b)) - (quality(a) + freshness(a))
+      || hash(`${day}:${a.id}`) - hash(`${day}:${b.id}`)
+    ))
+  }
+
+  // Seller order also rotates daily, so the same shop is not first every day.
+  const sellers = [...bySeller.keys()].sort((a, b) => hash(`${day}:${a}`) - hash(`${day}:${b}`))
+
+  // Round robin: everyone's first product, then everyone's second, and so on.
+  const ordered = []
+  for (let round = 0; ; round++) {
+    let added = false
+    for (const key of sellers) {
+      const own = bySeller.get(key)
+      if (own[round]) { ordered.push(own[round]); added = true }
+    }
+    if (!added) break
+  }
+  return ordered
+}
+
 // The front page, in order.
 //
 // `products` is the whole published catalogue. Returns the same products,
@@ -76,42 +115,79 @@ export function frontPageOrder(products = [], { day = lusakaDay(), minimum = 8 }
   // shop is worse than showing the rest. The rule relaxes rather than
   // leaving the page bare.
   const pool = withPhoto.length >= minimum ? withPhoto : live
-
-  // Group by seller. Products with no vendor are the marketplace's own and
-  // are treated as one more seller, not as a privileged one.
-  const bySeller = new Map()
-  for (const p of pool) {
-    const key = p.vendor_id || 'zamarket'
-    if (!bySeller.has(key)) bySeller.set(key, [])
-    bySeller.get(key).push(p)
-  }
-
-  // Each seller's own products, best first, with today's shuffle breaking
-  // ties so the same item is not always that shop's shopfront.
-  for (const [, items] of bySeller) {
-    items.sort((a, b) => (
-      (quality(b) + freshness(b)) - (quality(a) + freshness(a))
-      || hash(`${day}:${a.id}`) - hash(`${day}:${b.id}`)
-    ))
-  }
-
-  // Seller order also rotates daily, so the same shop is not first every day.
-  const sellers = [...bySeller.keys()].sort((a, b) => hash(`${day}:${a}`) - hash(`${day}:${b}`))
-
-  // Round robin: everyone's first product, then everyone's second, and so on.
-  const ordered = []
-  for (let round = 0; ; round++) {
-    let added = false
-    for (const key of sellers) {
-      const items = bySeller.get(key)
-      if (items[round]) { ordered.push(items[round]); added = true }
-    }
-    if (!added) break
-  }
+  const ordered = rotateBySeller(pool, day)
 
   // Photoless listings are not hidden from the site, only from the front of
   // the queue. They are still reachable everywhere else.
   return pool === live ? ordered : [...ordered, ...without]
+}
+
+// The front page, grouped into departments.
+//
+// Taking turns between sellers makes the page fair, but on its own it also
+// makes it incoherent: a cake lands between a toilet cleaner and a bench saw
+// because those happen to be three different shops. Nothing is wrong with any
+// one listing and the whole thing still reads as a jumble sale.
+//
+// So the turn-taking moves down a level. Products are grouped by their
+// department first, and the rotation runs inside each one. A shopper sees
+// "Food & cakes" with food in it; a baker is still not buried by a hardware
+// shop that uploaded twenty things this morning.
+//
+// Which department leads also rotates daily, with one thumb on the scale:
+// a department stocked by several different shops goes before one stocked by
+// a single shop, because it is the one that looks like a market.
+export function departmentShelves(products = [], {
+  day = lusakaDay(), minPerShelf = 3, perShelf = 12, minimum = 8, maxShelves = 6,
+} = {}) {
+  const live = products.filter(Boolean)
+  const withPhoto = live.filter(hasPhoto)
+  const pool = withPhoto.length >= minimum ? withPhoto : live
+
+  const byDept = new Map()
+  for (const p of pool) {
+    const name = String(p.category || '').trim() || 'More on ZaMarket'
+    if (!byDept.has(name)) byDept.set(name, [])
+    byDept.get(name).push(p)
+  }
+
+  // A department with one or two things in it is not a shelf, it is a gap.
+  // Those products join the mixed shelf at the end rather than being dropped.
+  const full = []
+  const spare = []
+  for (const [name, items] of byDept) {
+    if (items.length < minPerShelf) { spare.push(...items); continue }
+    full.push({ name, items, sellers: new Set(items.map((p) => p.vendor_id || 'zamarket')).size })
+  }
+
+  full.sort((a, b) => (
+    (b.sellers > 1 ? 1 : 0) - (a.sellers > 1 ? 1 : 0)
+    || hash(`${day}:dept:${a.name}`) - hash(`${day}:dept:${b.name}`)
+  ))
+
+  const shelves = full.slice(0, maxShelves).map((d) => ({
+    name: d.name,
+    sellers: d.sellers,
+    total: d.items.length,
+    items: rotateBySeller(d.items, day).slice(0, perShelf),
+  }))
+
+  // Everything that did not make the cut, including whole departments past
+  // the limit, so the page still offers a way into the rest of the shop.
+  const shown = new Set(shelves.flatMap((s) => s.items.map((p) => p.id)))
+  const rest = [...spare, ...full.slice(maxShelves).flatMap((d) => d.items)]
+    .filter((p) => !shown.has(p.id))
+  // Any leftover at all earns the mixed shelf, even a single product. A short
+  // row looks slightly thin; a seller whose only listing never appears on the
+  // front page at all is worse, and they have no way to fix it.
+  if (rest.length) {
+    shelves.push({
+      name: 'More on ZaMarket', sellers: new Set(rest.map((p) => p.vendor_id || 'zamarket')).size,
+      total: rest.length, items: rotateBySeller(rest, day).slice(0, perShelf), mixed: true,
+    })
+  }
+
+  return shelves
 }
 
 // The "Just added" row, where newest-first genuinely belongs. New stock still

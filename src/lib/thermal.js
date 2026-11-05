@@ -8,6 +8,8 @@ const EXTRA_SERVICES = [SERVICE, '0000ff00-0000-1000-8000-00805f9b34fb', '495353
 
 export const btSupported = () => typeof navigator !== 'undefined' && !!navigator.bluetooth
 
+import { brandMark } from './posterKit'
+
 const ESC = 0x1b, GS = 0x1d
 const bytes = (...b) => Uint8Array.from(b)
 const enc = new TextEncoder()
@@ -59,6 +61,48 @@ class Doc {
     }
     return this.text(l + ' '.repeat(space) + r)
   }
+  // The mark, as a one-bit raster.
+  //
+  // A thermal head has no greys: a dot is burnt or it is not. So the symbol
+  // is drawn to an offscreen canvas in black on white and each pixel is pushed
+  // either way at the halfway point. `dots` is the printer's width in dots —
+  // 384 on a 58mm printer, 576 on an 80mm — and must be a multiple of eight,
+  // which is how ESC/POS packs the rows.
+  logo(dots = 384, height = 96) {
+    try {
+      if (typeof document === 'undefined') return this
+      const w = Math.floor(dots / 8) * 8
+      const c = document.createElement('canvas')
+      c.width = w; c.height = height
+      const ctx = c.getContext('2d')
+      if (!ctx) return this
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, w, height)
+      const size = Math.min(height, Math.round(w * 0.42))
+      brandMark(ctx, Math.round((w - size) / 2), Math.round((height - size) / 2), size, '#000000')
+      const px = ctx.getImageData(0, 0, w, height).data
+
+      const perRow = w / 8
+      const data = new Uint8Array(perRow * height)
+      let anyInk = false
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4
+          // Luminance, then a hard threshold. Anything darker than mid grey
+          // burns a dot.
+          const lum = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114)
+          if (lum < 128) {
+            data[y * perRow + (x >> 3)] |= 0x80 >> (x & 7)
+            anyInk = true
+          }
+        }
+      }
+      if (!anyInk) return this
+      this.raw(bytes(GS, 0x76, 0x30, 0x00, perRow & 255, perRow >> 8, height & 255, height >> 8))
+      return this.raw(data)
+    } catch {
+      return this          // a printer is better than no receipt
+    }
+  }
   feedCut() { return this.raw(bytes(0x0a, 0x0a, 0x0a, GS, 0x56, 0x42, 0x00)) }
   build() {
     const total = this.parts.reduce((n, p) => n + p.length, 0)
@@ -74,7 +118,9 @@ export function receiptBytes(o, opts = {}) {
   const width = opts.width || 32
   const money = (v) => `K${Number(v || 0).toFixed(2)}`
   const d = new Doc(width)
-  d.align('center').bold(true).big(true).text(opts.business || 'ZaMarket').big(false)
+  d.align('center')
+  d.logo(opts.dots || 384)
+  d.bold(true).big(true).text(opts.business || 'ZaMarket').big(false)
   d.text(opts.site || 'zamarket.shop')
   if (opts.phone) d.text(opts.phone)
   d.bold(false)

@@ -1,3 +1,4 @@
+import { brandMark } from './posterKit'
 // Five compositions, not one template with five colour swaps. The same approved
 // facts are arranged differently each time: what dominates, where the price sits,
 // how the photograph is treated, what decoration supports it.
@@ -154,11 +155,15 @@ function floatProduct(ctx, img, cx, cy, maxW, maxH, L) {
 }
 
 function vendorLine(ctx, L, F, x, y, facts, logo) {
+  // A seller's own logo when they have one, the marketplace's when they
+  // do not — rather than the name set in capitals, which read as a
+  // placeholder.
   if (logo) cover(ctx, logo, x, y - 34, 44, 44, 12)
+  else if (!facts.vendor) brandMark(ctx, x, y - 36, 44)
   ctx.fillStyle = L.ink
   ctx.font = font(700, 26)
   ctx.globalAlpha = 0.8
-  ctx.fillText((facts.vendor || 'ZaMarket').toUpperCase(), x + (logo ? 58 : 0), y)
+  ctx.fillText((facts.vendor || 'ZaMarket').toUpperCase(), x + (logo || !facts.vendor ? 58 : 0), y)
   ctx.globalAlpha = 1
 }
 

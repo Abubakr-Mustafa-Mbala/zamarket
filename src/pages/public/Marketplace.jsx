@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Stars, Modal, Field, Input, useToast, Loading } from '../../components/ui'
 import ErrorBoundary from '../../components/ErrorBoundary'
+import BrandMark from '../../components/BrandMark'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
@@ -20,7 +21,7 @@ import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { detectChannel, rememberChannel } from '../../lib/channel'
-import { frontPageOrder, justAdded } from '../../lib/frontPage'
+import { frontPageOrder, departmentShelves, justAdded } from '../../lib/frontPage'
 import { startAnalytics, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareProduct from '../../components/ShareProduct'
@@ -551,7 +552,7 @@ export function PublicShell() {
       <div className="shop-utility"><div className="shop-utility-inner"><span><Icon.pin /> Discover products from businesses in Zambia</span><span><Link to="/how-it-works">How ordering works <Icon.arrow /></Link><Link to="/protection">Customer support</Link></span></div></div>
       <header className="shop-header">
         <div className="shop-bar">
-          <Link to="/" className="wordmark" aria-label="ZaMarket home">ZaMarket</Link>
+          <Link to="/" className="wordmark" aria-label="ZaMarket home"><BrandMark size={32} /><span className="wordmark-text"><b>ZaMarket</b><i>zamarket.shop</i></span></Link>
           <div className="deliver-to hide-mobile">
             <span className="dt-small">Delivering in</span>
             <span className="dt-big">Lusaka &amp; beyond</span>
@@ -663,9 +664,16 @@ export function Storefront() {
   }, [data])
   if (!data) return <CatalogueUnavailable error={error} retry={retry} />
   const { products, offersBy, vendors } = data
-  // The first row: one seller at a time, photographs required, rotated daily.
-  // See src/lib/frontPage.js for why it is not simply newest-first.
-  const frontRow = frontPageOrder(products).slice(0, 8)
+  // The shop, arranged by department. Inside each one the sellers still take
+  // turns, so a department is fair between shops without a cake landing
+  // between a toilet cleaner and a bench saw. See src/lib/frontPage.js.
+  //
+  // A marketplace with only one or two stocked departments has nothing to
+  // group, so it falls back to the single mixed row it had before.
+  const shelves = departmentShelves(products)
+  const useShelves = shelves.length >= 2
+  const frontRow = useShelves ? [] : frontPageOrder(products).slice(0, 8)
+  const shownIds = useShelves ? shelves.flatMap((s) => s.items.map((p) => p.id)) : frontRow.map((p) => p.id)
   const fresh = justAdded(products, 8).filter((p) => !frontRow.some((f) => f.id === p.id))
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
@@ -691,11 +699,23 @@ export function Storefront() {
       {ref && <p className="tiny hero-ref">You arrived through an affiliate link. Your purchase can credit the affiliate.</p>}
       {products.length === 0 ? <OpeningSoon /> : (
         <>
-          <section className="home-product-first" aria-label="Products from local sellers">
-            <div className="home-product-grid">
-              {frontRow.map(card)}
-            </div>
-          </section>
+          {useShelves ? shelves.map((s) => (
+            <section key={s.name} className="home-dept" aria-label={s.name}>
+              <div className="shelf-head">
+                <h2>{s.name}</h2>
+                <Link to={s.mixed ? '/search' : `/search?cat=${encodeURIComponent(s.name)}`}>
+                  {s.total > s.items.length ? `All ${s.total}` : 'See all'} <Icon.arrow />
+                </Link>
+              </div>
+              <div className="home-product-grid">{s.items.map(card)}</div>
+            </section>
+          )) : (
+            <section className="home-product-first" aria-label="Products from local sellers">
+              <div className="home-product-grid">
+                {frontRow.map(card)}
+              </div>
+            </section>
+          )}
           {fresh.length >= 4 && (
             <Row title="Just added" link="/search?sort=new">
               {fresh.map(card)}
@@ -710,7 +730,7 @@ export function Storefront() {
               from the first screen of the marketplace. */}
           <div className="home-featured-lower"><FounderHero /></div>
           <Merchandised products={products} vendors={vendors} offersBy={offersBy}
-            excludeIds={frontRow.map((p) => p.id)} />
+            excludeIds={shownIds} />
         </>
       )}
       {/* "Grow with ZaMarket" used to sit here as well as in the footer. A

@@ -4,6 +4,7 @@
 import QRCode from 'qrcode'
 import { money } from './format'
 import { SHEET } from './priceList'
+import { brandMark } from './posterKit'
 import { studioPalette, premiumPagesFor, STUDIO_QUALITY } from './studioThemes'
 
 const sans = (s, weight = 700) => `${weight} ${Math.round(s)}px "Plus Jakarta Sans", "Segoe UI", Arial, sans-serif`
@@ -87,12 +88,6 @@ function fitProductPhoto(ctx, item, img, x, y, w, h, radius = 14) {
   }
   ctx.restore()
 }
-function bag(ctx, x, y, n, color, inside) {
-  rect(ctx, x, y + n * 0.25, n, n * 0.72, color, n * .13)
-  ctx.strokeStyle = color; ctx.lineWidth = Math.max(5, n * .095)
-  ctx.beginPath(); ctx.arc(x + n / 2, y + n * .27, n * .23, Math.PI, Math.PI * 2); ctx.stroke()
-  text(ctx, 'Z', x + n * .305, y + n * .77, n * .47, inside, 800)
-}
 async function qrImage(url) {
   if (!url || !/^https?:\/\//i.test(url)) return null
   try { return await image(await QRCode.toDataURL(url, { errorCorrectionLevel: 'H', margin: 2, width: 450, color: { dark: '#111111', light: '#FFFFFF' } })) }
@@ -104,9 +99,9 @@ function header(ctx, F, P, {vendor, mode}) {
   const g = ctx.createLinearGradient(0, 0, F.w, 170)
   g.addColorStop(0, band); g.addColorStop(1, P.dark ? P.background : '#382337')
   rect(ctx, 0, 0, F.w, 142, g)
-  bag(ctx, 64, 37, 60, P.accent, P.onAccent)
-  text(ctx, 'ZaMarket', 145, 94, 62, '#FFFFFF', 800)
-  text(ctx, 'SHOP  •  DISCOVER  •  SAVE', 150, 123, 18, '#E9DDEF', 700)
+  brandMark(ctx, 64, 37, 62)
+  text(ctx, 'ZaMarket', 145, 90, 58, '#FFFFFF', 800)
+  text(ctx, 'ZAMARKET.SHOP  •  AN ONLINE MARKETPLACE', 148, 120, 17, '#E9DDEF', 700)
   if (mode === 'spotlight') {
     rect(ctx, F.w - 330, 65, 257, 53, P.accent, 27)
     text(ctx, 'FEATURED VENDOR', F.w - 304, 99, 21, P.onAccent, 800)

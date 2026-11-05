@@ -331,3 +331,75 @@ export function qrPanel(ctx, qr, x, y, size, radius = 10) {
   ctx.drawImage(qr, x, y, size, size)
   ctx.restore()
 }
+
+// --- the ZaMarket mark ----------------------------------------------------
+//
+// One implementation, used by every poster, every share card and the printed
+// receipt, so the logo cannot drift between them. The two paths are the
+// approved symbol, the same ones in public/favicon.svg and the site header —
+// if that file changes, change these.
+//
+// Drawn rather than loaded as an image: no network request, no CORS, and it
+// stays sharp at any poster size.
+export const MARK_CREAM = 'M68,376 73,376 101,366 157,351 197,344 221,335 255,325 318,311 369,303 418,298 469,295 515,295 555,245 564,238 571,239 579,247 653,335 660,340 668,342 684,342 741,347 793,354 853,366 888,376 896,376 856,357 806,337 748,318 722,312 611,181 599,169 581,161 551,161 541,164 528,172 453,266 445,273 435,277 420,279 384,281 369,280 578,25 582,18 328,18 318,21 310,26 268,79 251,103 277,94 327,84 435,83 439,85 258,300 218,310 166,328 126,345Z'
+export const MARK_VIOLET = 'M637,341 615,315 555,311 461,311 426,313 340,323 274,337 227,352 207,360 175,376 185,376 223,364 268,354 319,346 378,340 457,336 530,336Z M714,18 619,18 612,21 527,125 613,126 621,125 632,120 639,114Z'
+// The symbol's own box inside the original 960 artwork.
+export const MARK_BOX = { x: 235.7, y: 175.7, size: 597.4 }
+
+let markPaths
+function markShapes() {
+  if (markPaths === undefined) {
+    try {
+      markPaths = [new Path2D(MARK_CREAM), new Path2D(MARK_VIOLET)]
+    } catch {
+      markPaths = null        // a canvas without Path2D: skip it, keep the poster
+    }
+  }
+  return markPaths
+}
+
+// Draws the mark with its top-left at (x, y), `size` pixels square.
+// `ink` overrides the cream, for a light background or a one-colour print.
+export function brandMark(ctx, x, y, size, ink) {
+  const paths = markShapes()
+  if (!paths) return
+  ctx.save()
+  ctx.translate(x, y)
+  const k = size / MARK_BOX.size
+  ctx.scale(k, k)
+  ctx.translate(-MARK_BOX.x, -MARK_BOX.y)
+  ctx.translate(80, 314.286)
+  ctx.scale(0.879121, 0.879121)
+  ctx.fillStyle = ink || '#FAF9F6'
+  ctx.fill(paths[0], 'evenodd')
+  ctx.fillStyle = ink || '#9432F4'
+  ctx.fill(paths[1], 'evenodd')
+  ctx.restore()
+}
+
+// The mark plus the name, as one lock-up, with the domain underneath —
+// which is how the approved logo is built and the single most useful thing
+// on a poster somebody photographs in a shop.
+//
+// Returns the width it used, so a caller can lay something out beside it.
+export function brandLockup(ctx, x, y, size, ink, name = 'ZaMarket', domain = 'zamarket.shop') {
+  brandMark(ctx, x, y, size, ink)
+  const gap = size * 0.28
+  const tx = x + size + gap
+  ctx.save()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+  ctx.font = `800 ${Math.round(size * 0.66)}px "Plus Jakarta Sans", system-ui, sans-serif`
+  ctx.fillStyle = ink || '#FFFFFF'
+  ctx.fillText(name, tx, y + size * 0.58)
+  const nameW = ctx.measureText(name).width
+  let domainW = 0
+  if (domain) {
+    ctx.font = `600 ${Math.round(size * 0.34)}px "Plus Jakarta Sans", system-ui, sans-serif`
+    ctx.fillStyle = ink || 'rgba(255,255,255,0.72)'
+    ctx.fillText(domain, tx, y + size * 0.97)
+    domainW = ctx.measureText(domain).width
+  }
+  ctx.restore()
+  return size + gap + Math.max(nameW, domainW)
+}

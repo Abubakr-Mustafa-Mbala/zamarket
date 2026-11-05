@@ -1,8 +1,4 @@
-import {
-  FORMATS, directionFrom, load, rounded, cover, coverRounded, fit, wrap,
-  tracked, trackedWidth, enhance, grain, vignette, scrim, divider, qrImage,
-  qrMinSize, qrPanel,
-} from './posterKit'
+import { FORMATS, directionFrom, load, rounded, cover, coverRounded, fit, wrap, tracked, trackedWidth, enhance, grain, vignette, scrim, divider, qrImage, qrMinSize, qrPanel, brandLockup } from './posterKit'
 import { money } from './format'
 
 // ---------------------------------------------------------------------------
@@ -453,13 +449,12 @@ function buyFooter(ctx, dir, x, y, width, height, qr, link) {
   const cy = y + height / 2
   ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
   const lx = x + Math.round(width * 0.05)
+  // The real mark, not the name typed out. brandLockup draws from a
+  // baseline, so the y here is the top of the symbol.
   const mark = Math.round(dir._s * 32)
-  ctx.fillStyle = '#FFFFFF'
-  ctx.font = `700 ${mark}px ${dir.body}`
-  ctx.fillText('ZaMarket', lx, cy - mark * 0.45)
-  const mw = ctx.measureText('ZaMarket').width
-  ctx.fillStyle = '#A892FF'
-  ctx.beginPath(); ctx.arc(lx + mw + 11, cy - mark * 0.23, mark * 0.13, 0, Math.PI * 2); ctx.fill()
+  ctx.textBaseline = 'alphabetic'
+  brandLockup(ctx, lx, cy - mark * 1.15, mark)
+  ctx.textBaseline = 'middle'
 
   ctx.fillStyle = 'rgba(255,255,255,0.80)'
   ctx.font = `500 ${Math.round(dir._s * 18)}px ${dir.body}`

@@ -98,24 +98,6 @@ export default function Giveaways() {
 
       {making && <NewGiveaway products={products} onDone={() => { setMaking(false); reload() }} />}
 
-      <div className="card stack-sm">
-        <h3>Before the first one goes live</h3>
-        <ul className="gw-rules">
-          <li>
-            A Zambian lawyer should read your terms once. The Lotteries Act covers schemes where
-            people <strong>pay</strong> for a chance — this does not, which is why entry is free and
-            cannot be made otherwise — but a one-off check is cheap next to the risk.
-          </li>
-          <li>
-            Meta does not allow <strong>requiring</strong> a share to someone&rsquo;s timeline or tagging
-            friends to enter. Asking people to comment is fine. Everything here is written that way.
-          </li>
-          <li>
-            Every campaign page already carries the line saying the giveaway is not associated with
-            Meta, Instagram, TikTok or WhatsApp. Meta requires that.
-          </li>
-        </ul>
-      </div>
 
       {campaigns.length === 0
         ? <p className="muted small">No giveaways yet.</p>
@@ -142,7 +124,11 @@ export default function Giveaways() {
                 <div><b>{d ? 'Drawn' : 'Not yet'}</b><span>result</span></div>
               </div>
 
+              {!d && <PrizeList campaign={c} products={products} onChange={reload} />}
+
               <Result slug={c.slug} />
+
+              {d && <ReferralPanel campaign={c} products={products} />}
 
               {d && (
                 <p className="small">
@@ -185,6 +171,8 @@ function NewGiveaway({ products, onDone }) {
     title: '', product_id: '', prize_text: '', winners: 1,
     closes_at: todayPlus(10), description: '', area: 'Zambia', min_age: 18,
     prize_paid_by: 'marketplace', cost_prize: 0, cost_delivery: 0, cost_promotion: 0,
+    referral_reward: 15, referral_days: 7, referral_budget: 0,
+    referral_max_per_person: 0, referral_funded_by: 'zamarket',
   })
   const [busy, setBusy] = useState(false)
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v }))
@@ -209,6 +197,11 @@ function NewGiveaway({ products, onDone }) {
       cost_prize: Number(f.cost_prize) || 0,
       cost_delivery: Number(f.cost_delivery) || 0,
       cost_promotion: Number(f.cost_promotion) || 0,
+      referral_reward: Number(f.referral_reward) || 0,
+      referral_days: Number(f.referral_days) || 7,
+      referral_budget: Number(f.referral_budget) || 0,
+      referral_max_per_person: Number(f.referral_max_per_person) || 0,
+      referral_funded_by: f.referral_funded_by,
       status: 'draft',
     })
     setBusy(false)
@@ -247,6 +240,25 @@ function NewGiveaway({ products, onDone }) {
         <Field label="Delivery cost (K)"><Input type="number" value={f.cost_delivery} onChange={set('cost_delivery')} /></Field>
         <Field label="Promotion cost (K)" hint="Any money spent advertising it. Usually 0.">
           <Input type="number" value={f.cost_promotion} onChange={set('cost_promotion')} />
+        </Field>
+        <Field label="Reward per qualifying sale (K)" hint="What someone who did not win earns for each new customer they bring. A flat amount.">
+          <Input type="number" min="0" value={f.referral_reward} onChange={set('referral_reward')} />
+        </Field>
+        <Field label="Earning period (days)" hint="How long after the draw they can earn. Starts when you open it.">
+          <Input type="number" min="1" max="90" value={f.referral_days} onChange={set('referral_days')} />
+        </Field>
+        <Field label="Total reward budget (K)" hint="The most this campaign can ever pay out. 0 means no limit — set a figure.">
+          <Input type="number" min="0" value={f.referral_budget} onChange={set('referral_budget')} />
+        </Field>
+        <Field label="Most one person can earn (K)" hint="0 means no limit.">
+          <Input type="number" min="0" value={f.referral_max_per_person} onChange={set('referral_max_per_person')} />
+        </Field>
+        <Field label="Who pays the rewards" hint="Vendor-funded rewards do not come out of your commission.">
+          <Select value={f.referral_funded_by} onChange={set('referral_funded_by')}>
+            <option value="zamarket">ZaMarket</option>
+            <option value="vendor">The vendor</option>
+            <option value="shared">Shared</option>
+          </Select>
         </Field>
         <Field label="Description" span>
           <Textarea value={f.description} onChange={set('description')} rows={4}
@@ -311,6 +323,283 @@ function Result({ slug }) {
           &ldquo;entrants who bought&rdquo; rather than here.
         </p>
       )}
+    </div>
+  )
+}
+
+// Rewarding the people who did not win.
+//
+// After the draw, everyone who entered and lost can earn a fixed amount of
+// kwacha for every new customer they bring. It is the same money an affiliate
+// earns and it lands in the same ledger — the difference is that it is a flat
+// figure, it expires, and it is capped.
+//
+// The screen's job is to stop a well-meant promotion from losing money. At a
+// 10% fee a K15 reward needs a K150 order to break even, so the product
+// picker refuses anything that cannot pay for itself and says what would fix
+// it. That check lives in the database too; this is only where it is read.
+function ReferralPanel({ campaign, products }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [reward, setReward] = useState(String(campaign.referral_reward || 15))
+  const [pick, setPick] = useState('')
+
+  const { data: report, reload } = useData(
+    () => q(supabase.rpc('giveaway_referral_report', { p_slug: campaign.slug })),
+    [campaign.slug, open],
+  )
+
+  const started = !!campaign.referral_opens_at
+  const chosen = report?.products || []
+
+  const addProduct = async () => {
+    if (!pick) return toast('Choose a product first', true)
+    setBusy(true)
+    const { error } = await supabase.rpc('set_reward_product', {
+      p_slug: campaign.slug, p_product: pick, p_reward: Number(reward) || 0,
+    })
+    setBusy(false)
+    // The database refuses a reward the sale cannot pay for, and the message
+    // it sends back says what to change. Show it as written.
+    if (error) return toast(error.message, true)
+    setPick('')
+    toast('Added')
+    reload()
+  }
+
+  const removeProduct = async (name) => {
+    const row = products.find((p) => p.name === name)
+    if (!row) return
+    await supabase.rpc('remove_reward_product', { p_slug: campaign.slug, p_product: row.id })
+    reload()
+  }
+
+  const start = async () => {
+    setBusy(true)
+    const { data, error } = await supabase.rpc('open_giveaway_referrals', { p_slug: campaign.slug })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast(`${data.invited} people who did not win can now earn`)
+    reload()
+  }
+
+  if (!open) {
+    return (
+      <button className="btn sm ghost" onClick={() => setOpen(true)}>
+        {started ? 'Referral rewards' : 'Reward the people who did not win'}
+      </button>
+    )
+  }
+
+  return (
+    <div className="card stack-sm gw-referral">
+      <div className="page-head">
+        <div>
+          <h3>Rewards for the people who did not win</h3>
+          <p className="small muted">
+            A fixed amount for every new customer they bring, for a limited period.
+            Same money an affiliate earns, paid the same way.
+          </p>
+        </div>
+        <button className="btn sm ghost" onClick={() => setOpen(false)}>Close</button>
+      </div>
+
+      {!started && (
+        <>
+          <div className="field-row">
+            <Field label="Reward for each qualifying sale" hint="A flat amount, not a percentage.">
+              <Input type="number" min="1" value={reward} onChange={(e) => setReward(e.target.value)} />
+            </Field>
+            <Field label="Product they may promote" hint="Only products you approve here can earn.">
+              <Select value={pick} onChange={(e) => setPick(e.target.value)}>
+                <option value="">Choose a product…</option>
+                {products.filter((p) => p.status === 'published').map((p) => (
+                  <option key={p.id} value={p.id}>{p.name} — {money(p.price, { whole: true })}</option>
+                ))}
+              </Select>
+            </Field>
+            <button className="btn" disabled={busy} onClick={addProduct}>Add</button>
+          </div>
+          <p className="tiny muted">
+            A reward has to come out of what the sale earns. At a {10}% fee a K15 reward needs
+            roughly a K150 order — anything smaller is refused, and it will tell you the price it
+            would need.
+          </p>
+        </>
+      )}
+
+      {chosen.length > 0 && (
+        <table className="mini-table">
+          <thead><tr><th>Product</th><th>Price</th><th>Reward</th><th>You keep</th><th /></tr></thead>
+          <tbody>
+            {chosen.map((row) => (
+              <tr key={row.name}>
+                <td>{row.name}</td>
+                <td>{money(row.price, { whole: true })}</td>
+                <td>{money(row.reward, { whole: true })}</td>
+                <td className={Number(row.check?.margin) > 0 ? 'ok' : 'bad'}>
+                  {money(row.check?.margin || 0, { whole: true })}
+                </td>
+                <td>{!started && <button className="btn sm ghost" onClick={() => removeProduct(row.name)}>Remove</button>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {!started ? (
+        <>
+          <button className="btn primary" disabled={busy || !chosen.length} onClick={start}>
+            Open the earning period
+          </button>
+          <p className="tiny muted">
+            Everyone who entered and did not win gets a link and {campaign.referral_days || 7} days.
+            Set the budget and the per-person cap on the campaign before you press this — they
+            cannot be raised afterwards without a new campaign.
+          </p>
+        </>
+      ) : report && (
+        <>
+          <div className="mini-stats">
+            <div><b>{report.referrers}</b><span>can earn</span></div>
+            <div><b>{report.referrers_earning}</b><span>have earned</span></div>
+            <div><b>{report.orders}</b><span>orders brought</span></div>
+            <div><b>{money(report.sales, { whole: true })}</b><span>in sales</span></div>
+            <div><b>{money(report.commission, { whole: true })}</b><span>your commission</span></div>
+            <div><b>{money(Number(report.rewards_pending) + Number(report.rewards_owed), { whole: true })}</b><span>rewards owed</span></div>
+            <div><b>{money(report.budget_left, { whole: true })}</b><span>budget left</span></div>
+            <div><b>{report.open ? 'Open' : 'Closed'}</b><span>{report.closes_at ? new Date(report.closes_at).toLocaleDateString('en-ZM') : ''}</span></div>
+          </div>
+          <p className="small">
+            <strong>
+              {Number(report.commission) - Number(report.rewards_pending) - Number(report.rewards_owed) - Number(report.rewards_paid) >= 0
+                ? 'Ahead' : 'Behind'} by {money(Math.abs(
+                  Number(report.commission) - Number(report.rewards_pending)
+                  - Number(report.rewards_owed) - Number(report.rewards_paid)), { whole: true })}
+            </strong>{' '}
+            — your commission on these orders, less every reward owed or already paid.
+          </p>
+          {Number(report.rewards_reversed) > 0 && (
+            <p className="tiny muted">{money(report.rewards_reversed, { whole: true })} was reversed by refunds or cancellations.</p>
+          )}
+          {(report.rejected || []).length > 0 && (
+            <details className="small">
+              <summary>{report.rejected.length} referral{report.rejected.length === 1 ? '' : 's'} earned nothing</summary>
+              <ul className="gw-rules">
+                {report.rejected.slice(0, 20).map((r, i) => <li key={i}>{r.order || 'Order'} — {r.why}</li>)}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+
+// The prize list.
+//
+// A campaign used to have one prize and a number of winners. It can now have
+// several: first prize to two people, second to one, third to one. Winners
+// are drawn in order, so first prize goes to the first name out.
+//
+// Locked once the draw has happened — changing what was won after the fact
+// is not something a giveaway should ever be able to do.
+function PrizeList({ campaign, products, onChange }) {
+  const toast = useToast()
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [pick, setPick] = useState('')
+  const [count, setCount] = useState('1')
+
+  const { data: prizes, reload } = useData(
+    () => q(supabase.from('giveaway_prizes')
+      .select('rank,winners,prize_text,product_id,prize_value')
+      .eq('campaign_id', campaign.id).order('rank')),
+    [campaign.id, open],
+  )
+  const rows = prizes || []
+  const totalWinners = rows.reduce((n, r) => n + Number(r.winners || 0), 0)
+  const nameOf = (row) => products.find((x) => x.id === row.product_id)?.name || row.prize_text || '—'
+
+  const add = async () => {
+    if (!pick) return toast('Choose a product for this prize', true)
+    setBusy(true)
+    const { error } = await supabase.rpc('set_giveaway_prize', {
+      p_slug: campaign.slug,
+      p_rank: (rows[rows.length - 1]?.rank || 0) + 1,
+      p_product: pick,
+      p_text: null,
+      p_winners: Math.max(1, Number(count) || 1),
+    })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    setPick(''); setCount('1'); reload(); onChange?.()
+  }
+
+  const drop = async (rank) => {
+    const { error } = await supabase.rpc('remove_giveaway_prize', { p_slug: campaign.slug, p_rank: rank })
+    if (error) return toast(error.message, true)
+    reload(); onChange?.()
+  }
+
+  if (!open) {
+    return (
+      <button className="btn sm ghost" onClick={() => setOpen(true)}>
+        {rows.length > 1 ? `Prizes (${rows.length})` : 'Add more prizes'}
+      </button>
+    )
+  }
+
+  return (
+    <div className="card stack-sm gw-prizes">
+      <div className="page-head">
+        <div>
+          <h3>Prizes</h3>
+          <p className="small muted">
+            Drawn in order: the first name out takes the first prize. Leave it empty to use the
+            single prize on the campaign itself.
+          </p>
+        </div>
+        <button className="btn sm ghost" onClick={() => setOpen(false)}>Close</button>
+      </div>
+
+      {rows.length > 0 && (
+        <table className="mini-table">
+          <thead><tr><th>Prize</th><th>What</th><th>Winners</th><th /></tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.rank}>
+                <td>{row.rank}</td>
+                <td>{nameOf(row)}</td>
+                <td>{row.winners}</td>
+                <td><button className="btn sm ghost" onClick={() => drop(row.rank)}>Remove</button></td>
+              </tr>
+            ))}
+            <tr><td /><td><strong>Total</strong></td><td><strong>{totalWinners}</strong></td><td /></tr>
+          </tbody>
+        </table>
+      )}
+
+      <div className="field-row">
+        <Field label="Add a prize">
+          <Select value={pick} onChange={(e) => setPick(e.target.value)}>
+            <option value="">Choose a product…</option>
+            {products.filter((x) => x.status === 'published').map((x) => (
+              <option key={x.id} value={x.id}>{x.name} — {money(x.price, { whole: true })}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="How many winners get it">
+          <Input type="number" min="1" value={count} onChange={(e) => setCount(e.target.value)} />
+        </Field>
+        <button className="btn" disabled={busy} onClick={add}>Add</button>
+      </div>
+      <p className="tiny muted">
+        Stock for every prize is held back when you open the giveaway, so a prize cannot be sold
+        out from under a winner.
+      </p>
     </div>
   )
 }

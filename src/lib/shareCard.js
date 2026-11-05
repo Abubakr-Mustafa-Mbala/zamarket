@@ -1,3 +1,4 @@
+import { brandLockup } from './posterKit'
 // One tap turns a product — or a whole shop — into a picture ready for WhatsApp,
 // Facebook or TikTok: the photo, the price, and the link to buy.
 
@@ -64,6 +65,9 @@ function cover(ctx, img, x, y, w, h) {
 function footer(ctx, link, note) {
   ctx.fillStyle = INK
   ctx.fillRect(0, H - 190, W, 190)
+  // The mark, small, at the right of the band — the card belongs to a
+  // marketplace and should say so without crowding the link.
+  brandLockup(ctx, W - 250, H - 170, 34)
   ctx.fillStyle = GOLD
   ctx.font = '700 40px Instrument Sans, system-ui, sans-serif'
   ctx.fillText('Buy here', 64, H - 118)
