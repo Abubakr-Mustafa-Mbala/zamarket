@@ -167,7 +167,7 @@ function ctaPill(ctx, L, F, x, y, w, text, invert) {
   ctx.fillStyle = invert ? L.ink : L.accent
   rounded(ctx, x, y, w, h, h / 2)
   ctx.fill()
-  ctx.fillStyle = invert ? L.bg : '#FFFFFF'
+  ctx.fillStyle = invert ? L.bg : (L.onAccent || '#FFFFFF')
   const f = fitText(ctx, text, w - 90, 1, 38, 800, false, 24)
   ctx.font = font(800, f.size, false)
   const tw = ctx.measureText(f.rows[0]).width
@@ -440,7 +440,7 @@ async function compDark(ctx, L, F, facts, product, hook, link, photo, logo, sett
   const M = Math.round(F.w * 0.08)
   const inner = F.w - M * 2
   const B = bottomStack(F)
-  ctx.fillStyle = '#0B0B0C'
+  ctx.fillStyle = L.bg || '#0B0B0C'
   ctx.fillRect(0, 0, F.w, F.h)
   if (photo) cover(ctx, photo, 0, 0, F.w, F.h)
   const g = ctx.createLinearGradient(0, F.h * 0.3, 0, F.h)
@@ -492,14 +492,16 @@ export function compositionsFor(product, offer) {
   })
 }
 
-export async function renderPromo({ product, offer, reviews = [], settings, hook, link, format = 'portrait', composition = 'hero', logo }) {
+export async function renderPromo({ product, offer, reviews = [], settings, hook, link, format = 'portrait', composition = 'hero', logo, theme, resolution = 2 }) {
   const F = FORMATS[format] || FORMATS.portrait
-  const L = lookFor(product)
+  const base = lookFor(product)
+  const L = theme ? { ...base, bg: theme.background, ink: theme.ink, accent: theme.accent, soft: theme.panel, deep: theme.dark ? '#0C101C' : '#E3DDD8', onAccent: theme.onAccent } : base
   const facts = approvedFacts({ product, offer, reviews, settings })
   const c = document.createElement('canvas')
-  c.width = F.w
-  c.height = F.h
+  c.width = F.w * resolution
+  c.height = F.h * resolution
   const ctx = c.getContext('2d')
+  ctx.scale(resolution, resolution)
   if (document.fonts?.ready) { try { await document.fonts.ready } catch { /* ignore */ } }
 
   const [photo, mark] = await Promise.all([load(product?.images?.[0]), load(logo)])
@@ -513,13 +515,15 @@ export async function renderPromo({ product, offer, reviews = [], settings, hook
 // ---------- creative types ----------
 
 // NEW ARRIVAL — only honest for something published recently.
-export async function renderArrival({ product, settings, link, format = 'portrait', logo }) {
+export async function renderArrival({ product, settings, link, format = 'portrait', logo, theme, resolution = 2 }) {
   const F = FORMATS[format] || FORMATS.portrait
-  const L = lookFor(product)
+  const base = lookFor(product)
+  const L = theme ? { ...base, bg: theme.background, ink: theme.ink, accent: theme.accent, soft: theme.panel, deep: theme.dark ? '#0C101C' : '#E3DDD8', onAccent: theme.onAccent } : base
   const facts = approvedFacts({ product, offer: null, reviews: [], settings })
   const c = document.createElement('canvas')
-  c.width = F.w; c.height = F.h
+  c.width = F.w * resolution; c.height = F.h * resolution
   const ctx = c.getContext('2d')
+  ctx.scale(resolution, resolution)
   if (document.fonts?.ready) { try { await document.fonts.ready } catch { /* ignore */ } }
   const M = Math.round(F.w * 0.075)
   const inner = F.w - M * 2
@@ -533,7 +537,7 @@ export async function renderArrival({ product, settings, link, format = 'portrai
   ctx.rotate(Math.PI / 4)
   ctx.fillStyle = L.accent
   ctx.fillRect(-40, -F.w, F.w, 92)
-  ctx.fillStyle = '#FFFFFF'
+  ctx.fillStyle = L.onAccent || '#FFFFFF'
   ctx.font = font(800, 38)
   ctx.fillText('JUST ARRIVED', -F.w * 0.42, -F.w + 62)
   ctx.restore()

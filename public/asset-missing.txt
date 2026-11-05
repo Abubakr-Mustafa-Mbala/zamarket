@@ -1,0 +1,4 @@
+This file is not part of the current version of ZaMarket.
+
+Your browser asked for a page file from an older release. Reload the site and
+it will fetch the current one.

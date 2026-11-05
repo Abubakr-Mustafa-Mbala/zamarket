@@ -19,7 +19,14 @@ test('homepage leads with one storefront heading, not a sales pitch', () => {
 })
 test('creative editor connects each tile to actual renderer instead of making nine catalogues', () => {
   const source = get('pages/shared/CreativeStudio.jsx')
-  for (const renderer of ['renderCatalogue','renderCollection','renderSpotlight','renderArrival','renderPromo']) {
+  // The three catalogue layouts are now one renderer told which kind to draw.
+  // What matters is unchanged: each tile still produces its own design rather
+  // than nine copies of the same catalogue page.
+  for (const kind of ['priceList', 'collection', 'spotlight']) {
+    assert.match(source, new RegExp(`renderPremiumStudio\\(\\{[^}]*kind: '${kind}'`),
+      `the ${kind} tile must dispatch its own layout`)
+  }
+  for (const renderer of ['renderArrival', 'renderPromo']) {
     assert.match(source, new RegExp(`await ${renderer}\\(`))
   }
   assert.match(source, /studioExportPlan\(tool, picked, sheet\)/)

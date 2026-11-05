@@ -55,7 +55,8 @@ test('social actions are encouraged, never required', () => {
   const page = get('src/pages/public/Giveaway.jsx')
   // Meta forbids requiring a share or a tag as a condition of entry.
   assert.match(page, /optional/i)
-  assert.match(page, /not sponsored, endorsed or\s*\n?\s*administered by/)
+  assert.match(page, /not sponsored, endorsed,? (or |administered by)/i)
+  assert.match(page, /Sharing (is entirely optional|does not increase)/i)
   assert.doesNotMatch(page, /must share|required to share|must tag|tag three/i)
 })
 
@@ -79,30 +80,38 @@ test('marketing consent is separate, unticked and withdrawable', () => {
   assert.doesNotMatch(conv, /delete from marketing_consent/)
 
   const page = get('src/pages/public/Giveaway.jsx')
-  assert.match(page, /useState\(false\)/)                    // starts unticked
-  assert.match(page, /if \(optIn\) await supabase\.rpc\('set_marketing_consent'/)
-  // The entry itself never carries consent.
-  const enterFn = page.slice(page.indexOf('const enter ='), page.indexOf('const shareText'))
+  assert.match(page, /const \[optIn, setOptIn\] = useState\(false\)/) // starts unticked
+  assert.match(page, /if \(optIn\)[\s\S]{0,120}set_marketing_consent/)
+  // The entry itself never carries consent: it is recorded first, on its own,
+  // so a refused consent call can never cost somebody their entry.
+  const enterFn = page.slice(page.indexOf('const enter ='), page.indexOf('const copyLink ='))
+  assert.ok(enterFn.includes("rpc('enter_giveaway'"), 'enter() must call enter_giveaway')
   assert.ok(enterFn.indexOf("rpc('enter_giveaway'") < enterFn.indexOf('set_marketing_consent'))
 })
 
 // Some people need the thing now. A birthday is not going to wait for a draw.
 test('the prize can be bought during the giveaway — but only if it exists', () => {
   const page = get('src/pages/public/Giveaway.jsx')
-  assert.match(page, /Need it before the draw/)
+  assert.match(page, /Need this before the draw/)
   assert.match(page, /Buying does not affect your entry/)
 
   // A prize is often the only unit there is. Selling a second one you do not
   // have is taking money for something nobody can deliver.
-  assert.match(page, /const buyable = !!product/)
-  assert.match(page, /product\.status === 'published'/)
-  assert.match(page, /madeOnDemand \|\| Number\(product\.stock_available\) > 0/)
+  // One rule, in one place, applied to the prize and to every product the
+  // page recommends — so nothing on this page can offer what is not there.
+  assert.match(page, /const available = \(p\) =>/)
+  assert.match(page, /p\?\.status === 'published'/)
+  assert.match(page, /Number\(p\.stock_available\) > 0/)
   // Made to order and services can always be sold; another gets made.
-  assert.match(page, /fulfilment === 'made_to_order' \|\| product\?\.fulfilment === 'service'/)
+  assert.match(page, /\['made_to_order','service'\]\.includes\(p\.fulfilment\)/)
+  assert.match(page, /const buyable = available\(product\)/)
+  // Every recommended product and every offer passes the same gate.
+  assert.match(page, /const canBuy = available\(p\)/)
+  assert.match(page, /filter\(\(\{ product \}\) => product && available\(product\)\)/)
   // When it cannot be sold, the page sends people to the seller instead of
   // showing a dead button or nothing at all.
   assert.match(page, /This one is the last/)
-  assert.match(page, /See what else/)
+  assert.match(page, /Visit \{vendorName \|\| 'the shop'\}/)
 
   // The page can only make that judgement if the server tells it the stock.
   const sql = get('supabase/migrations/20261104_giveaways_REVIEW.sql')
@@ -164,7 +173,7 @@ test('a live giveaway holds its prize out of sale', () => {
 
 test('the giveaway page uses its own traffic', () => {
   const page = get('src/pages/public/Giveaway.jsx')
-  assert.match(page, /While you are here/)
+  assert.match(page, /while you are here/i)
   for (const route of ['/search', '/affiliates', '/apply/vendor']) {
     assert.ok(page.includes(`to="${route}"`), `${route} door should be there`)
   }

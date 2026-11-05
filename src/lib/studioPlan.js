@@ -42,7 +42,7 @@ export function studioExportPlan(tool, products, sheet = 'post', now = Date.now(
     format,
     products: tool === 'collection' ? products.slice(0, 4) : tool === 'spotlight' ? products.slice(0, 6) : tool === 'priceList' ? products : [first],
     filenameBase: tool === 'priceList' ? 'price-list' : tool === 'arrival' ? 'new-arrival' : tool === 'spotlight' ? 'business-spotlight' : tool === 'collection' ? 'collection' : `advert-${tool}`,
-    mime: tool === 'priceList' ? 'image/png' : 'image/jpeg',
-    extension: tool === 'priceList' ? 'png' : 'jpg',
+    mime: ['priceList', 'collection', 'spotlight'].includes(tool) ? 'image/png' : 'image/jpeg',
+    extension: ['priceList', 'collection', 'spotlight'].includes(tool) ? 'png' : 'jpg',
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import '../../ai-blog.css'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { date } from '../../lib/format'
@@ -139,6 +140,9 @@ function Editor({ post, products, onClose, onSaved }) {
   const [f, setF] = useState({ ...empty, ...post, secondary_keywords: post?.secondary_keywords || [] })
   const [linked, setLinked] = useState([])
   const [busy, setBusy] = useState(false)
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiInstructions, setAiInstructions] = useState('')
+  const [aiChecks, setAiChecks] = useState([])
   const [preview, setPreview] = useState(false)
   const bodyRef = useRef(null)
   const insertMedia = (snippet) => {
@@ -218,6 +222,48 @@ function Editor({ post, products, onClose, onSaved }) {
 
   const toggle = (id) => setLinked((l) => (l.includes(id) ? l.filter((x) => x !== id) : [...l, id]))
 
+  // AI writes locally into the editor; only a human can save or publish.
+  const askAi = async (mode) => {
+    if (aiBusy || busy) return
+    if (mode === 'draft' && !f.keyword?.trim() && !f.title?.trim()) {
+      toast('Enter the topic or keyword first', true); return
+    }
+    if (mode === 'improve' && (f.body || '').trim().length < 100) {
+      toast('Write a paragraph first, then choose Improve', true); return
+    }
+    if (mode === 'draft' && f.body?.trim() &&
+      !window.confirm('Replace the current unsaved article text with a new AI draft? Save your work first if you want to keep it.')) return
+    setAiBusy(true)
+    try {
+      const { data, error: sessionError } = await supabase.auth.getSession()
+      const token = data?.session?.access_token
+      if (sessionError || !token) throw new Error('Please sign in again to use the AI writer.')
+      const result = await fetch('/.netlify/functions/ai-blog', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          mode, keyword: f.keyword, title: f.title, body: f.body,
+          instructions: aiInstructions, audience: 'People buying in Lusaka, Zambia',
+          product_ids: linked,
+        }),
+      })
+      const response = await result.json().catch(() => ({}))
+      if (!result.ok) throw new Error(response.message || 'Could not generate an article')
+      if (!response.draft?.body) throw new Error('The AI returned an empty draft')
+      setF(old => ({ ...old, title: response.draft.title || old.title,
+        body: response.draft.body, excerpt: response.draft.excerpt || old.excerpt,
+        keyword: response.draft.keyword || old.keyword,
+        meta_title: response.draft.meta_title || old.meta_title,
+        meta_description: response.draft.meta_description || old.meta_description,
+        category: response.draft.category || old.category,
+      }))
+      setAiChecks(response.draft.fact_checks || [])
+      setPreview(false)
+      toast('AI draft added to the editor. Please verify it before publishing.')
+    } catch (error) { toast(error.message, true) }
+    finally { setAiBusy(false) }
+  }
+
   return (
     <div className="blog-editor">
       <div className="page-head">
@@ -242,6 +288,32 @@ function Editor({ post, products, onClose, onSaved }) {
           <Field label="Title" hint="Put the phrase in it, near the start if it reads naturally.">
             <Input value={f.title} onChange={set('title')} />
           </Field>
+          <section className="card stack-sm ai-blog-assistant" aria-label="AI Blog Writer">
+            <div className="between wrap">
+              <div>
+                <h3><Icon.sparkles /> AI Blog Writer</h3>
+                <p className="small muted">Draft helpful, natural articles using your chosen topic and linked ZaMarket products.</p>
+              </div>
+              <span className="small ai-blog-status">Human reviewed · Never auto-published</span>
+            </div>
+            <Field label="Brief for the AI" hint="Optional. Describe the angle, audience, unique facts, tone, or questions to answer. Do not paste private customer details.">
+              <Textarea value={aiInstructions} onChange={setAiInstructions} rows={3}
+                placeholder="E.g. Explain how a small Lusaka restaurant should choose a commercial fryer. Give practical buying advice, not advertising hype." />
+            </Field>
+            <div className="btn-row wrap">
+              <button type="button" className="btn primary" disabled={busy || aiBusy} onClick={() => askAi('draft')}>
+                {aiBusy ? 'Writing…' : 'Generate article draft'}
+              </button>
+              <button type="button" className="btn" disabled={busy || aiBusy || !(f.body || '').trim()} onClick={() => askAi('improve')}>
+                Improve my writing
+              </button>
+            </div>
+            <p className="small muted">Select relevant catalogue products below before generating if you want the writer to use verified ZaMarket details. An OpenAI API key and the staff-only quota migration must be configured in Netlify/Supabase. Results are editable and never automatically saved.</p>
+            {aiChecks.length > 0 && <div className="ai-blog-checks" role="note">
+              <strong>Verify before publishing</strong>
+              <ul>{aiChecks.map((item, i) => <li key={i}>{item}</li>)}</ul>
+            </div>}
+          </section>
           <BlogMediaTools onInsert={insertMedia} onCover={set('cover_url')} fallbackAlt={f.title} notify={toast} />
           <section className="card stack-sm">
             <div className="between">

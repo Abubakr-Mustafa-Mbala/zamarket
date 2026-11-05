@@ -7,102 +7,93 @@ import { useCart } from '../../lib/cart'
 import { Loading, useToast } from '../../components/ui'
 import { money } from '../../lib/format'
 import { useSeo } from '../../lib/seo'
+import { offerCopy, DEAL_TYPES } from '../../lib/offers'
 import Icon from '../../lib/icons'
 
-// A giveaway, and the wheel.
-//
-// Two things about this page are not negotiable and are worth stating where
-// somebody editing it will see them.
-//
-// 1. ENTRY IS FREE. Under the Zambian Lotteries Act a lottery is a scheme
-//    where chances are "acquired by prior payment". Free entry is what keeps
-//    this outside that definition. There is no payment path here and there
-//    must never be one.
-//
-// 2. THE WHEEL DOES NOT DECIDE ANYTHING. The winner is chosen by the
-//    database, with cryptographic randomness, before this page animates. The
-//    spin is told the answer and lands on it. If the wheel picked the winner,
-//    anyone could pick the winner by editing the page in their browser.
-//
-// Social actions are encouraged with links and never required, because Meta
-// does not allow requiring a share or a tag to enter — and because we have
-// no honest way to verify that someone did it.
-
+// A real prize, real product photography, a free entry and a recorded draw.
+// A promotion page must never invent inventory, discounts, ratings or prizes.
+// The database selects the winner; the wheel below reveals the stored result.
 const fmtLeft = (ms) => {
   if (ms <= 0) return 'Closed'
   const d = Math.floor(ms / 86400000)
   const h = Math.floor((ms % 86400000) / 3600000)
   const m = Math.floor((ms % 3600000) / 60000)
-  if (d > 0) return `${d} day${d === 1 ? '' : 's'}, ${h} hr`
-  if (h > 0) return `${h} hr ${m} min`
-  return `${m} min`
+  return d > 0 ? `${d}d ${h}h remaining` : h > 0 ? `${h}h ${m}m remaining` : `${Math.max(1, m)}m remaining`
+}
+const localDate = (value) => new Date(value).toLocaleString('en-ZM', {day:'numeric',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'})
+const productPath = (p) => p.vendor_slug && p.slug ? `/${encodeURIComponent(p.vendor_slug)}/${encodeURIComponent(p.slug)}` : `/p/${encodeURIComponent(p.slug || p.id)}`
+const salePrice = (p) => Number(p?.normal_price) > Number(p?.price) && Number(p?.price) > 0
+const available = (p) => p?.status === 'published' && (['made_to_order','service'].includes(p.fulfilment) || Number(p.stock_available) > 0)
+
+function Countdown({ end, now }) {
+  const remaining = Math.max(0, end - now)
+  const parts = [
+    [Math.floor(remaining / 86400000), 'days'],
+    [Math.floor(remaining / 3600000) % 24, 'hours'],
+    [Math.floor(remaining / 60000) % 60, 'mins'],
+    [Math.floor(remaining / 1000) % 60, 'secs'],
+  ]
+  return <div className="gw-countdown" aria-label={`Time remaining: ${fmtLeft(remaining)}`}>
+    {parts.map(([n, unit]) => <div key={unit}><strong>{String(n).padStart(2, '0')}</strong><span>{unit}</span></div>)}
+  </div>
 }
 
 export function GiveawayList() {
   useSeo({
-    title: 'Giveaways | ZA Market',
-    description: 'Free-to-enter giveaways from local sellers on ZA Market. No purchase, no payment.',
+    title: 'Giveaways | ZaMarket',
+    description: 'Genuine free-to-enter prize draws on ZaMarket. No purchase required.',
     canonical: '/giveaways',
   })
-  const { data, loading } = useData(async () => {
-    const { data: rows, error } = await supabase.from('giveaway_campaigns')
+  const { data, loading, error } = useData(async () => {
+    const { data: rows, error: fetchError } = await supabase.from('giveaway_campaigns')
       .select('slug,title,description,prize_text,prize_value,closes_at,status,winners')
       .in('status', ['live', 'closed', 'drawn', 'fulfilled'])
       .order('closes_at', { ascending: false })
-    if (error) throw error
+    if (fetchError) throw fetchError
     return rows || []
   }, [])
-
   if (loading) return <Loading shape="cards" />
-  const live = (data || []).filter((g) => g.status === 'live')
-  const past = (data || []).filter((g) => g.status !== 'live')
-
-  return (
-    <div className="stack">
-      <div className="home-market-head">
-        <div>
-          <h1>Giveaways</h1>
-          <p>Free to enter. No purchase, and nothing to pay.</p>
-        </div>
-      </div>
-      {live.length === 0 && past.length === 0 && (
-        <div className="empty-state">
-          <span className="empty-state-icon" aria-hidden><Icon.tag /></span>
-          <h1>No giveaway running</h1>
-          <p>When one opens it will be here. Meanwhile, have a look at what the sellers have.</p>
-          <Link to="/search" className="btn primary">Browse products</Link>
-        </div>
-      )}
-      {live.length > 0 && (
-        <div className="home-product-grid">
-          {live.map((g) => <GiveawayCard key={g.slug} g={g} />)}
-        </div>
-      )}
-      {past.length > 0 && (
-        <>
-          <h2 className="shelf-head">Finished</h2>
-          <div className="home-product-grid">
-            {past.map((g) => <GiveawayCard key={g.slug} g={g} />)}
-          </div>
-        </>
-      )}
-    </div>
-  )
+  const live = (data || []).filter((g) => g.status === 'live' && new Date(g.closes_at) > new Date())
+  const past = (data || []).filter((g) => !live.includes(g))
+  return <div className="gw-index">
+    <header className="gw-index-hero">
+      <span className="gw-eyebrow"><Icon.gift /> ZAMARKET GIVEAWAYS</span>
+      <h1>Something worth winning.</h1>
+      <p>Real prizes from real businesses. Free to enter, with a draw recorded by the system.</p>
+    </header>
+    {error && <div className="card" role="alert">Giveaways could not load. Please refresh and try again.</div>}
+    {!error && live.length === 0 && <div className="gw-empty">
+      <Icon.gift /><h2>No giveaway is open right now</h2>
+      <p>When a new campaign starts, its prize and entry details will appear here. In the meantime, explore what our sellers offer.</p>
+      <Link className="btn primary" to="/search">Explore products <Icon.arrow /></Link>
+    </div>}
+    {live.length > 0 && <section aria-label="Active giveaways"><h2 className="gw-section-title">Open for entries</h2>
+      <div className="gw-index-grid">{live.map((g) => <GiveawayCard key={g.slug} g={g}/>)}</div></section>}
+    {past.length > 0 && <section aria-label="Previous giveaways" className="gw-previous"><h2 className="gw-section-title">Previous campaigns</h2>
+      <div className="gw-index-grid">{past.slice(0, 9).map((g) => <GiveawayCard key={g.slug} g={g}/>)}</div></section>}
+  </div>
+}
+function GiveawayCard({ g }) {
+  const live = g.status === 'live' && new Date(g.closes_at) > new Date()
+  return <Link to={`/giveaways/${encodeURIComponent(g.slug)}`} className="gw-index-card">
+    <span className="gw-card-topline">{live ? <><span className="gw-live-dot"/> OPEN FOR ENTRIES</> : 'CAMPAIGN ENDED'}</span>
+    <h3>{g.title}</h3>
+    {g.prize_text && <p>{g.prize_text}</p>}
+    <div className="gw-index-card-foot"><strong>{g.prize_value > 0 ? money(g.prize_value) + ' prize' : 'Free entry'}</strong><span>{live ? fmtLeft(new Date(g.closes_at).getTime() - Date.now()) : 'See campaign'} <Icon.arrow /></span></div>
+  </Link>
 }
 
-function GiveawayCard({ g }) {
-  const left = new Date(g.closes_at).getTime() - Date.now()
-  return (
-    <Link to={`/giveaways/${g.slug}`} className="card stack-sm gw-card">
-      <span className={`badge ${g.status === 'live' ? 'ok' : ''}`}>
-        {g.status === 'live' ? `Closes in ${fmtLeft(left)}` : g.status === 'drawn' || g.status === 'fulfilled' ? 'Winner drawn' : 'Closed'}
-      </span>
-      <h3>{g.title}</h3>
-      {g.prize_text && <p className="small muted">{g.prize_text}</p>}
-      {g.prize_value > 0 && <p className="strong money">{money(g.prize_value)} prize</p>}
-      <p className="tiny muted">{g.winners} winner{g.winners === 1 ? '' : 's'} · free to enter</p>
-    </Link>
-  )
+function ProductCard({ p }) {
+  const canBuy = available(p)
+  return <Link className="gw-product" to={productPath(p)}>
+    <div className="gw-product-image">{p.images?.[0] ? <img src={p.images[0]} alt={p.name} loading="lazy"/> : <span className="gw-product-image-fallback"><Icon.box /></span>}
+      {salePrice(p) && canBuy && <span className="gw-product-offer">On offer</span>}
+    </div>
+    <div className="gw-product-details"><h3>{p.name}</h3>
+      <div className="gw-product-price"><strong>{money(p.price, {whole:true})}</strong>{salePrice(p) && canBuy && <s>{money(p.normal_price,{whole:true})}</s>}</div>
+      <span className="gw-product-action">{canBuy ? 'View product' : 'View details'} <Icon.arrow /></span>
+    </div>
+  </Link>
 }
 
 export default function GiveawayPage() {
@@ -111,242 +102,215 @@ export default function GiveawayPage() {
   const toast = useToast()
   const [now, setNow] = useState(Date.now())
   const [busy, setBusy] = useState(false)
-  // Unticked, and separate from entering. Entering a giveaway must never
-  // subscribe anybody to anything — that is both the rule and the reason
-  // people trust the next one.
   const [optIn, setOptIn] = useState(false)
   const { setCampaign } = useCart()
-
-  const { data, loading, reload } = useData(async () => {
-    const { data: row, error } = await supabase.rpc('giveaway_public', { p_slug: slug })
-    if (error) throw error
+  const { data, loading, error, reload } = useData(async () => {
+    const { data: row, error: fetchError } = await supabase.rpc('giveaway_public', { p_slug: slug })
+    if (fetchError) throw fetchError
     return row
   }, [slug])
+  const vendorSlug = data?.product?.vendor_slug
+  // Read the shop's real listings. If this campaign has no vendor, show a
+  // small curated selection from the wider marketplace instead.
+  const { data: recommended } = useData(async () => {
+    if (!data) return []
+    const fields = 'id,name,slug,price,normal_price,images,fulfilment,stock_available,status,vendor_slug,vendor_name,featured_in_store'
+    const fetch = async (shopSlug = null) => {
+      let query = supabase.from('public_products').select(fields)
+        .eq('status', 'published').order('featured_in_store', { ascending: false }).limit(12)
+      if (shopSlug) query = query.eq('vendor_slug', shopSlug)
+      const { data: rows, error: fetchError } = await query
+      if (fetchError) throw fetchError
+      return rows || []
+    }
+    const own = vendorSlug ? await fetch(vendorSlug) : []
+    const remaining = own.filter((p) => p.slug !== data.product?.slug)
+    if (remaining.length >= 4) return remaining
+    // A seller with just one prize should still introduce visitors to the
+    // marketplace. Never fabricate a collection of products they don't sell.
+    const broader = await fetch()
+    return [...remaining, ...broader.filter((p) => !remaining.some((ownItem) => ownItem.id === p.id))]
+      .filter((p) => p.slug !== data.product?.slug)
+  }, [vendorSlug, data?.slug])
+  const items = recommended || []
+  const featured = items.slice(0, 4)
+  const vendorOnly = !!vendorSlug && featured.length > 0 && featured.every((p) => p.vendor_slug === vendorSlug)
 
-  // A ticking countdown, once a second, cleared when the page closes.
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(t)
-  }, [])
+  // The real offers table, not a price comparison. A seller's "buy one get one
+  // free" is an offer row with a type; it is invisible to anyone who only
+  // looks at whether normal_price is higher than price. Everything shown here
+  // is a live row the seller created — nothing on this page invents a deal.
+  const { data: liveOffers } = useData(async () => {
+    if (!items.length) return []
+    const ids = items.map((p) => p.id)
+    const { data: rows, error: offerError } = await supabase
+      .from('public_offers')
+      .select('id,product_id,type,name,deal_price,normal_value,units,end_at,remaining,config,gift_name')
+      .in('product_id', ids)
+    if (offerError) throw offerError
+    return (rows || []).filter((o) => DEAL_TYPES.includes(o.type))
+  }, [items.map((p) => p.id).join(',')])
 
-  // Anything bought after landing here counts as this campaign's doing. The
-  // marketplace already understands `campaign:<code>` as an order source, so
-  // the giveaway reports from the same records as everything else rather
-  // than keeping its own tally that disagrees.
+  // One offer per product, best saving first, and only where the product can
+  // actually be bought today.
+  const offers = useMemo(() => {
+    const byId = new Map(items.map((p) => [p.id, p]))
+    const seen = new Set()
+    return (liveOffers || [])
+      .map((o) => ({ offer: o, product: byId.get(o.product_id) }))
+      .filter(({ product }) => product && available(product))
+      .map((row) => ({ ...row, saving: Math.max(0, Number(row.offer.normal_value || 0) - Number(row.offer.deal_price || 0)) }))
+      .sort((a, b) => b.saving - a.saving)
+      .filter(({ product }) => (seen.has(product.id) ? false : seen.add(product.id)))
+      .slice(0, 2)
+  }, [liveOffers, items])
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t) }, [])
   useEffect(() => { if (slug) setCampaign(slug) }, [slug])
-
   useSeo(data ? {
-    title: `${data.title} | ZA Market giveaway`,
-    description: `${data.prize_text || data.title}. Free to enter on ZA Market.`,
+    title: `${data.title} | ZaMarket giveaway`,
+    description: `${data.prize_text || data.title}. Free to enter on ZaMarket. No purchase necessary.`,
     canonical: `/giveaways/${slug}`,
   } : {})
-
   if (loading) return <Loading shape="page" />
-  if (!data) {
-    return (
-      <div className="empty-state">
-        <h1>We couldn&rsquo;t find that giveaway</h1>
-        <p>It may have been taken down. Have a look at what else is running.</p>
-        <Link to="/giveaways" className="btn primary">All giveaways</Link>
-      </div>
-    )
-  }
+  if (error || !data) return <div className="gw-empty"><h1>{error ? 'Giveaway temporarily unavailable' : 'We couldn’t find that giveaway'}</h1><p>{error ? 'Please refresh and try again.' : 'The campaign may have been taken down.'}</p><Link className="btn primary" to="/giveaways">See giveaways</Link></div>
 
   const closes = new Date(data.closes_at).getTime()
   const open = data.status === 'live' && now < closes
   const product = data.product
   const photo = product?.images?.[0]
-
-  // Can this actually be sold today?
-  //
-  // A prize is frequently the only unit there is — that is why it is the
-  // prize. Something made to order or a service can always be sold, because
-  // another is made on request; a stocked item can only be sold if there is
-  // a second one on the shelf. Anything else and the buy button is a promise
-  // the seller cannot keep.
-  const madeOnDemand = product?.fulfilment === 'made_to_order' || product?.fulfilment === 'service'
-  const buyable = !!product
-    && product.status === 'published'
-    && (madeOnDemand || Number(product.stock_available) > 0)
-
+  const buyable = available(product)
+  const vendorName = product?.vendor_name
+  const prizeTitle = product?.name || data.prize_text || data.title
+  const landingUrl = `${window.location.origin}/giveaways/${encodeURIComponent(slug)}`
+  const shareText = `${data.title} — a free-to-enter prize draw on ZaMarket. No purchase necessary.\n${landingUrl}?src=whatsapp`
   const enter = async () => {
-    if (!user) return toast('Sign in first, then tap enter', true)
+    if (!user) return toast('Please sign in to enter', true)
     setBusy(true)
-    const { error } = await supabase.rpc('enter_giveaway', { p_slug: slug })
-    if (error) { setBusy(false); return toast(error.message, true) }
-    // Consent is a separate record and a separate decision. It is only ever
-    // written when the box was actually ticked.
-    if (optIn) await supabase.rpc('set_marketing_consent', { p_granted: true, p_source: `giveaway:${slug}` })
-    setBusy(false)
-    toast('You are in. Good luck.')
-    reload()
+    try {
+      const { error: entryError } = await supabase.rpc('enter_giveaway', { p_slug: slug })
+      if (entryError) throw entryError
+      if (optIn) {
+        const { error: consentError } = await supabase.rpc('set_marketing_consent', { p_granted: true, p_source: `giveaway:${slug}` })
+        if (consentError) toast('Entry confirmed; optional marketing preferences could not be saved.', true)
+      }
+      toast('You are entered. Good luck!')
+      reload()
+    } catch (e) { toast(e.message || 'Entry could not be completed', true) }
+    finally { setBusy(false) }
   }
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(landingUrl); toast('Giveaway link copied') }
+    catch { toast('Could not copy. Share the page address from your browser.', true) }
+  }
+  return <div className="gw-campaign">
+    <nav className="gw-breadcrumb" aria-label="Breadcrumb"><Link to="/giveaways">Giveaways</Link><span>/</span><span>{data.title}</span></nav>
+    <section className="gw-hero" aria-label="Giveaway prize">
+      <div className="gw-head">
+        <span className="gw-eyebrow"><Icon.gift /> {open ? 'GIVEAWAY • ENTER NOW' : data.result ? 'GIVEAWAY • DRAW COMPLETE' : 'GIVEAWAY • ENTRIES CLOSED'}</span>
+        {vendorName && <p className="gw-hero-vendor">Presented by {vendorName} on ZaMarket</p>}
+        <h1>{data.title}</h1>
+        <p className="gw-hero-summary">{data.prize_text || prizeTitle}</p>
+        <div className="gw-hero-facts">
+          <span><Icon.shield /> Free entry</span>
+          <span><Icon.ticket /> {data.winners} {data.winners === 1 ? 'winner' : 'winners'}</span>
+          <span><Icon.calendar /> Closes {localDate(data.closes_at)}</span>
+        </div>
+        {open ? <><p className="gw-timer-label">Entries close in</p><Countdown end={closes} now={now}/></>
+          : <p className="gw-closed-message">{data.result ? 'The result has been recorded. See the winner reveal below.' : 'Entries have closed. The draw result will appear here.'}</p>}
+        {open && <div className="gw-hero-buttons"><a className="gw-primary-action" href="#giveaway-entry">Enter giveaway <Icon.arrow /></a><a className="gw-secondary-action" href="#giveaway-details">How to enter</a></div>}
+        <p className="gw-hero-disclaimer">No purchase necessary. Sharing does not increase your chance of winning.</p>
+      </div>
+      <div className="gw-prize-art">
+        {photo ? <img src={photo} alt={prizeTitle} className="gw-photo"/> : <div className="gw-photo gw-photo-none"><Icon.gift/><span>{prizeTitle}</span></div>}
+        <div className="gw-prize-plaque"><span>THE PRIZE</span><strong>{prizeTitle}</strong>{Number(data.prize_value || product?.price) > 0 && <span>Stated value {money(data.prize_value || product.price,{whole:true})}</span>}</div>
+      </div>
+    </section>
 
-  const shareText = `${data.title} — free to enter on ZaMarket.\n${window.location.href}`
-
-  return (
-    <div className="stack gw">
-      <div className="gw-hero">
-        {photo
-          ? <img src={photo} alt={product?.name || data.title} className="gw-photo" />
-          : <div className="gw-photo gw-photo-none" aria-hidden />}
-        <div className="gw-head">
-          <span className={`badge ${open ? 'ok' : ''}`}>
-            {open ? 'Open now' : data.result ? 'Winner drawn' : 'Entries closed'}
-          </span>
-          <h1>{data.title}</h1>
-          {product && (
-            <p className="gw-prize">
-              <Link to={product.vendor_slug ? `/${product.vendor_slug}/${product.slug}` : `/p/${product.slug}`}>
-                {product.name}
-              </Link>
-              {product.price > 0 && <span className="money"> · worth {money(product.price)}</span>}
-              {product.vendor_name && <span className="muted"> · from {product.vendor_name}</span>}
-            </p>
-          )}
-          {!product && data.prize_text && <p className="gw-prize">{data.prize_text}</p>}
-          <div className="gw-facts">
-            <span><strong>{open ? fmtLeft(closes - now) : '—'}</strong> left</span>
-            <span><strong>{data.entries}</strong> entered</span>
-            <span><strong>{data.winners}</strong> winner{data.winners === 1 ? '' : 's'}</span>
-            <span><strong>Free</strong> to enter</span>
-          </div>
+    <section className="gw-detail-grid" aria-label="How the giveaway works">
+      <div className="gw-detail" id="giveaway-details">
+        <span className="gw-eyebrow">01 / HOW IT WORKS</span><h2>Simple to enter. Fair for everyone.</h2>
+        <ol className="gw-steps">
+          <li><span>01</span><div><strong>Sign in to ZaMarket</strong><p>Create an account or use your existing one.</p></div></li>
+          <li><span>02</span><div><strong>Enter for free</strong><p>Submit one entry before {localDate(data.closes_at)}. No purchase required.</p></div></li>
+          <li><span>03</span><div><strong>Return for the result</strong><p>The system records the draw. The winner is contacted privately.</p></div></li>
+        </ol>
+      </div>
+      <div className="gw-detail gw-enter" id="giveaway-entry">
+        <span className="gw-eyebrow">02 / YOUR ENTRY</span>
+        {data.result ? <><h2>Winner drawn</h2><p>The draw is complete. You can reveal the recorded result below.</p></>
+        : data.mine ? <><h2>You're entered.</h2><p>Your entry is recorded. Check back after the closing date for the result.</p><div className="gw-enter-done"><Icon.check /> Entry confirmed</div></>
+        : open ? <><h2>Your chance to win.</h2><p>One free entry per person. No purchase or social sharing is necessary.</p>
+          <label className="gw-consent"><input type="checkbox" checked={optIn} onChange={(e)=>setOptIn(e.target.checked)}/><span>I'd also like occasional ZaMarket offers. Optional, and I can unsubscribe.</span></label>
+          {user ? <button className="gw-primary-action gw-entry-submit" onClick={enter} disabled={busy}>{busy ? 'Submitting entry…' : 'Enter for free'} <Icon.arrow /></button>
+            : <Link className="gw-primary-action gw-entry-submit" to={`/login?next=${encodeURIComponent(`/giveaways/${slug}`)}`}>Sign in to enter <Icon.arrow /></Link>}
+        </> : <><h2>Entries closed</h2><p>The result will be published on this page after the draw.</p></>}
+        <div className="gw-share-box"><strong>Tell someone about it</strong><p>Sharing is entirely optional and gives no extra entries.</p>
+          <div className="gw-share-actions"><a href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">Share on WhatsApp</a><button onClick={copyLink}>Copy link</button></div>
         </div>
       </div>
+    </section>
 
-      {data.result
-        ? <Wheel names={data.names} result={data.result} />
-        : (
-          <div className="card stack-sm gw-enter">
-            {data.mine
-              ? <><h2>You are entered</h2><p className="small muted">Nothing else to do. The draw happens after entries close, and the result is published on this page.</p></>
-              : open
-                ? (
-                  <>
-                    <h2>Enter the giveaway</h2>
-                    <p className="small muted">
-                      One entry per person. It costs nothing, and you never have to buy anything.
-                    </p>
-                    <label className="check consent">
-                      <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} />
-                      <span>
-                        Also send me occasional offers from ZaMarket. Optional — your entry
-                        counts either way, and you can stop them at any time.
-                      </span>
-                    </label>
-                    <button className="btn primary" onClick={enter} disabled={busy}>
-                      {busy ? 'Entering…' : user ? 'Enter — it is free' : 'Sign in to enter'}
-                    </button>
-                  </>
-                )
-                : <><h2>Entries are closed</h2><p className="small muted">The draw happens shortly and the result appears here.</p></>}
+    {data.result && <Wheel names={data.names} result={data.result} />}
 
-            <div className="gw-social">
-              <p className="tiny muted">
-                Telling people helps, and it is <strong>optional</strong> — sharing is not required
-                to enter and does not improve your chances.
-              </p>
-              <div className="btn-row">
-                <a className="btn sm" target="_blank" rel="noreferrer"
-                  href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}>Share on WhatsApp</a>
-                <button className="btn sm ghost" onClick={() => {
-                  navigator.clipboard?.writeText(window.location.href)
-                  toast('Link copied')
-                }}>Copy link</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-      {product && (buyable
-        ? (
-          <div className="card stack-sm gw-buy">
-            <h2>Need it before the draw?</h2>
-            <p className="small muted">
-              The draw is on {new Date(data.closes_at).toLocaleDateString('en-ZM')}. If you need one
-              sooner — a birthday, an order of your own — you can buy the same item now.
-              Buying does not affect your entry, and entering does not affect the price.
-              {product.fulfilment === 'made_to_order' && product.lead_time_days > 0
-                && ` Made to order, about ${product.lead_time_days} day${product.lead_time_days === 1 ? '' : 's'} to prepare.`}
-            </p>
-            <div className="btn-row">
-              <Link className="btn primary"
-                to={product.vendor_slug ? `/${product.vendor_slug}/${product.slug}` : `/p/${product.slug}`}>
-                Buy it now{product.price > 0 ? ` — ${money(product.price)}` : ''}
-              </Link>
-              {product.vendor_slug && (
-                <Link className="btn" to={`/${product.vendor_slug}`}>
-                  See everything from {product.vendor_name || 'this seller'}
-                </Link>
-              )}
-            </div>
-          </div>
-        )
-        : (
-          // The prize is often the only one there is. Offering to sell a
-          // second would be taking money for something nobody can deliver,
-          // so the page sends people to what the seller actually has instead.
-          <div className="card stack-sm gw-buy">
-            <h2>This one is the last</h2>
-            <p className="small muted">
-              The prize is the only one in stock, so it is not on sale while the giveaway runs.
-              {product.vendor_name ? ` ${product.vendor_name} has other things, though.` : ''}
-            </p>
-            {product.vendor_slug && (
-              <div className="btn-row">
-                <Link className="btn primary" to={`/${product.vendor_slug}`}>
-                  See what else {product.vendor_name || 'this seller'} has
-                </Link>
-              </div>
-            )}
-          </div>
-        ))}
-
-      {data.description && (
-        <div className="card article"><h2>About this giveaway</h2><p>{data.description}</p></div>
-      )}
-
-      {/* The traffic is here anyway. A giveaway page is the busiest page on
-          the site while it runs, and sending everyone away empty-handed when
-          the draw ends wastes the one moment they are paying attention.
-          Nothing here is a condition of entry. */}
-      <div className="card stack-sm gw-while-here">
-        <h2>While you are here</h2>
-        <div className="gw-doors">
-          <Link to="/search" className="gw-door">
-            <strong>Shop the marketplace</strong>
-            <span>Everything local sellers have listed, delivered in Lusaka.</span>
-          </Link>
-          <Link to="/affiliates" className="gw-door">
-            <strong>Earn by sharing products</strong>
-            <span>Promote what you like and earn commission on what sells. Free to join.</span>
-          </Link>
-          <Link to="/apply/vendor" className="gw-door">
-            <strong>Sell your own things here</strong>
-            <span>Bakers, tailors, phone shops, services. We handle the orders and delivery.</span>
-          </Link>
-        </div>
+    {product && <section className="gw-shop-prize">
+      <div><span className="gw-eyebrow">FOUND SOMETHING YOU LIKE?</span><h2>{buyable ? 'Need this before the draw?' : 'This one is the last'}</h2>
+        {/* Never offer to sell the prize when it is the only one there is.
+            Taking money for something nobody can deliver costs more than the
+            sale is worth. */}
+        <p>{buyable
+          ? 'You can order this one separately. Buying does not affect your entry, and it does not affect the draw.'
+          : `The prize is the only one in stock, so it is held back while the giveaway runs.${vendorName ? ` ${vendorName} has other things, though.` : ''}`}</p></div>
+      <div className="gw-shop-prize-actions">
+        {buyable && <Link to={productPath(product)} className="gw-primary-action">View product <Icon.arrow /></Link>}
+        {product.vendor_slug && <Link to={`/${encodeURIComponent(product.vendor_slug)}`} className="gw-secondary-action">Visit {vendorName || 'the shop'}</Link>}
       </div>
+    </section>}
 
-      <div className="card stack-sm">
-        <h2>The rules</h2>
-        <ul className="gw-rules">
-          <li><strong>Free to enter.</strong> No purchase, no payment, no fee of any kind.</li>
-          <li><strong>One entry per person</strong>, through a ZA Market account.</li>
-          <li>Open to entrants in <strong>{data.area}</strong>, aged <strong>{data.min_age} and over</strong>.</li>
-          <li>Entries close <strong>{new Date(data.closes_at).toLocaleString('en-ZM')}</strong>.</li>
-          <li>Winners are chosen at random by the system, not by a person, and the result is published on this page.</li>
-          <li>The winner is contacted privately. We never publish anyone&rsquo;s phone number or address.</li>
-          <li>A winner is <strong>never</strong> required to give a review or a testimonial to receive the prize.</li>
-          <li>
-            This giveaway is run by ZA Market. It is <strong>not sponsored, endorsed or
-            administered by, and is not associated with, Meta, Instagram, TikTok or WhatsApp.</strong>
-          </li>
-        </ul>
-        {data.terms && <p className="small muted">{data.terms}</p>}
-      </div>
-    </div>
-  )
+    {featured.length > 0 && <section className="gw-shelf" aria-label="Featured products">
+      <header className="gw-shelf-head"><div><span className="gw-eyebrow">DISCOVER MORE</span><h2>{vendorOnly ? `More from ${vendorName}` : 'More to discover on ZaMarket'}</h2><p>Products you can explore while you are here.</p></div>
+        <Link to={vendorOnly ? `/${encodeURIComponent(vendorSlug)}` : '/search'}>{vendorOnly ? 'Explore the shop' : 'Browse all products'} <Icon.arrow /></Link></header>
+      <div className="gw-product-grid">{featured.map((p)=><ProductCard key={p.id} p={p}/>)}</div>
+    </section>}
+
+    {offers.length > 0 && <section className="gw-real-offers" aria-label="Current offers">
+      <header className="gw-shelf-head"><div><span className="gw-eyebrow">ACTUAL LISTED SAVINGS</span><h2>Offers worth a look.</h2><p>These discounts are based on current published catalogue prices.</p></div></header>
+      <div className="gw-offer-grid">{offers.map(({ offer, product, saving }) => {
+        const copy = offerCopy(offer, product.name)
+        return <Link className="gw-real-offer" to={productPath(product)} key={offer.id}>
+          <div>
+            <span>{saving > 0 ? `SAVE ${money(saving, { whole: true })}` : 'ON OFFER'}</span>
+            <h3>{copy.bonus || copy.get}</h3>
+            <p>{copy.bonus ? copy.get : product.name}</p>
+            <strong>{money(offer.deal_price, { whole: true })}</strong>
+            {saving > 0 && <span className="gw-old-price">{money(offer.normal_value, { whole: true })} before</span>}
+            <small>View this offer <Icon.arrow /></small>
+          </div>
+          {product.images?.[0] && <img src={product.images[0]} alt="" loading="lazy"/>}
+        </Link>
+      })}</div>
+    </section>}
+
+    {data.description && <section className="gw-info-block"><span className="gw-eyebrow">ABOUT THIS CAMPAIGN</span><h2>About the prize</h2><p>{data.description}</p></section>}
+    <section className="gw-info-block gw-rule-block"><span className="gw-eyebrow">PLEASE READ</span><h2>Giveaway rules</h2>
+      <ul className="gw-rules">
+        <li>Entry is free. No purchase or payment is required.</li><li>One entry per person through a ZaMarket account.</li>
+        <li>Available to eligible participants in {data.area}, aged {data.min_age} and above.</li>
+        <li>Entries close {localDate(data.closes_at)}.</li><li>Winners are selected by the recorded draw, not by the on-screen wheel animation.</li>
+        <li>The winner is contacted privately. Contact information is never displayed publicly.</li>
+        <li>A testimonial or review is never required to receive the prize.</li>
+        <li>This promotion is not sponsored, endorsed, administered by or associated with Meta, Instagram, TikTok or WhatsApp.</li>
+      </ul>{data.terms && <p>{data.terms}</p>}
+    </section>
+    {/* The page is the busiest on the site while a campaign runs. These are
+        the three things a visitor can do next — and none of them is a
+        condition of entry, which both the law and Meta's rules require. */}
+    <section className="gw-info-block gw-doors-block">
+      <span className="gw-eyebrow">WHILE YOU ARE HERE</span>
+      <h2>Three other things you can do</h2>
+      <div className="gw-more-doors"><Link to="/search">Browse all products <Icon.arrow /></Link><Link to="/affiliates">Earn by referring buyers <Icon.arrow /></Link><Link to="/apply/vendor">Sell on ZaMarket <Icon.arrow /></Link></div>
+      <p className="gw-doors-note">Nothing here is a condition of entry. Your entry is already counted.</p>
+    </section>
+  </div>
 }
 
 // The wheel.

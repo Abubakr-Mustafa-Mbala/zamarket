@@ -4,12 +4,16 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, Empty, Input, Field, useToast, Problem, Segmented } from '../../components/ui'
-import { renderPriceList, renderCatalogue, pagesFor, SHEET, STYLES, roomFor } from '../../lib/priceList'
-import { renderPromo, renderArrival, renderCollection, renderSpotlight, compositionsFor } from '../../lib/promoArt'
+import { SHEET } from '../../lib/priceList'
+import { renderPremiumStudio } from '../../lib/premiumStudio'
+import { STUDIO_PALETTES, DEFAULT_STUDIO_PALETTE, studioPalette, premiumPagesFor } from '../../lib/studioThemes'
+import { renderPromo, renderArrival, compositionsFor } from '../../lib/promoArt'
 import { approvedFacts, buildHooks } from '../../lib/hooks'
 import { sharePicture } from '../../lib/shareCard'
 import Icon from '../../lib/icons'
 import { studioExportPlan, STUDIO_TOOLS, isRecentProduct, isActualOffer } from '../../lib/studioPlan'
+
+const MARKET_VENDOR = Object.freeze({ business_name: 'ZaMarket' })
 
 // The Creative Studio. A seller shouldn't need to know design to have a price
 // list that looks like a real business made it — and it is built from the live
@@ -33,24 +37,27 @@ function Gallery({ products, vendor, onPick }) {
     const make = async () => {
       const out = {}
       try {
-        out.priceList = previewUrl(await renderPriceList({
-          vendor, products: products.slice(0, 8), style: 'editorial', sheet: 'post', title: 'Price list',
-        }))
-      } catch { /* ignore */ }
+        out.priceList = previewUrl((await renderPremiumStudio({
+          kind: 'priceList', vendor, products: products.slice(0, 3), palette: 'copper', sheet: 'post',
+          title: 'Weekly Price List', link: window.location.origin, resolution: 1,
+        }))[0])
+      } catch { /* preview unavailable; never show an older low-quality template */ }
       try {
-        out.collection = previewUrl(await renderCollection({
-          products: products.slice(0, 4), vendor, settings: {}, link: `${window.location.host}`, title: 'The collection',
-        }))
-      } catch { /* ignore */ }
+        out.collection = previewUrl((await renderPremiumStudio({
+          kind: 'collection', products: products.slice(0, 4), vendor, palette: 'emerald',
+          sheet: 'post', link: window.location.origin, title: 'The Collection', resolution: 1,
+        }))[0])
+      } catch { /* preview unavailable; editor can retry */ }
       try {
-        out.spotlight = previewUrl(await renderSpotlight({
-          vendor, products: products.slice(0, 3), settings: {}, link: `${window.location.host}`,
-        }))
-      } catch { /* ignore */ }
+        out.spotlight = previewUrl((await renderPremiumStudio({
+          kind: 'spotlight', vendor, products: products.slice(0, 4), palette: 'copper',
+          sheet: 'post', link: window.location.origin, resolution: 1,
+        }))[0])
+      } catch { /* preview unavailable; editor can retry */ }
       if (hero) {
         if (arrivalItem) {
           try {
-            out.arrival = previewUrl(await renderArrival({ product: arrivalItem, settings: {}, link: `${window.location.host}/p/${arrivalItem.slug}` }))
+            out.arrival = previewUrl(await renderArrival({ product: arrivalItem, settings: {}, link: `${window.location.origin}/p/${arrivalItem.slug}`, resolution: 1 }))
           } catch { /* ignore */ }
         }
         const facts = approvedFacts({ product: hero, offer: null, reviews: [], settings: {} })
@@ -59,7 +66,7 @@ function Gallery({ products, vendor, onPick }) {
           try {
             out[comp.key] = previewUrl(await renderPromo({
               product: hero, offer: null, settings: {}, hook, link: `${window.location.host}/p/${hero.slug}`,
-              format: 'portrait', composition: comp.key,
+              format: 'portrait', composition: comp.key, resolution: 1,
             }))
           } catch { /* ignore */ }
         }
@@ -71,7 +78,7 @@ function Gallery({ products, vendor, onPick }) {
   }, [products, vendor, hero?.id, arrivalItem?.id])
 
   const tiles = [
-    { key: 'priceList', title: 'Price list', note: 'Everything you sell, on one sheet', action: 'Make a price list' },
+    { key: 'priceList', title: 'Price list', note: 'A branded price guide, across clear pages', action: 'Make a price list' },
     { key: 'collection', title: 'Collection', note: 'Several products in one picture', action: 'Make a collection' },
     { key: 'spotlight', title: 'Business spotlight', note: 'Your shop, not one item', action: 'Make a spotlight' },
     { key: 'arrival', title: 'New arrival', note: 'For a recently added product', action: 'Announce it' },
@@ -111,8 +118,9 @@ function Gallery({ products, vendor, onPick }) {
 
 export default function CreativeStudio({ vendorId, vendor }) {
   const toast = useToast()
-  const { profile, settings } = useAuth()
-  const [style, setStyle] = useState('catalogue')
+  const { settings } = useAuth()
+  const [palette, setPalette] = useState(DEFAULT_STUDIO_PALETTE)
+  const [colorOverrides, setColorOverrides] = useState({})
   const [sheet, setSheet] = useState('post')
   const [title, setTitle] = useState('Price list')
   const [note, setNote] = useState('')
@@ -135,7 +143,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
 
   const { data, loading, error, reload } = useData(async () => {
     let sel = supabase.from('public_products')
-      .select('id,name,slug,price,normal_price,images,category,featured_in_store,offering_type,fulfilment,created_at,description,benefits,vendor_name,vendor_id,sales_model')
+      .select('id,name,slug,price,normal_price,images,category,featured_in_store,offering_type,fulfilment,created_at,description,benefits,vendor_name,vendor_slug,vendor_id,sales_model')
       .eq('status', 'published').order('category').order('name')
     if (vendorId) sel = sel.eq('vendor_id', vendorId)
     else if (scope === 'mine') sel = sel.eq('owner_type', 'founder')
@@ -145,16 +153,19 @@ export default function CreativeStudio({ vendorId, vendor }) {
 
   // The sellers to choose between, for the staff picker.
   const { data: sellerList } = useData(async () => (vendorId ? [] : q(
-    supabase.from('public_vendors').select('id,business_name').order('business_name'),
+    supabase.from('public_vendors').select('id,business_name,slug,cover_url,logo_url,tagline').order('business_name'),
   )), [vendorId])
 
   const products = data || []
+  const selectedSeller = !vendorId && scope !== 'all' && scope !== 'mine' ? sellerList?.find((v) => v.id === scope) : null
+  const activeVendor = selectedSeller || vendor || MARKET_VENDOR
+  const chosenPalette = studioPalette(palette, colorOverrides)
   const cats = useMemo(() => [...new Set(products.map((p) => p.category).filter(Boolean))], [products])
   const shown = useMemo(() => products.filter((p) =>
     !search || p.name.toLowerCase().includes(search.toLowerCase())), [products, search])
   const picked = chosen === null ? products : products.filter((p) => chosen.includes(p.id))
   const isCatalogue = tool === 'priceList'
-  const totalPages = isCatalogue && picked.length ? pagesFor(picked, sheet).length : picked.length ? 1 : 0
+  const totalPages = isCatalogue && picked.length ? premiumPagesFor(picked, sheet).length : picked.length ? 1 : 0
   const exportPlan = picked.length && tool ? (() => { try { return studioExportPlan(tool, picked, sheet) } catch { return null } })() : null
 
   // A design is a snapshot. Never let an old price, product selection, or title
@@ -167,7 +178,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
     setBlob(null)
     setImg(null)
     setBusy(false)
-  }, [data, vendor, tool, style, sheet, title, note, chosen])
+  }, [data, vendor, tool, palette, colorOverrides, sheet, title, note, chosen])
 
   if (error) return <Problem error={error} what="your products" onRetry={reload} />
   if (loading) return <Loading shape="rows" />
@@ -194,24 +205,25 @@ export default function CreativeStudio({ vendorId, vendor }) {
     const currentGeneration = ++generationId.current
     setBusy(true)
     try {
-      const seller = vendor || { business_name: profile?.full_name || 'ZaMarket' }
-      const link = seller?.slug ? `${window.location.origin}/${seller.slug}` : window.location.origin
+      const seller = activeVendor
+      const link = seller?.slug ? `${window.location.origin}/${encodeURIComponent(seller.slug)}` : window.location.origin
       const product = plan.products[0]
-      const productLink = `${window.location.origin}/p/${product.slug || product.id}`
+      const productLink = `${window.location.origin}/p/${encodeURIComponent(product.slug || product.id)}`
       const config = { vendor: seller, products: plan.products, settings: settings || {}, link, title }
+      const theme = { palette, overrides: colorOverrides }
       let blobs
       if (tool === 'priceList') {
-        blobs = await renderCatalogue({ ...config, products: picked, style, sheet, note: note || undefined })
+        blobs = await renderPremiumStudio({ ...config, ...theme, kind: 'priceList', products: picked, sheet, note: note || undefined })
       } else if (tool === 'collection') {
-        blobs = [await renderCollection({ ...config, format: plan.format })]
+        blobs = await renderPremiumStudio({ ...config, ...theme, kind: 'collection', sheet })
       } else if (tool === 'spotlight') {
-        blobs = [await renderSpotlight({ ...config, format: plan.format })]
+        blobs = await renderPremiumStudio({ ...config, ...theme, kind: 'spotlight', sheet, note: note || undefined })
       } else if (tool === 'arrival') {
-        blobs = [await renderArrival({ product, settings: settings || {}, link: productLink, format: plan.format })]
+        blobs = [await renderArrival({ product, settings: settings || {}, link: productLink, format: plan.format, theme: chosenPalette })]
       } else {
         const facts = approvedFacts({ product, offer: null, reviews: [], settings: settings || {} })
         const hook = buildHooks(facts)[0]?.text || product.name
-        blobs = [await renderPromo({ product, offer: null, settings: settings || {}, hook, link: productLink, format: plan.format, composition: tool })]
+        blobs = [await renderPromo({ product, offer: null, settings: settings || {}, hook, link: productLink, format: plan.format, composition: tool, theme: chosenPalette })]
       }
       if (currentGeneration !== generationId.current) return
       if (!blobs?.length || blobs.some((b) => !b)) throw new Error('Image export returned no data')
@@ -226,9 +238,10 @@ export default function CreativeStudio({ vendorId, vendor }) {
   }
 
   const filename = (pageIndex = null) => {
-    const base = (vendor?.business_name || 'zamarket').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+    const base = (activeVendor?.business_name || 'zamarket').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
     const suffix = pageIndex == null ? '' : `-${pageIndex}`
-    return `${base}-${exportPlan?.filenameBase || 'creative'}${suffix}.${exportPlan?.extension || 'png'}`
+    const extension = ['priceList', 'collection', 'spotlight'].includes(tool) ? 'png' : exportPlan?.extension || 'jpg'
+    return `${base}-${exportPlan?.filenameBase || 'creative'}${suffix}.${extension}`
   }
   const downloadBlob = (file, name) => {
     const url = URL.createObjectURL(file)
@@ -239,23 +252,26 @@ export default function CreativeStudio({ vendorId, vendor }) {
   }
   const download = () => {
     if (!blob) return
-    downloadBlob(blob, filename())
+    const selectedPage = pages.length > 1 ? pages.findIndex((p) => p.blob === blob) + 1 : null
+    downloadBlob(blob, filename(selectedPage))
     toast('Saved to your downloads')
   }
   const share = async () => {
     if (!blob) return
-    const how = await sharePicture(blob, { caption: `${vendor?.business_name || 'ZaMarket'} — ${STUDIO_TOOLS[tool]?.name || title}`, filename: filename() })
+    const selectedPage = pages.length > 1 ? pages.findIndex((p) => p.blob === blob) + 1 : null
+    const how = await sharePicture(blob, { caption: `${activeVendor?.business_name || 'ZaMarket'} — ${STUDIO_TOOLS[tool]?.name || title}`, filename: filename(selectedPage) })
     if (how === 'downloaded') toast('Saved to your downloads')
   }
 
-  if (!tool) return <Gallery products={products} vendor={vendor || { business_name: 'ZaMarket' }} onPick={(k) => {
+  if (!tool) return <Gallery products={products} vendor={activeVendor} onPick={(k) => {
     if (k === 'arrival') setChosen([products.find(isRecentProduct)?.id].filter(Boolean))
     else if (k === 'offer') setChosen([products.find(isActualOffer)?.id].filter(Boolean))
     else if (['hero', 'editorial', 'dark'].includes(k) && products.some((p) => p.images?.[0])) setChosen([products.find((p) => p.images?.[0])?.id].filter(Boolean))
     else setChosen(null)
     setTool(k)
-    setTitle(k === 'collection' ? 'The collection' : 'Price list')
-    if (k !== 'priceList') setStyle('editorial')
+    setTitle(k === 'collection' ? 'The Collection' : k === 'priceList' ? 'Weekly Price List' : 'Price list')
+    setPalette(k === 'dark' ? 'midnight' : k === 'collection' ? 'emerald' : 'copper')
+    setColorOverrides({})
   }} />
 
   return (
@@ -309,25 +325,36 @@ export default function CreativeStudio({ vendorId, vendor }) {
               )
             })}
           </div>
-          {isCatalogue && pagesFor(picked, sheet).length > 1 && (
-            <p className="tiny muted">{picked.length} products will be laid out as <strong>{pagesFor(picked, sheet).length} pages</strong>, kept in their categories. Squeezing them onto one sheet would make it unreadable.</p>
+          {isCatalogue && premiumPagesFor(picked, sheet).length > 1 && (
+            <p className="tiny muted">{picked.length} products will be laid out as <strong>{premiumPagesFor(picked, sheet).length} pages</strong>, with comfortable spacing. Squeezing them onto one sheet would make it unreadable.</p>
           )}
         </section>
 
         <section className="card form-grid">
-          {(isCatalogue || tool === 'collection') && <Field label="Heading"><Input value={title} onChange={setTitle} placeholder="Price list" /></Field>}
-          {isCatalogue && <Field label="Line at the bottom" hint="Leave empty for “Order on ZaMarket”"><Input value={note} onChange={setNote} placeholder="Order on ZaMarket" /></Field>}
-          {isCatalogue && <Field label="Design" hint={(STYLES[style] || {}).note} span>
-            <div className="chips wrap">
-              {Object.values(STYLES).map((s) => (
-                <button key={s.key} className={`chip ${style === s.key ? 'on' : ''}`} onClick={() => setStyle(s.key)} title={s.note}>{s.label}</button>
+          {(isCatalogue || tool === 'collection') && <Field label="Heading"><Input value={title} onChange={setTitle} placeholder="Weekly Price List" /></Field>}
+          {(isCatalogue || tool === 'spotlight') && <Field label={isCatalogue ? 'Call to action' : 'Vendor tagline'} hint={isCatalogue ? 'Shown below the products' : 'A short, truthful description of this shop'}><Input value={note} onChange={setNote} placeholder={isCatalogue ? 'Shop on ZaMarket' : 'Discover our shop on ZaMarket'} /></Field>}
+          <div className="span studio-color-editor">
+            <div className="between"><div><strong>Color collection</strong><p className="tiny muted">Choose a premium palette, then personalize either color. Your real product photos and prices stay unchanged.</p></div>
+              <button type="button" className="btn sm ghost" onClick={() => { setPalette(DEFAULT_STUDIO_PALETTE); setColorOverrides({}) }}>Reset</button>
+            </div>
+            <div className="studio-theme-grid" role="group" aria-label="Premium export color themes">
+              {Object.values(STUDIO_PALETTES).map((p) => (
+                <button type="button" key={p.key} className={`studio-theme-choice ${palette === p.key ? 'selected' : ''}`}
+                  aria-pressed={palette === p.key} onClick={() => {setPalette(p.key); setColorOverrides({})}}>
+                  <span className="studio-theme-dot" style={{ background: p.background, borderColor: p.accent }}><span style={{ background: p.accent }}/></span>
+                  <span>{p.label}</span>
+                </button>
               ))}
             </div>
-          </Field>}
+            <div className="studio-color-controls">
+              <label className="studio-color-control"><span>Highlight color</span><span className="studio-color-control-input"><input type="color" value={chosenPalette.accent} aria-label="Change highlight color" onChange={(e) => setColorOverrides((prev) => ({ ...prev, accent: e.target.value }))}/><code>{chosenPalette.accent}</code></span></label>
+              <label className="studio-color-control"><span>Background color</span><span className="studio-color-control-input"><input type="color" value={chosenPalette.background} aria-label="Change background color" onChange={(e) => setColorOverrides((prev) => ({ ...prev, background: e.target.value }))}/><code>{chosenPalette.background}</code></span></label>
+            </div>
+          </div>
           <Field label="Size" span>
             <Segmented options={Object.values(SHEET).filter((s) => isCatalogue || s.key !== 'a4').map((s) => [s.key, s.label])} value={sheet === 'a4' && !isCatalogue ? 'post' : sheet} onChange={setSheet} />
           </Field>
-          <div className="span studio-export-note"><strong>{isCatalogue ? 'High-resolution PNG catalogue' : 'High-resolution JPEG creative'}</strong><span>{isCatalogue ? SHEET[sheet].w : 1080} × {isCatalogue ? SHEET[sheet].h : ({post:1350, story:1920, square:1080}[sheet] || 1350)} px · {totalPages} {totalPages === 1 ? 'page' : 'pages'} · Current catalogue prices · zamarket.shop</span></div>
+          <div className="span studio-export-note"><strong>{['priceList', 'collection', 'spotlight'].includes(tool) ? 'High-resolution branded PNG' : 'High-resolution JPEG creative'}</strong><span>{SHEET[sheet === 'a4' && !isCatalogue ? 'post' : sheet].w * 2} × {SHEET[sheet === 'a4' && !isCatalogue ? 'post' : sheet].h * 2} px · {totalPages} {totalPages === 1 ? 'page' : 'pages'} · Current catalogue prices · zamarket.shop</span></div>
           <div className="span"><button className="btn primary block" onClick={make} disabled={busy}>{busy ? 'Making it…' : 'Generate high-quality design'}</button></div>
         </section>
       </div>

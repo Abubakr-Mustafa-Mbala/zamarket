@@ -7,6 +7,7 @@ import { useSaved } from '../../lib/saved'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Stars, Modal, Field, Input, useToast, Loading } from '../../components/ui'
+import ErrorBoundary from '../../components/ErrorBoundary'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
@@ -425,13 +426,14 @@ function FooterGroup({ title, children }) {
   )
 }
 
-function ShopFooter({ user, home }) {
+function ShopFooter({ user, home, giveaway }) {
   return (
     <footer className="shop-footer">
       <div className="sf-groups">
         <FooterGroup title="Shop">
           <Link to="/search">All products</Link>
           <Link to="/search?deals=1">Today's deals</Link>
+          {giveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(giveaway)}`}><Icon.gift /> Live giveaway</Link>}
           <Link to="/sellers">Sellers</Link>
           <Link to="/blog">Blog &amp; guides</Link>
           <Link to="/review">Rate an order</Link>
@@ -499,6 +501,23 @@ export function PublicShell() {
   const [cat, setCat] = useState(sp.get('cat') || '')
   useEffect(() => { setQ(sp.get('q') || ''); setCat(sp.get('cat') || '') }, [sp])
 
+  // A giveaway link appears only while a campaign is genuinely open. An
+  // always-on "Win now" button that leads to nothing teaches people to ignore
+  // it, which is the opposite of what the campaign is for.
+  const [activeGiveaway, setActiveGiveaway] = useState(null)
+  useEffect(() => {
+    let alive = true
+    const check = () => supabase.from('giveaway_campaigns').select('slug,closes_at')
+      .eq('status', 'live').gt('closes_at', new Date().toISOString())
+      .order('closes_at', { ascending: true }).limit(1)
+      .then(({ data, error }) => { if (alive && !error) setActiveGiveaway(data?.[0]?.slug || null) })
+      .catch(() => { /* the shop works without it */ })
+    check()
+    const onFocus = () => check()
+    window.addEventListener('focus', onFocus)
+    return () => { alive = false; window.removeEventListener('focus', onFocus) }
+  }, [])
+
   // Remember which platform this visit came from, once, on arrival. It is
   // read from ?src= on the link rather than from the referrer, because
   // WhatsApp — where most of this will be shared — sends no referrer and
@@ -561,17 +580,22 @@ export function PublicShell() {
           <Link to="/search?deals=1">Today's deals</Link>
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Stores</Link>
+          {activeGiveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(activeGiveaway)}`}><Icon.gift /> Live giveaway</Link>}
         </nav>
       </header>
 
       {pathname !== '/affiliates' && <CategoryRail />}
       <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
-        <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+        {/* The boundary matters most here: without it a single failed page
+            takes the whole marketplace down to a black screen. */}
+        <ErrorBoundary home="/">
+          <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
+        </ErrorBoundary>
       </main>
       <BottomBar />
 
-      <ShopFooter user={user} home={home} />
+      <ShopFooter user={user} home={home} giveaway={activeGiveaway} />
 
       {showBar && (
         <div className="cart-bar">

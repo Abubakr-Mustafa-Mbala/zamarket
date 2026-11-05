@@ -2,12 +2,48 @@
   command = "npm run build"
   publish = "dist"
 
-# Search engines and WhatsApp read these before the app loads
+# Page files carry a hash of their contents in the name, so a given name always
+# means the same bytes and can be kept forever.
 [[headers]]
   for = "/assets/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
 
+# The page itself must never be kept. It is the thing that says which page
+# files to load, so a stale copy asks for files that no longer exist and the
+# site refuses to open — which is exactly the fault this header prevents.
+# "no-cache" does not mean "do not store"; it means "ask the server first",
+# which also stops a mobile network from serving its own copy.
+[[headers]]
+  for = "/"
+  [headers.values]
+    Cache-Control = "public, max-age=0, no-cache, must-revalidate"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, no-cache, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, no-cache, must-revalidate"
+
+[[headers]]
+  for = "/site.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=0, no-cache, must-revalidate"
+
+# A missing page file must come back as a plain 404. Without this rule the
+# catch-all below answers it with the site's HTML, the browser is handed a web
+# page where it expected JavaScript, and the real problem is buried under a
+# confusing syntax error.
+[[redirects]]
+  from = "/assets/*"
+  to = "/asset-missing.txt"
+  status = 404
+
+# Every other address is a page inside the app.
 [[redirects]]
   from = "/*"
   to = "/index.html"
