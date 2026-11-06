@@ -19,11 +19,20 @@ function Editor({ row, vendors, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }))
 
+  // "0977 123 456, Lucy" or just a number, one per line.
+  const parsePeople = (text) => String(text || '').split('\n')
+    .map((line) => {
+      const [phone, ...rest] = line.split(',')
+      return { phone: (phone || '').trim(), name: rest.join(',').trim() || null }
+    })
+    .filter((p) => p.phone)
+
   const save = async () => {
     if (!f.code.trim()) return toast('Give it a code people can type', true)
     if (!(Number(f.value) > 0)) return toast('How much is the discount?', true)
+    const people = parsePeople(f.people)
     setBusy(true)
-    const { error } = await supabase.rpc('save_coupon', {
+    const { data, error } = await supabase.rpc('save_coupon', {
       payload: {
         ...(row?.id ? { id: row.id } : {}),
         code: f.code.trim().toUpperCase(), description: f.description || null,
@@ -36,9 +45,22 @@ function Editor({ row, vendors, onClose, onSaved }) {
         status: f.status,
       },
     })
+    if (error) { setBusy(false); return toast(error.message, true) }
+
+    // Named recipients are set after the coupon exists, because they hang off
+    // its id. Doing this turns the coupon into a targeted one: only these
+    // people can use the code, whoever else gets hold of it.
+    if (people.length) {
+      const { error: e2 } = await supabase.rpc('set_coupon_recipients', {
+        p_coupon: data?.id || row?.id, p_people: people,
+      })
+      if (e2) { setBusy(false); return toast(`Coupon saved, but the list did not: ${e2.message}`, true) }
+    }
     setBusy(false)
-    if (error) return toast(error.message, true)
-    toast('Coupon saved'); onSaved()
+    toast(f.funded_by === 'vendor' && !isVendor
+      ? 'Saved. The seller must accept it before anyone can use it.'
+      : 'Coupon saved')
+    onSaved()
   }
 
   // A worked example on a K125 order, because percentages hide the damage.
@@ -87,6 +109,11 @@ function Editor({ row, vendors, onClose, onSaved }) {
           <Field label="What it is for" span hint="Your own record">
             <Textarea value={f.description} onChange={set('description')} rows={2} placeholder="Launch week" />
           </Field>
+          <Field label="Give it to specific people only" span
+            hint="One phone number per line, with a name after a comma if you like. Leave empty and anyone with the code can use it.">
+            <Textarea value={f.people || ''} onChange={set('people')} rows={3}
+              placeholder={'0977 123 456, Lucy\n0966 555 111'} />
+          </Field>
         </div>
 
         <div className="price-maths">
@@ -100,6 +127,13 @@ function Editor({ row, vendors, onClose, onSaved }) {
                 : 'your share of the sale'}
             </strong>
           </div>
+          {f.funded_by === 'vendor' && !isVendor && (
+            <p className="tiny" style={{ color: 'var(--muted)' }}>
+              You are spending this seller's money, so it does not go live when
+              you save it. It appears on their Coupons page and starts working
+              only once they accept it.
+            </p>
+          )}
           {f.funded_by === 'marketplace' && capped >= 25 && (
             <p className="tiny" style={{ color: 'var(--warn)' }}>
               On a sale like this your whole share is about {money(25)}. A discount this size means you

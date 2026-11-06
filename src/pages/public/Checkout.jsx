@@ -156,6 +156,64 @@ function Bumps() {
   )
 }
 
+// A coupon the customer was given. The database has the final say on whether
+// it stands and what it is worth — this only shows them the answer before they
+// commit, so the total on screen matches the one they will be charged.
+function useCoupon(subtotal, phone, vendorId) {
+  const [code, setCode] = useState('')
+  const [applied, setApplied] = useState(null)   // { code, discount, label }
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  // A coupon checked against one basket must not survive a change to it.
+  useEffect(() => { setApplied(null); setNote('') }, [subtotal, vendorId])
+
+  const apply = async () => {
+    const entered = code.trim()
+    if (!entered) return
+    setBusy(true)
+    const { data, error } = await supabase.rpc('coupon_check', {
+      p_code: entered, p_subtotal: subtotal, p_vendor: vendorId || null, p_phone: phone || null,
+    })
+    setBusy(false)
+    if (error) { setApplied(null); return setNote('We could not check that code just now.') }
+    if (!data?.ok) { setApplied(null); return setNote(data?.reason || 'We do not recognise that code.') }
+    setApplied({ code: entered, discount: Number(data.discount) || 0, label: data.label })
+    setNote('')
+  }
+
+  const clearCoupon = () => { setApplied(null); setCode(''); setNote('') }
+  return { code, setCode, applied, note, busy, apply, clearCoupon }
+}
+
+function CouponRow({ coupon }) {
+  const { code, setCode, applied, note, busy, apply, clearCoupon } = coupon
+  if (applied) {
+    return (
+      <div className="between small mt">
+        <span>Coupon <b>{applied.code.toUpperCase()}</b>{applied.label ? <span className="muted"> · {applied.label}</span> : ''}
+          {' '}<button type="button" className="linkish" onClick={clearCoupon}>Remove</button></span>
+        <span className="save money">−{money(applied.discount)}</span>
+      </div>
+    )
+  }
+  return (
+    <div className="mt">
+      <div className="row gap">
+        <input
+          className="input" value={code} onChange={(e) => setCode(e.target.value)}
+          placeholder="Coupon code" aria-label="Coupon code" autoComplete="off"
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); apply() } }}
+        />
+        <button type="button" className="btn" onClick={apply} disabled={busy || !code.trim()}>
+          {busy ? 'Checking…' : 'Apply'}
+        </button>
+      </div>
+      {note && <div className="tiny muted mt" role="status">{note}</div>}
+    </div>
+  )
+}
+
 export function Checkout() {
   const { items, subtotal, savings, payload, clear, attribution, madeToOrder, needsAddress, needsDelivery, setChoice, touch } = useCart()
   const [booked, setBooked] = useState({})
@@ -202,6 +260,12 @@ export function Checkout() {
   const local = district?.is_local_zone
   const shop = useShopInfo()
   const localFee = useLocalFee(items.map((i) => i.vendor_id))
+  // A seller's own coupon only applies when the whole basket is theirs, which
+  // is the same rule place_order applies when it works the discount out again.
+  const basketVendors = [...new Set(items.map((i) => i.vendor_id).filter(Boolean))]
+  const basketVendor = basketVendors.length === 1 ? basketVendors[0] : null
+  const coupon = useCoupon(subtotal, f.phone, basketVendor)
+  const discount = coupon.applied?.discount || 0
   const fee = needsDelivery && local && !shop.deliveryIncluded ? (freeDelivery ? 0 : (localFee ?? 0)) : 0
   const deposit = items.find((i) => i.offer_type === 'payment_plan')
 
@@ -226,6 +290,9 @@ export function Checkout() {
         needed_by: rules ? neededBy : null,
         customer: { ...f, province_id: f.province_id || null, district_id: f.district_id || null },
         items: payload(),
+        // The code only; the database works out whether it stands and what it
+        // is worth. Whatever the page showed is a preview, never the charge.
+        coupon: coupon.applied?.code || null,
         // attribution() already carries the channel the visitor arrived
         // through. A hard-coded 'marketplace' used to sit here, after the
         // spread, which quietly overwrote it — every order was recorded as
@@ -309,7 +376,8 @@ export function Checkout() {
           <span>{!needsDelivery ? 'Not needed' : shop.deliveryIncluded ? <span className="save">Free</span> : !f.district_id ? '—' : local ? (freeDelivery ? <span className="save">Free</span> : localFee == null ? '…' : money(localFee)) : 'Confirmed by phone'}</span>
         </div>
         {fdNext != null && (!f.district_id || local) && <div className="tiny save">Add {money(fdNext - subtotal)} more for free delivery in Lusaka</div>}
-        <div className="between strong mt"><span>Estimated total</span><span className="money">{money(subtotal + fee)}{needsDelivery && f.district_id && !local && !shop.deliveryIncluded ? ' + delivery to confirm' : ''}</span></div>
+        <CouponRow coupon={coupon} />
+        <div className="between strong mt"><span>Estimated total</span><span className="money">{money(Math.max(subtotal - discount, 0) + fee)}{needsDelivery && f.district_id && !local && !shop.deliveryIncluded ? ' + delivery to confirm' : ''}</span></div>
         {deposit && <div className="tiny muted mt">Deposit plan: you'll pay a deposit when we confirm, the rest on delivery.</div>}
       </div>
       {needsDelivery && !shop.deliveryIncluded && f.district_id && !local && (

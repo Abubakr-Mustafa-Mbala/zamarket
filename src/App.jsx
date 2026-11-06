@@ -80,6 +80,7 @@ const VendorPayouts = named(vendorPages, 'VendorPayouts')
 const VendorStore = named(vendorPages, 'VendorStore')
 const VendorStudio = named(vendorPages, 'VendorStudio')
 const VendorMarketing = named(vendorPages, 'VendorMarketing')
+const VendorCoupons = named(() => import('./pages/vendor/VendorCoupons'), 'VendorCoupons')
 
 const STAFF = ['founder', 'ops', 'finance', 'delivery', 'marketing']
 
@@ -214,6 +215,7 @@ export default function App() {
         <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="earnings" element={<VendorEarnings />} />
         <Route path="marketing" element={<VendorMarketing />} />
+        <Route path="coupons" element={<VendorCoupons />} />
       </Route>
 
       <Route element={<PublicShell />}>

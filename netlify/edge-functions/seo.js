@@ -18,6 +18,7 @@ const RESERVED = new Set([
   'p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review',
   'login', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
   'free', 'invite', 'saved', 'categories', 'about', 'how-it-works', 'protection',
+  'giveaways',
   'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml',
 ])
 const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
@@ -158,6 +159,12 @@ export default async function handler(request, context) {
     title = `Shop product categories in Lusaka | ${SHOP}`
   } else if (parts[0] === 'protection') {
     title = `Customer protection and buying safely | ${SHOP}`
+  } else if (parts[0] === 'giveaways') {
+    // Entry is free and no purchase is required, so the copy must not imply
+    // that buying improves anyone's chances.
+    title = `Giveaways | ${SHOP}`
+    description = 'Free-to-enter giveaways from local sellers on ZA Market. No purchase necessary. Winners are drawn at random and announced publicly.'
+    canonical = parts.length === 2 ? `${SITE}/giveaways/${parts[1]}` : `${SITE}/giveaways`
   }
 
   if (base && key && parts[0] !== 'blog' && parts[0] !== 'search') {

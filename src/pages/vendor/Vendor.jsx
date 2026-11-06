@@ -39,6 +39,9 @@ export function VendorHome() {
     products: await q(supabase.from('products').select('id,name,status,images,category,featured,rating,fulfilment').eq('vendor_id', v.id)),
     sections: await q(supabase.from('store_sections').select('id,name,sort').eq('vendor_id', v.id).order('sort')),
     store: await q(supabase.rpc('vendor_store_stats')),
+    // Discounts ZaMarket has suggested against this seller's money. They do
+    // nothing until the seller accepts, so the seller has to be told.
+    coupons: await q(supabase.rpc('my_coupons')),
   } : null, [v?.id])
   if (!v) return <Empty title="No vendor profile">Your account isn't linked to an approved vendor application.</Empty>
   if (loading || !data) return <Loading />
@@ -46,6 +49,7 @@ export function VendorHome() {
   const open = data.setts.filter((s) => ['pending', 'eligible', 'approved'].includes(s.status)).reduce((t, s) => t + n(s.net_payable), 0)
   const paid = data.setts.filter((s) => s.status === 'paid').reduce((t, s) => t + n(s.net_payable), 0)
   const fees = data.setts.filter((s) => s.status !== 'cancelled').reduce((t, s) => t + n(s.marketplace_fee), 0)
+  const couponsWaiting = (data.coupons || []).filter((c) => c.needs_my_answer).length
   return (
     <div className="stack">
       <div className="page-head workspace-page-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR BUSINESS, AT A GLANCE</span><h1>Welcome back, {v.business_name}.</h1><p>Stay on top of orders, keep your catalogue fresh and grow your storefront.</p></div><div className="btn-row"><Link className="btn" to="/vendor/shopfront">Edit shopfront</Link><Link className="btn primary" to="/vendor/products">Manage products <Icon.arrow /></Link></div></div>
@@ -70,6 +74,12 @@ export function VendorHome() {
           to: '/vendor/marketing', icon: <Icon.message />,
           label: 'Share your shop', note: 'Make a picture or a price list for WhatsApp',
         },
+        ...(couponsWaiting > 0 ? [{
+          to: '/vendor/coupons', icon: <Icon.tag />, urgent: true,
+          label: couponsWaiting === 1 ? 'A discount needs your approval' : 'Discounts need your approval',
+          note: 'ZaMarket suggested these. They only start once you accept.',
+          value: couponsWaiting,
+        }] : []),
       ]} />
 
       <div className="grid-4">

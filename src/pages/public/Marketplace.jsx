@@ -50,11 +50,29 @@ async function loadCatalogue({ force = false } = {}) {
   catalogueRequest = (async () => {
     // Supabase limits individual responses; page each public view to avoid
     // hiding products, offers, or vendors once the marketplace grows.
-    const [products, offers, vendors] = await Promise.all([
+    //
+    // Only products are essential. Offers add deal badges and vendors add the
+    // sellers shelf, so if either fails the shop still opens without them.
+    // Previously all three were awaited together and one failure blanked the
+    // whole marketplace: a permission error on public_offers took the shop
+    // down for every logged-out visitor while signed-in ones saw nothing wrong.
+    const [productsResult, offersResult, vendorsResult] = await Promise.allSettled([
       fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
       fetchCataloguePages((from, to) => supabase.from('public_offers').select('id,product_id,type,name,deal_price,normal_value,units,end_at,remaining').order('id').range(from, to)),
       fetchCataloguePages((from, to) => supabase.from('public_vendors').select('*').order('business_name').order('id').range(from, to)),
     ])
+
+    // Without products there is no marketplace, so that one still throws.
+    if (productsResult.status === 'rejected') throw productsResult.reason
+    const products = productsResult.value
+
+    const optional = (result, label) => {
+      if (result.status === 'fulfilled') return result.value
+      console.error(`Catalogue: ${label} unavailable, continuing without it.`, result.reason)
+      return []
+    }
+    const offers = optional(offersResult, 'offers')
+    const vendors = optional(vendorsResult, 'vendors')
     const offersBy = {}
     for (const offer of offers) {
       (offersBy[offer.product_id] = offersBy[offer.product_id] || []).push(offer)

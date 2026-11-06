@@ -68,6 +68,7 @@ const VENDOR_NAV = [
   { to: '/vendor/orders', label: 'Orders' },
   { to: '/vendor/earnings', label: 'My earnings' },
   { to: '/vendor/payouts', label: 'Payouts' },
+  { to: '/vendor/coupons', label: 'Coupons' },
   { to: '/vendor/marketing', label: 'Share and advertise' },
 ]
 
