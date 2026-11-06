@@ -50,10 +50,16 @@ export function Input({ value, onChange, type = 'text', money: isMoney, ...rest 
   )
 }
 
-export function Select({ value, onChange, options, placeholder, ...rest }) {
+// `options` is a list of values, or [value, label] pairs. It defaults to an
+// empty list on purpose: a Select written with <option> children instead of
+// this prop used to throw "Cannot read properties of undefined (reading
+// 'map')" and take the whole screen down with it. An empty dropdown is a
+// visible, recoverable mistake; a blank page is not.
+export function Select({ value, onChange, options = [], placeholder, children, ...rest }) {
   return (
     <select className="input" value={value ?? ''} onChange={(e) => onChange(e.target.value)} {...rest}>
       {placeholder && <option value="">{placeholder}</option>}
+      {children}
       {options.map((o) => {
         const [v, l] = Array.isArray(o) ? o : [o, title(o)]
         return <option key={v} value={v}>{l}</option>

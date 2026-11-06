@@ -254,11 +254,8 @@ function NewGiveaway({ products, onDone }) {
           <Input type="number" min="0" value={f.referral_max_per_person} onChange={set('referral_max_per_person')} />
         </Field>
         <Field label="Who pays the rewards" hint="Vendor-funded rewards do not come out of your commission.">
-          <Select value={f.referral_funded_by} onChange={set('referral_funded_by')}>
-            <option value="zamarket">ZaMarket</option>
-            <option value="vendor">The vendor</option>
-            <option value="shared">Shared</option>
-          </Select>
+          <Select value={f.referral_funded_by} onChange={set('referral_funded_by')}
+            options={[['zamarket', 'ZaMarket'], ['vendor', 'The seller'], ['shared', 'Shared']]} />
         </Field>
         <Field label="Description" span>
           <Textarea value={f.description} onChange={set('description')} rows={4}
