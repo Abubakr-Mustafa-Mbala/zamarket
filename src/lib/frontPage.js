@@ -137,10 +137,28 @@ export function frontPageOrder(products = [], { day = lusakaDay(), minimum = 8 }
 // Which department leads also rotates daily, with one thumb on the scale:
 // a department stocked by several different shops goes before one stocked by
 // a single shop, because it is the one that looks like a market.
+// The hand-picked shop window.
+//
+// Everything below arranges itself, which is fair but is not a shop window:
+// one seller uploading their whole range makes the whole page theirs, because
+// nothing can say "these are the things worth seeing first". `front_rank` is
+// that. It is set by hand, lowest first, and nothing else influences it — not
+// the daily rotation, not the department grouping, not how new the item is.
+//
+// Picked products are pulled out of everything underneath so the page does
+// not show the same thing twice.
+export function pickedForFront(products = []) {
+  return products
+    .filter((p) => p && p.front_rank != null)
+    .sort((a, b) => Number(a.front_rank) - Number(b.front_rank))
+}
+
 export function departmentShelves(products = [], {
   day = lusakaDay(), minPerShelf = 3, perShelf = 12, minimum = 8, maxShelves = 6,
+  excludeIds = null,
 } = {}) {
-  const live = products.filter(Boolean)
+  const skip = excludeIds instanceof Set ? excludeIds : new Set(excludeIds || [])
+  const live = products.filter(Boolean).filter((p) => !skip.has(p.id))
   const withPhoto = live.filter(hasPhoto)
   const pool = withPhoto.length >= minimum ? withPhoto : live
 

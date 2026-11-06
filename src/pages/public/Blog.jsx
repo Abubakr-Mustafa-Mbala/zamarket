@@ -192,6 +192,68 @@ export function BlogIndex() {
   )
 }
 
+// Sharing an article.
+//
+// This sits on the public page on purpose. Anyone reading can share it —
+// a customer, an affiliate, a vendor, or the owner. Nobody has to sign in,
+// and there is no separate "marketing" version of this.
+//
+// A pasted blog link is a grey rectangle in WhatsApp that nobody opens, so
+// the picture is the point: cover photo, headline, address underneath. The
+// three shapes are the three places people actually post to.
+function ShareArticle({ post }) {
+  const [busy, setBusy] = useState('')
+  const [note, setNote] = useState('')
+  const link = `https://zamarket.shop/blog/${post.slug}`
+  const caption = `${post.title}\n\n${post.excerpt || ''}\n\n${link}`.replace(/\n{3,}/g, '\n\n')
+
+  const picture = async (shape) => {
+    setBusy(shape); setNote('')
+    try {
+      const { articleCard, sharePicture } = await import('../../lib/shareCard')
+      const blob = await articleCard({ post, link, shape })
+      const how = await sharePicture(blob, { caption, filename: `${post.slug}-${shape}.jpg` })
+      setNote(how === 'shared' ? '' : 'Picture saved. Post it with the words below.')
+    } catch {
+      setNote('That did not work on this device. You can still copy the link.')
+    }
+    setBusy('')
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(caption); setNote('Copied. Paste it anywhere.') }
+    catch { setNote('Copying is blocked here — select the link above instead.') }
+  }
+
+  return (
+    <section className="post-share" aria-label="Share this article">
+      <h2>Share this</h2>
+      <p className="small muted">
+        Make a picture for WhatsApp status, Instagram or Facebook. The words
+        and the link come with it.
+      </p>
+      <div className="btn-row">
+        <button type="button" className="btn primary" onClick={() => picture('story')} disabled={!!busy}>
+          {busy === 'story' ? 'Making…' : 'Status / story picture'}
+        </button>
+        <button type="button" className="btn" onClick={() => picture('post')} disabled={!!busy}>
+          {busy === 'post' ? 'Making…' : 'Feed post picture'}
+        </button>
+        <a className="btn" target="_blank" rel="noopener noreferrer"
+           href={`https://wa.me/?text=${encodeURIComponent(caption)}`}>Send on WhatsApp</a>
+        <a className="btn" target="_blank" rel="noopener noreferrer"
+           href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`}>Facebook</a>
+        <button type="button" className="btn" onClick={copy}>Copy words and link</button>
+      </div>
+      {note && <p className="tiny muted mt" role="status">{note}</p>}
+      <p className="tiny muted mt">
+        Instagram has no share link, so use the picture: save it, then post it
+        from the Instagram app and paste the words there.
+      </p>
+    </section>
+  )
+}
+
 export function BlogPost() {
   const { slug } = useParams()
   const [post, setPost] = useState(null)
@@ -268,6 +330,7 @@ export function BlogPost() {
 
       <Article body={post.body} />
       <BuyBlock offerings={post.offerings} />
+      <ShareArticle post={post} />
 
       <section className="post-foot">
         <p>

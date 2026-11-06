@@ -16,6 +16,7 @@ import Funnels from './Funnels'
 import Seo from './Seo'
 import Coverage from './Coverage'
 import Featured from './Featured'
+import FrontPage from './FrontPage'
 import Proof from './Proof'
 import Creatives from './Creatives'
 import Blog from './Blog'
@@ -24,14 +25,14 @@ import Coupons from './Coupons'
 import { Campaigns, AdRequests, SpendAndSources } from '../admin/Growth'
 
 const SECTIONS = [
-  ['', 'Overview'], ['growth', 'Growth'], ['giveaways', 'Giveaways'], ['start', 'Start here'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['blog', 'Blog'], ['launch', 'Campaign launchpad'], ['coupons', 'Coupons'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
+  ['', 'Overview'], ['growth', 'Growth'], ['giveaways', 'Giveaways'], ['start', 'Start here'], ['front-page', 'Front page'], ['featured', 'Homepage hero'], ['proof', 'Proof library'], ['creatives', 'Creative record'], ['funnels', 'Funnels'], ['blog', 'Blog'], ['launch', 'Campaign launchpad'], ['coupons', 'Coupons'], ['seo', 'Search (SEO)'], ['coverage', 'Product coverage'], ['today', 'Today'], ['leads', 'Leads'], ['campaigns', 'Campaigns'], ['content', 'Content'],
   ['magnets', 'Lead magnets'], ['referrals', 'Referrals'], ['requests', 'Vendor requests'], ['spend', 'Ad spend'],
 ]
 
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, growth: GrowthDesk, giveaways: Giveaways, start: StartHere, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, launch: Launchpad, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': Overview, growth: GrowthDesk, giveaways: Giveaways, start: StartHere, 'front-page': FrontPage, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, launch: Launchpad, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
   const heading = SECTIONS.find(([k]) => k === section)[1]
   return (
     <div className="stack mk">
@@ -41,6 +42,7 @@ export default function MarketingHub() {
           <p>{{
             '': 'What marketing brought in, and where it came from.',
             giveaways: 'Free-to-enter prize draws. Entry on ZaMarket, winners picked by the system, never by you.',
+            'front-page': 'What a shopper sees first. Pick the products worth leading with; the rest of the page arranges itself underneath.',
             growth: 'Where the orders are actually coming from, and which products people open but never buy.',
             start: 'New to this? Start here: what to do, in order, and what every number means.',
             creatives: 'Every advert and price list made, and which styles get shared.',

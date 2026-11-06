@@ -271,3 +271,115 @@ export async function sharePicture(blob, { caption, filename = 'zamarket.jpg' })
   setTimeout(() => URL.revokeObjectURL(url), 2000)
   return 'downloaded'
 }
+
+// A published article, as a picture.
+//
+// A blog link pasted into WhatsApp is a grey rectangle nobody opens. This is
+// the article as something worth looking at: the cover photo, the headline
+// big enough to read on a phone at arm's length, and the address underneath.
+//
+// Three shapes, because the places people post to are not the same shape:
+//   'story' 1080x1920 — WhatsApp status, Instagram story, Facebook story
+//   'post'  1080x1350 — Instagram and Facebook feed
+//   'wide'  1200x630  — the preview card when the link itself is pasted
+export async function articleCard({ post, link, shape = 'post' }) {
+  const size = { story: [1080, 1920], post: [1080, 1350], wide: [1200, 630] }[shape] || [1080, 1350]
+  const [w, h] = size
+  const c = document.createElement('canvas')
+  c.width = w; c.height = h
+  const ctx = c.getContext('2d')
+  const pad = Math.round(w * 0.06)
+
+  ctx.fillStyle = INK
+  ctx.fillRect(0, 0, w, h)
+
+  // Full bleed, square corners. `cover` rounds its corners, which is right on
+  // a card inset from the edge and wrong on a photo that runs to the edge.
+  const photo = await loadImage(post?.cover_url)
+  const picH = Math.round(h * ({ story: 0.58, post: 0.52, wide: 0.40 }[shape] || 0.52))
+  if (photo) {
+    const scale = Math.max(w / photo.width, picH / photo.height)
+    const dw = photo.width * scale
+    const dh = photo.height * scale
+    ctx.save()
+    ctx.beginPath(); ctx.rect(0, 0, w, picH); ctx.clip()
+    ctx.drawImage(photo, (w - dw) / 2, (picH - dh) / 2, dw, dh)
+    ctx.restore()
+  } else {
+    ctx.fillStyle = PINE
+    ctx.fillRect(0, 0, w, picH)
+  }
+
+  // Fade the photo into the text, so a bright picture does not end on a line.
+  const fade = ctx.createLinearGradient(0, picH - 140, 0, picH)
+  fade.addColorStop(0, 'rgba(31,41,51,0)')
+  fade.addColorStop(1, INK)
+  ctx.fillStyle = fade
+  ctx.fillRect(0, picH - 140, w, 140)
+
+  // The band at the foot holds the mark and the address. Everything between
+  // the photo and that band is the text area, and the text is laid out to
+  // fit it rather than hoping it does.
+  const bandH = Math.round(h * 0.1)
+  const bandTop = h - bandH
+  const textTop = picH + Math.round(pad * 0.75)
+  const textBottom = bandTop - Math.round(pad * 0.6)
+  let y = textTop
+
+  if (post?.category) {
+    const catSize = Math.round(w * 0.028)
+    ctx.fillStyle = GOLD
+    ctx.font = `700 ${catSize}px Instrument Sans, system-ui, sans-serif`
+    ctx.textBaseline = 'top'
+    ctx.fillText(String(post.category).toUpperCase(), pad, y)
+    y += Math.round(catSize * (shape === 'wide' ? 1.6 : 1.9))
+  }
+
+  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#FFFFFF'
+  const titleSize = shape === 'wide' ? Math.round(w * 0.045) : Math.round(w * 0.066)
+  const titleLead = Math.round(titleSize * 1.16)
+  ctx.font = `700 ${titleSize}px Instrument Sans, system-ui, sans-serif`
+  // Never ask for more lines than there is room for.
+  const titleRoom = Math.max(1, Math.floor((textBottom - y) / titleLead))
+  const titleRows = wrap(ctx, post?.title || 'Read this on ZaMarket',
+                         w - pad * 2, Math.min(shape === 'wide' ? 2 : 3, titleRoom))
+  for (const row of titleRows) { ctx.fillText(row, pad, y); y += titleLead }
+
+  if (post?.excerpt) {
+    const exSize = Math.round(w * 0.032)
+    const exLead = Math.round(exSize * 1.4)
+    y += Math.round(pad * 0.35)
+    const lines = Math.floor((textBottom - y) / exLead)
+    if (lines >= 1) {
+      ctx.fillStyle = '#AEBECB'
+      ctx.font = `400 ${exSize}px Instrument Sans, system-ui, sans-serif`
+      const most = shape === 'story' ? 6 : shape === 'wide' ? 2 : 4
+      for (const row of wrap(ctx, post.excerpt, w - pad * 2, Math.min(most, lines))) {
+        ctx.fillText(row, pad, y); y += exLead
+      }
+    }
+  }
+
+  // Foot: the mark on the left, the address on the right, with the address
+  // shortened to whatever room is actually left so the two never collide.
+  ctx.fillStyle = '#121A22'
+  ctx.fillRect(0, bandTop, w, bandH)
+  const markSize = Math.round(bandH * 0.40)
+  brandLockup(ctx, pad, bandTop + Math.round((bandH - markSize * 1.65) / 2), markSize)
+
+  // The lockup already carries zamarket.shop, so repeating the address on
+  // the right would just say the same thing twice. Nobody can tap a picture
+  // either, so the useful thing to put here is what to do next; the full
+  // link travels in the caption beside the image.
+  const ctaSize = Math.round(w * 0.028)
+  ctx.font = `600 ${ctaSize}px Instrument Sans, system-ui, sans-serif`
+  ctx.fillStyle = GOLD
+  ctx.textAlign = 'right'
+  ctx.textBaseline = 'middle'
+  ctx.fillText('Read the full story', w - pad, bandTop + bandH / 2)
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+
+  return toBlob(c)
+}

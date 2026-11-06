@@ -21,7 +21,7 @@ import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { detectChannel, rememberChannel } from '../../lib/channel'
-import { frontPageOrder, departmentShelves, justAdded } from '../../lib/frontPage'
+import { frontPageOrder, departmentShelves, justAdded, pickedForFront } from '../../lib/frontPage'
 import { startAnalytics, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareProduct from '../../components/ShareProduct'
@@ -688,10 +688,14 @@ export function Storefront() {
   //
   // A marketplace with only one or two stocked departments has nothing to
   // group, so it falls back to the single mixed row it had before.
-  const shelves = departmentShelves(products)
+  // The hand-picked window comes first and is left exactly as chosen. It is
+  // held out of everything below so nothing appears twice.
+  const picked = pickedForFront(products)
+  const pickedIds = new Set(picked.map((p) => p.id))
+  const shelves = departmentShelves(products, { excludeIds: pickedIds })
   const useShelves = shelves.length >= 2
-  const frontRow = useShelves ? [] : frontPageOrder(products).slice(0, 8)
-  const shownIds = useShelves ? shelves.flatMap((s) => s.items.map((p) => p.id)) : frontRow.map((p) => p.id)
+  const frontRow = useShelves ? [] : frontPageOrder(products.filter((p) => !pickedIds.has(p.id))).slice(0, 8)
+  const shownIds = [...pickedIds, ...(useShelves ? shelves.flatMap((s) => s.items.map((p) => p.id)) : frontRow.map((p) => p.id))]
   const fresh = justAdded(products, 8).filter((p) => !frontRow.some((f) => f.id === p.id))
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
@@ -717,6 +721,15 @@ export function Storefront() {
       {ref && <p className="tiny hero-ref">You arrived through an affiliate link. Your purchase can credit the affiliate.</p>}
       {products.length === 0 ? <OpeningSoon /> : (
         <>
+          {picked.length > 0 && (
+            <section className="home-product-first" aria-label="Picked for the front page">
+              <div className="shelf-head">
+                <h2>Worth a look</h2>
+                <Link to="/search">All products <Icon.arrow /></Link>
+              </div>
+              <div className="home-product-grid">{picked.map(card)}</div>
+            </section>
+          )}
           {useShelves ? shelves.map((s) => (
             <section key={s.name} className="home-dept" aria-label={s.name}>
               <div className="shelf-head">

@@ -103,6 +103,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const [p, setP] = useState({ ...product, benefits_text: (product.benefits || []).join('\n'), images_text: (product.images || []).join('\n'), faqs_text: (product.faqs || []).map((f) => `${f.q} | ${f.a}`).join('\n'), seo_title: product.page?.seo?.title || '', seo_description: product.page?.seo?.description || '', fulfilment: product.fulfilment || 'in_stock', lead_time_days: product.lead_time_days ?? 0, time_slots_text: (product.time_slots || []).join(', '), service_location: product.service_location || 'at_seller', slot_capacity: product.slot_capacity ?? 1, order_days: product.order_days || [], options_text: (product.options || []).map((o) => `${o.name}: ${(o.choices || []).join(', ')}`).join('\n') })
   const [calc, setCalc] = useState({ mode: 'markup', value: settings.target_markup_pct ?? 50 })
   const [uploading, setUploading] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const set = (k) => (v) => setP((c) => ({ ...c, [k]: v }))
   const cost = effectiveCost(p)
   const isNew = !p.id
@@ -153,6 +154,23 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
     const res = isNew ? await supabase.from('products').insert(row) : await supabase.from('products').update(row).eq('id', p.id)
     if (res.error) return toast(res.error.message, true)
     toast(status === 'published' ? 'Published' : status === 'submitted' ? 'Sent for review' : 'Saved')
+    onDone()
+  }
+
+  // A product that has never been ordered is removed outright. One that has
+  // is taken off the site but kept, because orders, settlements and stock
+  // counts already refer to it. The database decides which, and says so.
+  const remove = async () => {
+    const sure = window.confirm(
+      `Remove "${p.name}"?\n\nIf it has never been ordered it will be deleted. `
+      + 'If it already appears in orders or stock records it will be taken off '
+      + 'the site and kept in the books instead.')
+    if (!sure) return
+    setRemoving(true)
+    const { data, error } = await supabase.rpc('delete_product', { p_id: p.id })
+    setRemoving(false)
+    if (error) return toast(error.message, true)
+    toast(data?.message || 'Done')
     onDone()
   }
 
@@ -335,6 +353,9 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           {!isNew && !vendorMode && <a className="btn" href={`/admin/products/${p.id}/page`}>Design the page</a>}
           {vendorMode && p.status !== 'published' && <button type="button" className="btn" onClick={() => save('submitted')}>Save and send for review</button>}
           {!vendorMode && p.status !== 'published' && p.status !== 'submitted' && <button type="button" className="btn copper" onClick={() => save('published')}>Save and publish</button>}
+          {!isNew && <button type="button" className="btn danger" onClick={remove} disabled={removing}>
+            {removing ? 'Removing…' : 'Delete'}
+          </button>}
         </div>
       </form>
     </Modal>

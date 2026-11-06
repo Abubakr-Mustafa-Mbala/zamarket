@@ -113,7 +113,8 @@ test('a nearly empty marketplace is not broken into lonely shelves', () => {
 
 test('the homepage renders shelves and falls back when there are too few', () => {
   const page = read('../src/pages/public/Marketplace.jsx')
-  assert.match(page, /const shelves = departmentShelves\(products\)/)
+  // The hand-picked window is held out of the shelves so nothing repeats.
+  assert.match(page, /const shelves = departmentShelves\(products, \{ excludeIds: pickedIds \}\)/)
   assert.match(page, /const useShelves = shelves\.length >= 2/)
   assert.match(page, /className="home-dept"/)
   // Each shelf heading links into that department rather than to everything.
