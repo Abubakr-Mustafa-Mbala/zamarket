@@ -130,3 +130,15 @@ test('products with no department are surfaced and fixable in one choice', () =>
 test('the warning disappears when there is nothing to fix', () => {
   assert.match(picker, /if \(!stray\.length\) return null/)
 })
+
+test('the homepage still gets the chosen order onto the products', () => {
+  // The rank now arrives from its own view, so it has to be merged back on
+  // before anything downstream reads p.front_rank.
+  assert.match(page, /from\('front_page_picks'\)\.select\('id,front_rank'\)/)
+  assert.match(page, /if \(ranks\.size\) for \(const p of products\) if \(ranks\.has\(p\.id\)\) p\.front_rank = ranks\.get\(p\.id\)/)
+})
+
+test('a failed picks fetch does not take the shop down', () => {
+  // Same rule as offers and vendors: only products are essential.
+  assert.match(page, /optional\(picksResult, 'front page picks'\)/)
+})

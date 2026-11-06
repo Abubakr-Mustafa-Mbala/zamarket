@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import { Link } from 'react-router-dom'
-import { isStaleBuild, recoverFromStaleBuild, dropCaches, dropForeignWorkers } from '../lib/recover'
+import { isStaleBuild, recoverFromStaleBuild, dropCaches, dropForeignWorkers, topFrames } from '../lib/recover'
 
 // The last line of defence against a black screen.
 //
@@ -21,7 +21,7 @@ import { isStaleBuild, recoverFromStaleBuild, dropCaches, dropForeignWorkers } f
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { error: null, updating: false }
+    this.state = { error: null, updating: false, where: '' }
   }
 
   static getDerivedStateFromError(error) {
@@ -32,6 +32,11 @@ export default class ErrorBoundary extends Component {
   componentDidCatch(error, info) {
     // Kept in the console so a failure can still be read off a real device.
     console.error('[ZaMarket] a page failed to render:', error, info?.componentStack)
+    // The message tells people to send this on because it points at the
+    // cause. On its own it does not: "Cannot read properties of undefined"
+    // names no file and no screen, so it points nowhere. React hands us the
+    // component stack, and the first few frames are the answer.
+    this.setState({ where: topFrames(info?.componentStack) })
     if (!isStaleBuild(error)) return
     recoverFromStaleBuild().then((started) => {
       // Already tried within the last minute: stop pretending and show the
@@ -41,7 +46,7 @@ export default class ErrorBoundary extends Component {
   }
 
   render() {
-    const { error, updating } = this.state
+    const { error, updating, where } = this.state
     if (!error) return this.props.children
 
     const home = this.props.home || '/'
@@ -67,12 +72,15 @@ export default class ErrorBoundary extends Component {
               ? 'Your phone is holding an old copy of ZaMarket and the page it is asking for is no longer there. Clearing it and loading again fixes this.'
               : 'Nothing was lost and nothing was saved incorrectly — this screen simply failed to draw. Try it again, and if it keeps happening, send this message on and it will point straight at the cause.'}
           </p>
-          <pre className="boundary-detail">{String(error?.message || error)}</pre>
+          <pre className="boundary-detail">
+            {String(error?.message || error)}
+            {where ? `\n\nin ${where}` : ''}
+          </pre>
           <div className="btn-row">
             {stale ? (
               <button className="btn primary" onClick={() => hardReload()}>Clear and load again</button>
             ) : (
-              <button className="btn primary" onClick={() => this.setState({ error: null, updating: false })}>Try again</button>
+              <button className="btn primary" onClick={() => this.setState({ error: null, updating: false, where: '' })}>Try again</button>
             )}
             <button className="btn" onClick={() => window.location.reload()}>Reload the page</button>
             <Link className="btn ghost" to={home}>Go back</Link>
@@ -82,6 +90,7 @@ export default class ErrorBoundary extends Component {
     )
   }
 }
+
 
 // The button a person presses after the automatic attempt has already run.
 // It ignores the once-a-minute guard, because this one was asked for.

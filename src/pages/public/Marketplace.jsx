@@ -56,10 +56,13 @@ async function loadCatalogue({ force = false } = {}) {
     // Previously all three were awaited together and one failure blanked the
     // whole marketplace: a permission error on public_offers took the shop
     // down for every logged-out visitor while signed-in ones saw nothing wrong.
-    const [productsResult, offersResult, vendorsResult] = await Promise.allSettled([
+    const [productsResult, offersResult, vendorsResult, picksResult] = await Promise.allSettled([
       fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to)),
       fetchCataloguePages((from, to) => supabase.from('public_offers').select('id,product_id,type,name,deal_price,normal_value,units,end_at,remaining').order('id').range(from, to)),
       fetchCataloguePages((from, to) => supabase.from('public_vendors').select('*').order('business_name').order('id').range(from, to)),
+      // The hand-picked front page, published as its own small view so that
+      // adding it never has to touch public_products.
+      fetchCataloguePages((from, to) => supabase.from('front_page_picks').select('id,front_rank').order('front_rank').order('id').range(from, to)),
     ])
 
     // Without products there is no marketplace, so that one still throws.
@@ -73,6 +76,11 @@ async function loadCatalogue({ force = false } = {}) {
     }
     const offers = optional(offersResult, 'offers')
     const vendors = optional(vendorsResult, 'vendors')
+
+    // Carry the chosen order onto the products themselves, so everything
+    // downstream can keep reading p.front_rank.
+    const ranks = new Map(optional(picksResult, 'front page picks').map((r) => [r.id, r.front_rank]))
+    if (ranks.size) for (const p of products) if (ranks.has(p.id)) p.front_rank = ranks.get(p.id)
     const offersBy = {}
     for (const offer of offers) {
       (offersBy[offer.product_id] = offersBy[offer.product_id] || []).push(offer)

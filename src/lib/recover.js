@@ -135,3 +135,25 @@ export function sweepOnBoot(scope = globalThis) {
     // Start-up must never be the thing that breaks.
   }
 }
+
+// The innermost components React was rendering when it threw, which is the
+// part that actually identifies the screen. A full stack is dozens of frames
+// of routers and providers; the first three are the ones that mean anything.
+//
+// Minified builds rename components, so a name is only worth printing when it
+// still looks like one. Anything shorter than three characters is a mangled
+// identifier and is dropped rather than printed as noise.
+export function topFrames(componentStack, howMany = 3) {
+  if (!componentStack) return ''
+  const names = String(componentStack)
+    .split('\n')
+    .map((line) => (line.match(/^\s*(?:at|in)\s+([A-Z][\w.]*)/) || [])[1])
+    .filter((name) => name && name.length > 2 && !/^(Suspense|Fragment|Provider|Consumer|Router|Routes|Outlet|ErrorBoundary)$/.test(name))
+  // The same component repeated adds nothing.
+  const seen = []
+  for (const name of names) {
+    if (!seen.includes(name)) seen.push(name)
+    if (seen.length >= howMany) break
+  }
+  return seen.join(' ‹ ')
+}

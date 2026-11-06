@@ -84,11 +84,16 @@ export default function FrontPage() {
   const [find, setFind] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const { data, loading, error, reload } = useData(async () => ({
-    products: await q(supabase.from('public_products')
-      .select('id,name,slug,price,images,category,vendor_name,vendor_id,front_rank')
-      .order('name')),
-  }), [])
+  const { data, loading, error, reload } = useData(async () => {
+    const [products, picks] = await Promise.all([
+      q(supabase.from('public_products')
+        .select('id,name,slug,price,images,category,vendor_name,vendor_id')
+        .order('name')),
+      q(supabase.from('front_page_picks').select('id,front_rank')),
+    ])
+    const ranks = new Map((picks || []).map((r) => [r.id, r.front_rank]))
+    return { products: (products || []).map((p) => ({ ...p, front_rank: ranks.get(p.id) ?? null })) }
+  }, [])
 
   if (error) return <Problem error={error} what="the front page" onRetry={typeof reload === 'function' ? reload : undefined} />
   if (loading) return <Loading />

@@ -3336,34 +3336,52 @@ alter table public.products add column if not exists front_rank int;
 create index if not exists products_front_rank_idx
   on public.products (front_rank) where front_rank is not null;
 
--- Expose it to the public view. The column is appended to the end of the
--- select list, because create-or-replace cannot insert one in the middle.
+-- The public view runs with the privileges of whoever queries it, and anon
+-- holds COLUMN-level grants on products, not a whole-table one. A new column
+-- in the view's select list that anon has not been granted makes the whole
+-- view fail with "permission denied for table products" -- which is the
+-- marketplace down for everyone not signed in. The place in the queue is not
+-- sensitive; it decides display order and nothing else.
+grant select (front_rank) on public.products to anon, authenticated;
+
+-- The pick is published through a view of its own rather than by rewriting
+-- public_products.
+--
+-- Appending a column to that view meant reading its definition back as text
+-- and splicing into it, which depends on the exact formatting Postgres
+-- happens to print -- formatting that differs between databases and between
+-- server versions. It also loses the view's own settings: create-or-replace
+-- does not carry reloptions across, so recreating a security_invoker view
+-- silently turns it into a security definer one.
+--
+-- A small view beside it has neither problem. It touches nothing that
+-- already works, needs no knowledge of how public_products is written, and
+-- exposes one number that decides display order and nothing else.
+
+create or replace view public.front_page_picks as
+  select p.id, p.front_rank
+    from public.products p
+    left join public.vendors v on v.id = p.vendor_id
+   where p.front_rank is not null
+     and p.status in ('published', 'out_of_stock')
+     and (p.vendor_id is null or v.status = 'approved');
+
+alter view public.front_page_picks set (security_invoker = off);
+grant select on public.front_page_picks to anon, authenticated;
+
+-- If an earlier version of this file already spliced front_rank into
+-- public_products, that view is now a security definer one by accident.
+-- Put it back, and make sure anon may read the column it now selects.
 do $$
-declare def text; body text;
 begin
   if exists (
     select 1 from pg_attribute
      where attrelid = 'public.public_products'::regclass
        and attname = 'front_rank' and attnum > 0 and not attisdropped
   ) then
-    return;  -- already exposed
+    execute 'grant select (front_rank) on public.products to anon, authenticated';
+    execute 'alter view public.public_products set (security_invoker = on)';
   end if;
-
-  select pg_get_viewdef('public.public_products'::regclass, true) into def;
-
-  if position('AS package_count
-   FROM products p' in def) = 0 then
-    raise exception 'public_products is not in the expected shape; review before deploying';
-  end if;
-
-  body := replace(def,
-    'AS package_count
-   FROM products p',
-    'AS package_count,
-    p.front_rank
-   FROM products p');
-
-  execute 'create or replace view public.public_products as ' || body;
 end $$;
 
 -- ---------------------------------------------------------------

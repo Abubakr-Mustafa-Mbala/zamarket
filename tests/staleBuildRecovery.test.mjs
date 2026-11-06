@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
   isStaleBuild,
+  topFrames,
   isOurWorker,
   dropCaches,
   dropForeignWorkers,
@@ -167,4 +168,43 @@ test('the page itself is never cached and a missing page file returns 404', () =
 test('the site still caches nothing in the service worker', () => {
   const sw = read('../public/sw.js')
   assert.ok(!/addEventListener\(\s*['"]fetch['"]/.test(sw), 'a fetch handler would re-create this whole problem')
+})
+
+
+
+test('the crash screen names the component that failed', () => {
+  // The screen tells people the message points straight at the cause. On its
+  // own "Cannot read properties of undefined" names nothing, so the component
+  // stack is what makes that sentence true.
+  const stack = `
+    at GiveawayCard (https://zamarket.shop/assets/x.js:1:2)
+    at div
+    at GiveawayList
+    at RenderedRoute
+    at Routes`
+  assert.equal(topFrames(stack), 'GiveawayCard ‹ GiveawayList ‹ RenderedRoute')
+})
+
+test('plain HTML elements are not reported as the cause', () => {
+  assert.equal(topFrames('at div\n at span\n at Checkout'), 'Checkout')
+})
+
+test('mangled names from a minified build are dropped, not printed', () => {
+  assert.equal(topFrames('at Qe\n at z\n at Marketplace'), 'Marketplace')
+})
+
+test('the same component repeated is only named once', () => {
+  assert.equal(topFrames('at Row\n at Row\n at Row\n at Table'), 'Row ‹ Table')
+})
+
+test('no stack at all is handled quietly', () => {
+  assert.equal(topFrames(undefined), '')
+  assert.equal(topFrames(''), '')
+})
+
+test('component names survive minification', () => {
+  // Without keepNames the stack reads "Qe ‹ zt", which topFrames correctly
+  // drops -- leaving the screen naming nothing at all.
+  const cfg = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8')
+  assert.match(cfg, /esbuild: \{ keepNames: true \}/)
 })
