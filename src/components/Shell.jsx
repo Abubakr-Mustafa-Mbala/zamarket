@@ -213,7 +213,7 @@ export default function Shell({ kind }) {
   return (
     <div className="shell">
       <aside className="sidenav">
-        <Link to="/" className="workspace-brand" aria-label="ZA Market marketplace"><span className="workspace-mark">Z</span><span><strong>ZA Market</strong><small>BUSINESS WORKSPACE</small></span></Link>
+        <Link to="/" className="workspace-brand" aria-label="ZaMarket marketplace"><span className="workspace-mark">Z</span><span><strong>ZaMarket</strong><small>BUSINESS WORKSPACE</small></span></Link>
         <div className="workspace-sidenav-label">{roleName} workspace</div>
         <nav className="sidenav-links" aria-label="Workspace navigation">
           {nav.map((n, i) => n.group ? <div key={i} className="group">{n.group}</div> : (

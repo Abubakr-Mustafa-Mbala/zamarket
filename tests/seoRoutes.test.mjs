@@ -64,3 +64,36 @@ test('a Supabase outage must not mark the whole catalogue noindex', () => {
     assert.match(line, /ok && !/, `noindex set without checking the lookup succeeded: ${line.trim()}`)
   }
 })
+
+test('the sitemap lists the giveaway pages now that they are indexable', () => {
+  // Making /giveaways indexable is only half of it: Google still has to find
+  // the pages. They were in neither the reserved list nor the sitemap.
+  const sm = read('netlify/functions/sitemap.js')
+  assert.match(sm, /\$\{SITE\}\/giveaways`, pri/)
+  assert.match(sm, /giveaway_campaigns\?select=slug,status&status=in\.\(live,drawn,fulfilled\)/)
+  assert.match(sm, /\$\{SITE\}\/giveaways\/\$\{g\.slug\}/)
+  // Drafts must never be published in a sitemap.
+  assert.doesNotMatch(sm, /status=in\.\([^)]*draft/)
+  assert.doesNotMatch(sm, /status=in\.\([^)]*scheduled/)
+})
+
+test('every static page in the sitemap is a route the app really serves', () => {
+  const sm = read('netlify/functions/sitemap.js')
+  const app = read('src/App.jsx')
+  const paths = [...sm.matchAll(/\$\{SITE\}(\/[a-z0-9/-]*)`/g)].map((m) => m[1]).filter((p) => p !== '/')
+  // Routes may be literal ("/sellers") or parameterised ("/apply/:kind"), and
+  // nested routes are declared by their last segment alone.
+  const declared = [...app.matchAll(/<Route\s+path="([^"]+)"/g)].map((m) => m[1])
+  const matches = (url) => {
+    const want = url.replace(/^\//, '').split('/')
+    return declared.some((route) => {
+      const have = route.replace(/^\//, '').split('/')
+      if (have.length === 1 && want.length === 1) return have[0] === want[0]
+      if (have.length !== want.length) return false
+      return have.every((part, i) => part.startsWith(':') || part === want[i])
+    })
+  }
+  for (const p of paths) {
+    assert.ok(matches(p), `sitemap advertises ${p} but the router has no such route`)
+  }
+})

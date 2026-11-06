@@ -58,7 +58,7 @@ export default function Seo() {
   const clean = rows.filter((r) => r.issues.length === 0).length
   const site = 'https://zamarket.shop'
   const notifyIndexNow = async () => {
-    if (!notifyPath.trim()) return toast('Enter a published ZA Market page URL', true)
+    if (!notifyPath.trim()) return toast('Enter a published ZaMarket page URL', true)
     let path
     try {
       const url = new URL(notifyPath, site)
@@ -90,14 +90,14 @@ export default function Seo() {
       </div>
 
       <section className="card stack-sm">
-        <h3>Get ZA Market discovered on Google and other search engines</h3>
+        <h3>Get ZaMarket discovered on Google and other search engines</h3>
         <p className="small muted">After deploying and verifying your site, submit the same sitemap to each webmaster service. Submission helps discovery, not guaranteed ranking.</p>
         <ol className="week">
           <li>Verify <strong>zamarket.shop</strong> in <a href="https://search.google.com/search-console" target="_blank" rel="noopener noreferrer">Google Search Console</a> using a DNS record or verification tag.</li>
           <li>Verify the site in <a href="https://www.bing.com/webmasters" target="_blank" rel="noopener noreferrer">Bing Webmaster Tools</a> (you can import verification from Google).</li>
           <li>Submit this sitemap in both tools: <CopyLine text={`${site}/sitemap.xml`} /></li>
           <li>Check your most important product and article pages with URL Inspection. Request indexing for priority pages when needed; repeated submissions do not force ranking.</li>
-          <li>Only if ZA Market has an eligible customer-facing business location, create a Google Business Profile using your real name, location and contact details.</li>
+          <li>Only if ZaMarket has an eligible customer-facing business location, create a Google Business Profile using your real name, location and contact details.</li>
         </ol>
         <p className="tiny muted">The sitemap paginates published listings and articles. It is generated from live data; it does not submit URLs by itself. IndexNow notifications for newly published articles are optional and require INDEXNOW_KEY configured in Netlify.</p>
       </section>

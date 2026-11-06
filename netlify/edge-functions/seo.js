@@ -1,7 +1,7 @@
 // Crawlable metadata and initial, truthful page content for JS and non-JS clients.
 // Never publish privileged data or replace search output with unrelated keywords.
 const SITE = 'https://zamarket.shop'
-const SHOP = 'ZA Market'
+const SHOP = 'ZaMarket'
 
 const esc = value => String(value ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -86,7 +86,7 @@ export default async function handler(request, context) {
   const key = Deno.env.get('VITE_SUPABASE_ANON_KEY')
   let canonical = SITE + (current.pathname === '/' ? '/' : current.pathname.replace(/\/$/, ''))
   let title = `${SHOP} — Shop online in Lusaka, Zambia`
-  let description = 'Browse products from local sellers in Lusaka, Zambia. Compare prices and order phones, fashion, home essentials, food and more on ZA Market.'
+  let description = 'Browse products from local sellers in Lusaka, Zambia. Compare prices and order phones, fashion, home essentials, food and more on ZaMarket.'
   let image = `${SITE}/social.png`
   let robots = parts.length && (PRIVATE.has(parts[0]) || parts[0] === 'search') ? 'noindex,follow' : 'index,follow'
   let schema = null
@@ -101,7 +101,7 @@ export default async function handler(request, context) {
   } else if (parts[0] === 'blog') {
     if (parts.length === 1) {
       title = `Buying guides and local shopping advice in Lusaka | ${SHOP}`
-      description = 'Practical ZA Market guides to products, prices and shopping with local sellers in Lusaka, Zambia.'
+      description = 'Practical ZaMarket guides to products, prices and shopping with local sellers in Lusaka, Zambia.'
       canonical = `${SITE}/blog`
       initialContent = fallback('Shopping guides for Lusaka', description, `${SITE}/blog`)
     } else if (parts.length === 2 && base && key) {
@@ -134,27 +134,27 @@ export default async function handler(request, context) {
     canonical = `${SITE}/search`
   } else if (parts[0] === 'sellers') {
     title = `Local sellers and shops in Lusaka | ${SHOP}`
-    description = 'Find and compare local shops and sellers on ZA Market in Lusaka, Zambia.'
+    description = 'Find and compare local shops and sellers on ZaMarket in Lusaka, Zambia.'
     initialContent = fallback('Explore local sellers in Lusaka', description, `${SITE}/sellers`)
   } else if (parts[0] === 'affiliates') {
-    title = 'Become a ZA Market Affiliate in Zambia | Apply & Learn'
-    description = 'Join the ZA Market affiliate programme in Zambia. Learn to promote products and earn commission on qualifying completed sales. No salary or guaranteed earnings.'
+    title = 'Become a ZaMarket Affiliate in Zambia | Apply & Learn'
+    description = 'Join the ZaMarket affiliate programme in Zambia. Learn to promote products and earn commission on qualifying completed sales. No salary or guaranteed earnings.'
     canonical = `${SITE}/affiliates`
-    initialContent = fallback('Become a ZA Market Affiliate in Zambia', description, `${SITE}/affiliates`)
+    initialContent = fallback('Become a ZaMarket Affiliate in Zambia', description, `${SITE}/affiliates`)
   } else if (parts[0] === 'apply' && parts[1] === 'vendor') {
-    title = `Sell your products on ZA Market | Join as a vendor`
-    description = 'Apply to sell through ZA Market, a local online marketplace connecting businesses and shoppers in Zambia.'
-    initialContent = fallback('Become a ZA Market vendor', description, `${SITE}/apply/vendor`)
+    title = `Sell your products on ZaMarket | Join as a vendor`
+    description = 'Apply to sell through ZaMarket, a local online marketplace connecting businesses and shoppers in Zambia.'
+    initialContent = fallback('Become a ZaMarket vendor', description, `${SITE}/apply/vendor`)
   } else if (parts[0] === 'apply' && parts[1] === 'reseller') {
-    title = `Earn by promoting ZA Market products | Become a reseller`
-    description = 'Learn how to apply as a ZA Market reseller and promote local products to potential customers in Zambia.'
-    initialContent = fallback('Apply as a ZA Market reseller', description, `${SITE}/apply/reseller`)
+    title = `Earn by promoting ZaMarket products | Become a reseller`
+    description = 'Learn how to apply as a ZaMarket reseller and promote local products to potential customers in Zambia.'
+    initialContent = fallback('Apply as a ZaMarket reseller', description, `${SITE}/apply/reseller`)
   } else if (parts[0] === 'how-it-works') {
-    title = `How buying on ZA Market works | ${SHOP}`
-    description = 'Learn how to find products, order and arrange delivery through ZA Market in Lusaka.'
+    title = `How buying on ZaMarket works | ${SHOP}`
+    description = 'Learn how to find products, order and arrange delivery through ZaMarket in Lusaka.'
   } else if (parts[0] === 'about') {
-    title = `About ZA Market — Local marketplace in Zambia`
-    description = 'Learn more about ZA Market, the marketplace connecting customers with local sellers in Zambia.'
+    title = `About ZaMarket — Local marketplace in Zambia`
+    description = 'Learn more about ZaMarket, the marketplace connecting customers with local sellers in Zambia.'
   } else if (parts[0] === 'categories') {
     title = `Shop product categories in Lusaka | ${SHOP}`
   } else if (parts[0] === 'protection') {
@@ -163,7 +163,7 @@ export default async function handler(request, context) {
     // Entry is free and no purchase is required, so the copy must not imply
     // that buying improves anyone's chances.
     title = `Giveaways | ${SHOP}`
-    description = 'Free-to-enter giveaways from local sellers on ZA Market. No purchase necessary. Winners are drawn at random and announced publicly.'
+    description = 'Free-to-enter giveaways from local sellers on ZaMarket. No purchase necessary. Winners are drawn at random and announced publicly.'
     canonical = parts.length === 2 ? `${SITE}/giveaways/${parts[1]}` : `${SITE}/giveaways`
   }
 
@@ -180,7 +180,7 @@ export default async function handler(request, context) {
       if (p) {
         canonical = p.vendor_slug ? `${SITE}/${p.vendor_slug}/${p.slug}` : `${SITE}/p/${p.slug}`
         title = p.page?.seo?.title || `${p.name}${Number.isFinite(Number(p.price)) ? ` — ${money(p.price)}` : ''} | ${SHOP}`
-        description = clip(p.page?.seo?.description || p.description || `${p.name} on ZA Market, Lusaka, Zambia.`)
+        description = clip(p.page?.seo?.description || p.description || `${p.name} on ZaMarket, Lusaka, Zambia.`)
         if (typeof p.images?.[0] === 'string' && /^https:\/\//i.test(p.images[0])) image = p.images[0]
         schema = {
           '@context': 'https://schema.org', '@type': 'Product', name: p.name,
@@ -195,7 +195,7 @@ export default async function handler(request, context) {
             ? { '@type': 'AggregateRating', ratingValue: p.rating, reviewCount: p.review_count }
             : undefined,
         }
-        initialContent = fallback(p.name, p.description || `${p.name} available from ${p.vendor_name || 'a local seller'} on ZA Market.`, canonical)
+        initialContent = fallback(p.name, p.description || `${p.name} available from ${p.vendor_name || 'a local seller'} on ZaMarket.`, canonical)
       }
     } else if (vendorSlug) {
       const { ok, item: v } = await getOne(`public_vendors?slug=eq.${encodeURIComponent(vendorSlug)}&select=business_name,description,about,tagline,category,town,rating,review_count,slug,logo_url,cover_url,opening_hours`, base, key)
@@ -203,10 +203,10 @@ export default async function handler(request, context) {
       if (v) {
         canonical = `${SITE}/${v.slug}`
         title = `${v.business_name}${v.town ? ` — ${v.town}` : ''} | ${SHOP}`
-        description = clip(v.description || v.tagline || v.about || `Order from ${v.business_name} on ZA Market.`)
+        description = clip(v.description || v.tagline || v.about || `Order from ${v.business_name} on ZaMarket.`)
         // The seller's own picture, so sharing a shop link shows THEIR shop
         // and not our logo. Their cover first, then their mark; the generic
-        // ZA Market image only when they have uploaded neither.
+        // ZaMarket image only when they have uploaded neither.
         const vendorPic = [v.cover_url, v.logo_url].find(x => typeof x === 'string' && /^https:\/\//i.test(x))
         if (vendorPic) image = vendorPic
         // A more specific business type than "Store", so a search for someone
@@ -227,7 +227,7 @@ export default async function handler(request, context) {
         // searching "who bakes cakes in Kabwata" is actually matching.
         const hrs = hoursText(v.opening_hours)
         initialContent = fallback(v.business_name, description, canonical)
-          .replace('</main>', `${v.category ? paragraph(`${v.business_name} is a ${String(v.category).toLowerCase()} business${v.town ? ` in ${v.town}` : ''}, Zambia, selling on ZA Market.`) : ''}${hrs.length ? `<p>Opening hours — ${esc(hrs.join('; '))}</p>` : ''}</main>`)
+          .replace('</main>', `${v.category ? paragraph(`${v.business_name} is a ${String(v.category).toLowerCase()} business${v.town ? ` in ${v.town}` : ''}, Zambia, selling on ZaMarket.`) : ''}${hrs.length ? `<p>Opening hours — ${esc(hrs.join('; '))}</p>` : ''}</main>`)
       }
     }
   }

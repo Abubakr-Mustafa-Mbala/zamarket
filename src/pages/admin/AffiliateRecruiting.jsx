@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { recruitmentUrl } from '../../lib/affiliateRecruitment'
 
 const channels = [
-  ['facebook', 'Facebook', 'Post in the ZA Market Page, relevant groups with permission, and Facebook Stories.'],
+  ['facebook', 'Facebook', 'Post in the ZaMarket Page, relevant groups with permission, and Facebook Stories.'],
   ['whatsapp', 'WhatsApp', 'Share on Status and to people who have agreed to hear about opportunities.'],
   ['instagram', 'Instagram', 'Publish a Reel, Stories and a saved Affiliate highlight.'],
   ['tiktok', 'TikTok', 'Record a short explainer showing the real affiliate dashboard.'],
@@ -12,7 +12,7 @@ const channels = [
   ['linkedin', 'LinkedIn', 'Reach graduates, sales learners and digital-marketing communities.'],
   ['referral', 'Personal referrals', 'Invite existing customers and eligible affiliates to tell others.'],
 ]
-const caption = `Interested in learning online selling in Zambia?\n\nZA Market is accepting applications for independent affiliates. Promote real products, use your own referral link, and earn commission when qualifying orders are completed. Approved affiliates are trained in our academy.\n\nNo stock purchase required. This is commission-based work, not a salaried job; income is not guaranteed.\n\nApply: https://zamarket.shop/affiliates?utm_source=facebook&utm_campaign=affiliate_launch`
+const caption = `Interested in learning online selling in Zambia?\n\nZaMarket is accepting applications for independent affiliates. Promote real products, use your own referral link, and earn commission when qualifying orders are completed. Approved affiliates are trained in our academy.\n\nNo stock purchase required. This is commission-based work, not a salaried job; income is not guaranteed.\n\nApply: https://zamarket.shop/affiliates?utm_source=facebook&utm_campaign=affiliate_launch`
 const clipboard = (text) => navigator.clipboard?.writeText(text)
 
 export default function AffiliateRecruiting() {
@@ -31,6 +31,6 @@ export default function AffiliateRecruiting() {
     <div className="card stack-sm"><h2>Recruitment channels</h2><p className="small muted">Share these links exactly as shown. Each includes a channel identifier and the launch campaign for attribution reporting.</p><div className="recruit-channels">{channels.map(([id, label, tip]) => <div className="recruit-channel" key={id}><div><strong>{label}</strong><p className="tiny muted">{tip}</p><code>{recruitmentUrl(id)}</code></div><button className="btn sm" onClick={() => clipboard(recruitmentUrl(id))}>Copy link</button></div>)}</div></div>
     <div className="card stack-sm"><h2>Starter recruitment caption</h2><p className="small muted">Use this as a base. Replace the source in the link for the channel you post on.</p><pre className="recruit-caption">{caption}</pre><button className="btn primary" onClick={() => clipboard(caption)}>Copy recruitment caption</button></div>
     {!!report?.by_source?.length && <div className="card"><h2>Application sources</h2><div className="recruit-channels">{report.by_source.map((row) => <div className="recruit-channel" key={row.source}><strong>{row.source}</strong><span>{row.applications} applications · {row.approved} approved</span></div>)}</div></div>}
-    <div className="card stack-sm"><h2>Simple launch routine</h2><ol><li>Make sure Facebook and Instagram profiles use the same ZA Market name, logo and biography.</li><li>Publish one introduction video explaining what affiliates actually do.</li><li>Post and share the tagged landing page, not a raw signup form.</li><li>Reply to interested people, explain that commissions are not guaranteed, and direct them to apply.</li><li>Check applications daily and review them in the <Link to="/admin/resellers">affiliate approval queue</Link>.</li><li>Send every approved affiliate into the academy, then track which channels produce trained, active affiliates rather than just applications.</li></ol></div>
+    <div className="card stack-sm"><h2>Simple launch routine</h2><ol><li>Make sure Facebook and Instagram profiles use the same ZaMarket name, logo and biography.</li><li>Publish one introduction video explaining what affiliates actually do.</li><li>Post and share the tagged landing page, not a raw signup form.</li><li>Reply to interested people, explain that commissions are not guaranteed, and direct them to apply.</li><li>Check applications daily and review them in the <Link to="/admin/resellers">affiliate approval queue</Link>.</li><li>Send every approved affiliate into the academy, then track which channels produce trained, active affiliates rather than just applications.</li></ol></div>
   </div>
 }

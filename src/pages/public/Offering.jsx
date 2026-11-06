@@ -75,15 +75,15 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
           {(model === 'buy' ? [
             ['Choose your item', packages.length > 0 ? 'Select the package you want, then continue to your cart.' : 'Review the details and add this item to your cart.'],
             ['Provide order details', 'Continue through checkout and enter the requested contact and delivery details.'],
-            ['Wait for confirmation', 'ZA Market will contact you to confirm the order and next steps.'],
+            ['Wait for confirmation', 'ZaMarket will contact you to confirm the order and next steps.'],
           ] : model === 'book' ? [
             ['Choose your option', packages.length > 0 ? 'Select the package or booking option that suits you.' : 'Review the offering and start your booking.'],
             ['Enter your details', 'Complete the requested details during checkout.'],
-            ['Confirm arrangements', 'ZA Market will contact you to confirm availability and arrangements.'],
+            ['Confirm arrangements', 'ZaMarket will contact you to confirm availability and arrangements.'],
           ] : [
             ['Review the offering', 'Check the description, price and seller details.'],
             ['Send your enquiry', 'Use the enquiry button to provide your name, phone number and question.'],
-            ['Discuss the next steps', 'ZA Market will contact you to discuss your request.'],
+            ['Discuss the next steps', 'ZaMarket will contact you to discuss your request.'],
           ]).map(([title, detail], i) => (
             <li key={title}><span className="of-order-number">{i + 1}</span><div><strong>{title}</strong><p>{detail}</p></div></li>
           ))}

@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, existsSync, statSync } from 'node:fs'
+import { readFileSync, existsSync, statSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const at = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url))
@@ -188,4 +188,32 @@ test('the header carries the domain, the way the logo does', () => {
   assert.match(page, /<b>ZaMarket<\/b>/)
   const css = read('src/refinements.css')
   assert.match(css, /\.wordmark-text i \{/)
+})
+
+test('the brand is spelled ZaMarket everywhere a person or a crawler sees it', () => {
+  // The logo and the manifest say ZaMarket, but page titles, meta
+  // descriptions, receipts and social captions still said "ZA Market".
+  // Google learns a brand from its titles, so the two must agree before the
+  // site is submitted for indexing.
+  const roots = ['src', 'netlify']
+  const bad = []
+  const walk = (dir) => {
+    for (const name of readdirSync(at(dir))) {
+      const rel = `${dir}/${name}`
+      if (statSync(at(rel)).isDirectory()) { walk(rel); continue }
+      if (!/\.(jsx?|html|json|webmanifest)$/.test(name)) continue
+      const text = read(rel)
+      // "ZAMARKET" in full caps is deliberate poster and badge typography.
+      for (const variant of ['ZA Market', 'ZAMarket', 'Za Market', 'ZaMarkets', 'ZA MARKETS']) {
+        if (text.includes(variant)) bad.push(`${rel}: ${variant}`)
+      }
+    }
+  }
+  for (const r of roots) walk(r)
+  for (const f of ['index.html', 'public/site.webmanifest']) {
+    for (const variant of ['ZA Market', 'ZAMarket', 'Za Market']) {
+      if (read(f).includes(variant)) bad.push(`${f}: ${variant}`)
+    }
+  }
+  assert.deepEqual(bad, [], `wrong spelling of the brand:\n${bad.join('\n')}`)
 })

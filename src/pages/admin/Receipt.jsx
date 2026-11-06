@@ -35,7 +35,7 @@ export default function Receipt() {
   const savings = o.items.reduce((t, i) => t + Math.max(0, n(i.product?.normal_price || i.product?.price) * i.quantity - n(i.line_total)), 0)
   const biz = 'ZA MARKET'
   const vendorNames = [...new Set(o.items.map(i => i.vendor?.business_name || i.product?.vendor?.business_name).filter(Boolean))]
-  const sellerFor = (i) => i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'
+  const sellerFor = (i) => i.vendor?.business_name || i.product?.vendor?.business_name || 'ZaMarket'
   const pick = (v) => { setSize(v); localStorage.setItem('zm-receipt-size', v) }
   const bluetooth = async () => {
     setPrinting(true)
@@ -88,7 +88,7 @@ export default function Receipt() {
         {o.needed_by && <div className="r-row r-strong"><span>Needed by</span><span>{new Date(o.needed_by + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}</span></div>}
         <div className="r-rule" />
         <div className="r-strong">SOLD BY</div>
-        <div>{vendorNames.length ? vendorNames.join(" / ") : "ZA Market"}</div>
+        <div>{vendorNames.length ? vendorNames.join(" / ") : "ZaMarket"}</div>
         <div className="r-rule" />
         <div className="r-strong">CUSTOMER</div>
         <div className="r-strong">{o.customer?.full_name}</div>

@@ -707,9 +707,9 @@ export function Storefront() {
 
   return (
     <div className="home">
-      <section className="home-market-head" aria-label="Shop ZA Market">
+      <section className="home-market-head" aria-label="Shop ZaMarket">
         <div>
-          <h1>Shop ZA Market</h1>
+          <h1>Shop ZaMarket</h1>
           <p>Explore products from local sellers.</p>
         </div>
         <Link to="/search" className="home-see-all">All products <Icon.arrow /></Link>

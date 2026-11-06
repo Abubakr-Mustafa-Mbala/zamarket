@@ -7,7 +7,7 @@ const context = { next: async () => new Response(mockHtml, { headers: { 'content
 
 test('published article gets canonical title, Article JSON-LD and visible fallback', async () => {
   globalThis.Deno = { env: { get: name => name === 'VITE_SUPABASE_URL' ? 'https://example.supabase.co' : 'anon' } }
-  globalThis.fetch = async () => new Response(JSON.stringify([{ slug: 'buy-lamps', title: 'Where to buy lamps in Lusaka', body: 'Light choices and sizing.', excerpt: 'Choose the right lamp.', cover_url: 'https://cdn.example/lamp.jpg', published_at: '2026-11-01', author: 'ZA Market' }]), { status: 200 })
+  globalThis.fetch = async () => new Response(JSON.stringify([{ slug: 'buy-lamps', title: 'Where to buy lamps in Lusaka', body: 'Light choices and sizing.', excerpt: 'Choose the right lamp.', cover_url: 'https://cdn.example/lamp.jpg', published_at: '2026-11-01', author: 'ZaMarket' }]), { status: 200 })
   try {
     const res = await edge(new Request('https://preview.netlify.app/blog/buy-lamps'), context)
     const html = await res.text()
@@ -35,6 +35,6 @@ test('public informational route is not mistaken for invalid vendor', async () =
   try {
     const html = await (await edge(new Request('https://zamarket.shop/about'), context)).text()
     assert.match(html, /name="robots" content="index,follow"/)
-    assert.match(html, /About ZA Market/)
+    assert.match(html, /About ZaMarket/)
   } finally { Object.assign(globalThis, saved) }
 })

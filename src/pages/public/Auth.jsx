@@ -268,10 +268,10 @@ export function Apply() {
   return (
     <form onSubmit={submit} className="wizard">
       <div>
-        <h1>{isVendor ? 'Sell your products with us' : 'Apply to become a ZA Market affiliate'}</h1>
+        <h1>{isVendor ? 'Sell your products with us' : 'Apply to become a ZaMarket affiliate'}</h1>
         <p className="lead">{isVendor
           ? 'Fill this in and we will call you.'
-          : 'Promote ZA Market products, access free training and earn commission on qualifying completed sales. This is independent, commission-based work, not a salaried job. We review each application.'}</p>
+          : 'Promote ZaMarket products, access free training and earn commission on qualifying completed sales. This is independent, commission-based work, not a salaried job. We review each application.'}</p>
         {isVendor && (
           <div className="card flat small stack-sm">
             <strong>Before you fill this in, here is who we are.</strong>

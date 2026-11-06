@@ -27,9 +27,9 @@ export function suggestProductSeo(product) {
   if (!name) return { title: '', description: '' }
   const service = product.fulfilment === 'service'
   const location = String(product.town || 'Lusaka').trim()
-  const title = `${name} in ${location} | ZA Market`.slice(0, 70)
+  const title = `${name} in ${location} | ZaMarket`.slice(0, 70)
   const price = Number(product.price)
   const priceText = Number.isFinite(price) && price > 0 ? ` for K${price.toLocaleString('en-ZM')}` : ''
-  const description = `${service ? 'Book' : 'Shop for'} ${name}${priceText} on ZA Market. View product details and contact the seller to confirm availability and delivery.`.slice(0, 160)
+  const description = `${service ? 'Book' : 'Shop for'} ${name}${priceText} on ZaMarket. View product details and contact the seller to confirm availability and delivery.`.slice(0, 160)
   return { title, description }
 }

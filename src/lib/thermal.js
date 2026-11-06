@@ -133,7 +133,7 @@ export function receiptBytes(o, opts = {}) {
   if (o.needed_by) d.row('Needed by', new Date(`${o.needed_by}T00:00:00`).toLocaleDateString('en-GB'))
   d.line()
   d.bold(true).text('SOLD BY').bold(false)
-  const sellers = [...new Set((o.items || []).map(i => opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'))]
+  const sellers = [...new Set((o.items || []).map(i => opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZaMarket'))]
   sellers.forEach(name => d.wrap(name))
   d.line()
   d.bold(true).text('CUSTOMER').bold(false)
@@ -144,7 +144,7 @@ export function receiptBytes(o, opts = {}) {
   d.line()
   for (const i of o.items || []) {
     d.wrap(`${i.quantity} x ${i.product?.name || 'Item'}`)
-    d.wrap(`Sold by: ${opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZA Market'}`)
+    d.wrap(`Sold by: ${opts.sellerFor?.(i) || i.vendor?.business_name || i.product?.vendor?.business_name || 'ZaMarket'}`)
     if (i.choices) for (const [k, v] of Object.entries(i.choices)) d.text(`  ${k}: ${v}`)
     if (i.note) d.text(`  "${i.note}"`)
     d.row(`  @ ${money(i.unit_price)}`, money(i.line_total))

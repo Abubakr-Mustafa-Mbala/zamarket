@@ -36,25 +36,25 @@ export function makeLaunchPack(item, type = 'product', campaign = null) {
   const price = validPrice ? `K${Number(item.price).toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null
   const priceLine = price ? `Price: ${price}.` : ''
   const action = type === 'article' ? 'Read the guide' : 'See details and order'
-  const opening = type === 'article' ? `Shopping in Lusaka? Here's a practical guide: ${name}.` : `Looking for ${name} in Lusaka? Find it on ZA Market.`
+  const opening = type === 'article' ? `Shopping in Lusaka? Here's a practical guide: ${name}.` : `Looking for ${name} in Lusaka? Find it on ZaMarket.`
   const proof = intro ? `${intro}\n\n` : ''
   const base = `${opening}\n\n${proof}${priceLine}${priceLine ? '\n\n' : ''}${action}: ${link}`
   return {
     path, link, tracked: Boolean(campaign),
     details: { title: name, description: intro, price, type },
     whatsapp: base,
-    facebook: `${opening}\n\n${proof}${priceLine}${priceLine ? '\n\n' : ''}${action} on ZA Market:\n${link}\n\n#Zambia #Lusaka #ZAMarket`,
-    instagram: `${opening}\n\n${proof}${priceLine}${priceLine ? '\n\n' : ''}Find this on ZA Market. Link in bio (or share the URL in your story): ${link}\n\n#Lusaka #ZambianBusiness #ZAMarket`,
-    tiktok: `Video idea (15–25 seconds)\n\n0–3s: Show ${name} clearly. On-screen hook: “Looking for ${trim(name, 48)} in Lusaka?”\n3–15s: Show real product details${intro ? `: ${short}` : ' and how it works'}.\n15–25s: Show ${price ? `the verified current price (${price}) and` : ''} where to find it.\nCTA: ${action} through ZA Market — ${link}\n\nFilm original footage, use subtitles, and do not invent claims or reviews.`,
+    facebook: `${opening}\n\n${proof}${priceLine}${priceLine ? '\n\n' : ''}${action} on ZaMarket:\n${link}\n\n#Zambia #Lusaka #ZaMarket`,
+    instagram: `${opening}\n\n${proof}${priceLine}${priceLine ? '\n\n' : ''}Find this on ZaMarket. Link in bio (or share the URL in your story): ${link}\n\n#Lusaka #ZambianBusiness #ZaMarket`,
+    tiktok: `Video idea (15–25 seconds)\n\n0–3s: Show ${name} clearly. On-screen hook: “Looking for ${trim(name, 48)} in Lusaka?”\n3–15s: Show real product details${intro ? `: ${short}` : ' and how it works'}.\n15–25s: Show ${price ? `the verified current price (${price}) and` : ''} where to find it.\nCTA: ${action} through ZaMarket — ${link}\n\nFilm original footage, use subtitles, and do not invent claims or reviews.`,
     // Keep the destination intact; truncating a tracked link makes SMS useless.
     sms: `${trim(`${name}${price ? ` — ${price}` : ''}. ${action}`, Math.max(16, 158 - link.length))}: ${link}`,
-    visualBrief: `Promotional graphic brief: ${name}. ${price ? `Display the product price as ${price}.` : 'Do not invent a price.'} Use an actual product photo, the ZA Market brand, a readable heading and a clear call-to-action. Link: ${link}. ${intro ? `Verified description: ${intro}` : ''}`,
+    visualBrief: `Promotional graphic brief: ${name}. ${price ? `Display the product price as ${price}.` : 'Do not invent a price.'} Use an actual product photo, the ZaMarket brand, a readable heading and a clear call-to-action. Link: ${link}. ${intro ? `Verified description: ${intro}` : ''}`,
     callToAction: action,
     alternates: {
       whatsapp: `${type === 'article' ? 'Useful buying guide' : 'Local shopping find'}: ${name}\n${short ? `\n${short}\n` : ''}${price ? `\n${price}\n` : ''}\nSee it here: ${link}`,
-      facebook: `Searching for ${name} in Lusaka?\n\n${short ? `${short}\n\n` : ''}${price ? `Current listed price: ${price}\n\n` : ''}${action}: ${link}\n\n#ZAMarket #Lusaka`,
-      instagram: `${name} — on ZA Market.\n\n${short ? `${short}\n\n` : ''}${price ? `${price}\n\n` : ''}${action}. Find the URL in our bio or story: ${link}\n\n#Zambia #ZAMarket`,
-      tiktok: `Alternate video idea (15 seconds)\n0–4s: Show the actual product or subject of ${name}.\n4–11s: Demonstrate one real detail${short ? ` — ${short}` : ''}.\n11–15s: Display “${action}” and ZA Market.\nLink: ${link}\nUse original photos and subtitles.`,
+      facebook: `Searching for ${name} in Lusaka?\n\n${short ? `${short}\n\n` : ''}${price ? `Current listed price: ${price}\n\n` : ''}${action}: ${link}\n\n#ZaMarket #Lusaka`,
+      instagram: `${name} — on ZaMarket.\n\n${short ? `${short}\n\n` : ''}${price ? `${price}\n\n` : ''}${action}. Find the URL in our bio or story: ${link}\n\n#Zambia #ZaMarket`,
+      tiktok: `Alternate video idea (15 seconds)\n0–4s: Show the actual product or subject of ${name}.\n4–11s: Demonstrate one real detail${short ? ` — ${short}` : ''}.\n11–15s: Display “${action}” and ZaMarket.\nLink: ${link}\nUse original photos and subtitles.`,
     },
   }
 }

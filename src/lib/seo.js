@@ -19,8 +19,8 @@ export function useSeo({ title, description, image, canonical, noIndex } = {}) {
     // JSON-LD does not describe the new page.
     const initialSchema = document.head.querySelector('script[data-zm-edge-jsonld]')
     if (initialSchema && initialSchema.getAttribute('data-zm-edge-path') !== window.location.pathname) initialSchema.remove()
-    const activeTitle = title || 'ZA Market — Shop online in Lusaka, Zambia'
-    const activeDescription = description || 'Discover products and services from local sellers in Lusaka, Zambia on ZA Market.'
+    const activeTitle = title || 'ZaMarket — Shop online in Lusaka, Zambia'
+    const activeDescription = description || 'Discover products and services from local sellers in Lusaka, Zambia on ZaMarket.'
     document.title = activeTitle
     set('meta[name="description"]', { name: 'description', content: activeDescription })
     set('meta[property="og:description"]', { property: 'og:description', content: activeDescription })

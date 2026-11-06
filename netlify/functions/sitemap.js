@@ -42,15 +42,23 @@ export default async function sitemap() {
     { loc: `${SITE}/affiliates`, pri: '0.8' },
     { loc: `${SITE}/how-it-works`, pri: '0.5' },
     { loc: `${SITE}/protection`, pri: '0.5' },
+    { loc: `${SITE}/giveaways`, pri: '0.7' },
   ]
 
   if (SB && KEY) {
     try {
-      const [products, vendors, articles] = await Promise.all([
+      const [products, vendors, articles, giveaways] = await Promise.all([
         getAll('public_products?select=slug,vendor_slug,created_at&order=created_at.desc'),
         getAll('public_vendors?select=slug'),
         getAll('public_posts?select=slug,published_at&order=published_at.desc'),
+        // Only the ones a logged-out visitor can actually open. A draft or
+        // scheduled giveaway is not a page yet, and the row-level policy on
+        // giveaway_campaigns would not return it to this key anyway.
+        getAll('giveaway_campaigns?select=slug,status&status=in.(live,drawn,fulfilled)'),
       ])
+      for (const g of giveaways) if (validSlug(g.slug)) {
+        urls.push({ loc: `${SITE}/giveaways/${g.slug}`, pri: g.status === 'live' ? '0.8' : '0.5' })
+      }
       for (const a of articles) if (validSlug(a.slug)) urls.push({ loc: `${SITE}/blog/${a.slug}`, pri: '0.75', lastmod: a.published_at })
       for (const p of products) {
         if (!validSlug(p.slug)) continue
