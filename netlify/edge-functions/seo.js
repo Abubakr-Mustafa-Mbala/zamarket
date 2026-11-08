@@ -100,10 +100,10 @@ export default async function handler(request, context) {
     initialContent = fallback('Shop products from local sellers in Lusaka', description, `${SITE}/sellers`)
   } else if (parts[0] === 'blog') {
     if (parts.length === 1) {
-      title = `Buying guides and local shopping advice in Lusaka | ${SHOP}`
-      description = 'Practical ZaMarket guides to products, prices and shopping with local sellers in Lusaka, Zambia.'
+      title = `ZaMarket Journal — Local stories, guides and discoveries | ${SHOP}`
+      description = 'Discover local Zambian businesses, practical buying guides, and products worth exploring in the ZaMarket Journal.'
       canonical = `${SITE}/blog`
-      initialContent = fallback('Shopping guides for Lusaka', description, `${SITE}/blog`)
+      initialContent = fallback('Stories, guides and discoveries worth exploring', description, `${SITE}/blog`)
     } else if (parts.length === 2 && base && key) {
       const result = await getOne(`public_posts?slug=eq.${encodeURIComponent(parts[1])}&select=slug,title,excerpt,body,cover_url,meta_title,meta_description,author,published_at`, base, key)
       if (result.ok && !result.item) robots = 'noindex,follow'

@@ -6,6 +6,7 @@ import { money, date } from '../../lib/format'
 import { Loading } from '../../components/ui'
 import Icon from '../../lib/icons'
 import { safeArticleUrl, describeVideo } from '../../lib/blogMedia'
+import { parseArticleHeading } from '../../lib/articleHeadings'
 
 // A very small markdown renderer. The blog is written by the marketplace team,
 // not by the public, so this only has to handle what the editor produces —
@@ -57,7 +58,7 @@ export function Article({ body }) {
 
     for (const raw of lines) {
       const l = raw.trim()
-      const h = l.match(/^(#{1,3})\s+(.*)$/)
+      const h = parseArticleHeading(l)
       const bullet = l.match(/^[-*]\s+(.*)$/)
       const numbered = l.match(/^\d+\.\s+(.*)$/)
       const quote = l.match(/^>\s+(.*)$/)
@@ -143,8 +144,8 @@ function BuyBlock({ offerings }) {
 
 export function BlogIndex() {
   useSeo({
-    title: 'ZaMarket journal — buying guides for Lusaka',
-    description: 'Straight answers about buying in Lusaka: what things cost, who sells them, and how delivery works. Written by the ZaMarket team.',
+    title: 'ZaMarket Journal — Local stories, guides and discoveries',
+    description: 'Discover local Zambian businesses, practical buying guides, and products worth exploring through the ZaMarket Journal.',
   })
   const [posts, setPosts] = useState(null)
   useEffect(() => {
@@ -158,8 +159,8 @@ export function BlogIndex() {
     <div className="stack">
       <div className="crumbs"><Link to="/">Home</Link><span>Journal</span></div>
       <header className="blog-head">
-        <h1>The ZaMarket journal</h1>
-        <p>What things cost in Lusaka, who actually sells them, and how to get them delivered.</p>
+        <h1>The ZaMarket Journal</h1>
+        <p>Stories, guides and discoveries worth exploring. Get helpful buying advice, meet local businesses and find products you’ll love.</p>
       </header>
 
       {posts.length === 0 ? (

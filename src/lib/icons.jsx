@@ -41,6 +41,7 @@ export const Icon = {
   camera: (p) => wrap(<><rect x="2.5" y="7" width="19" height="13" rx="2.5" /><circle cx="12" cy="13.5" r="3.6" /><path d="M8.5 7 10 4.5h4L15.5 7" /></>, p),
   plane: (p) => wrap(<path d="M3 13.5 21 5l-4.5 15-4-5.5L3 13.5Z" />, p),
   gift: (p) => wrap(<><rect x="3" y="9" width="18" height="11.5" rx="2" /><path d="M3 13.5h18M12 9v11.5" /><path d="M12 9S9.5 3.5 7 4.8 9 9 12 9s4.5-2.9 3-4.2S12 9 12 9Z" /></>, p),
+  book: (p) => wrap(<><path d="M12 6.5C9.8 5 6.5 4.5 3 5v13c3.5-.5 6.8 0 9 1.5 2.2-1.5 5.5-2 9-1.5V5c-3.5-.5-6.8 0-9 1.5Z" /><path d="M12 6.5v13" /></>, p),
   music: (p) => wrap(<><path d="M9 18V6l10-2v12" /><circle cx="6.5" cy="18" r="2.5" /><circle cx="16.5" cy="16" r="2.5" /></>, p),
   filter: (p) => wrap(<><path d="M4 7h16M7 12h10M10 17h4" /></>, p),
   info: (p) => wrap(<><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></>, p),

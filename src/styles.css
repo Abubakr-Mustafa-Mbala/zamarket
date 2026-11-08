@@ -2614,3 +2614,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
   font-size: 0.92rem; color: var(--ink-2); line-height: 1.55;
 }
 .note-strip strong { color: var(--ink); }
+
+/* Blog article management: visible, accessible delete control on mobile and desktop. */
+.post-list-entry { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.post-list-entry .post-row { flex: 1; min-width: 0; }
+.post-list-entry .blog-delete-list { flex: 0 0 auto; }
+@media (max-width: 620px) {
+  .post-list-entry { align-items: stretch; }
+  .post-list-entry .post-row { padding: 10px; }
+  .post-list-entry .post-views { display: none; }
+  .post-list-entry .blog-delete-list { align-self: center; }
+}

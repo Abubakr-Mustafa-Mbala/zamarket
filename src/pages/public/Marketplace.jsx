@@ -1,5 +1,5 @@
 import { OfferingPage } from './Offering'
-import { Suspense, useEffect, useMemo, useState, useRef } from 'react'
+import { Fragment, Suspense, useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useCart } from '../../lib/cart'
@@ -9,6 +9,7 @@ import { money } from '../../lib/format'
 import { Stars, Modal, Field, Input, useToast, Loading } from '../../components/ui'
 import ErrorBoundary from '../../components/ErrorBoundary'
 import BrandMark from '../../components/BrandMark'
+import JournalHighlights from '../../components/JournalHighlights'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
@@ -462,7 +463,7 @@ function ShopFooter({ user, home, giveaway }) {
           <Link to="/search?deals=1">Today's deals</Link>
           {giveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(giveaway)}`}><Icon.gift /> Live giveaway</Link>}
           <Link to="/sellers">Sellers</Link>
-          <Link to="/blog">Blog &amp; guides</Link>
+          <Link to="/blog">The ZaMarket Journal</Link>
           <Link to="/review">Rate an order</Link>
         </FooterGroup>
         <FooterGroup title="ZaMarket">
@@ -605,6 +606,7 @@ export function PublicShell() {
         </div>
         <nav className="dept-strip" aria-label="Shopping departments">
           <Link to="/search?deals=1">Today's deals</Link>
+          <Link to="/blog" className={`journal-nav${pathname.startsWith('/blog') ? ' active' : ''}`}>Journal</Link>
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Stores</Link>
           {activeGiveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(activeGiveaway)}`}><Icon.gift /> Live giveaway</Link>}
@@ -727,7 +729,7 @@ export function Storefront() {
         <Link to="/search" className="home-see-all">All products <Icon.arrow /></Link>
       </section>
       {ref && <p className="tiny hero-ref">You arrived through an affiliate link. Your purchase can credit the affiliate.</p>}
-      {products.length === 0 ? <OpeningSoon /> : (
+      {products.length === 0 ? <><OpeningSoon /><JournalHighlights /></> : (
         <>
           {picked.length > 0 && (
             <section className="home-product-first" aria-label="Picked for the front page">
@@ -738,22 +740,28 @@ export function Storefront() {
               <div className="home-product-grid">{picked.map(card)}</div>
             </section>
           )}
-          {useShelves ? shelves.map((s) => (
-            <section key={s.name} className="home-dept" aria-label={s.name}>
-              <div className="shelf-head">
-                <h2>{s.name}</h2>
-                <Link to={s.mixed ? '/search' : `/search?cat=${encodeURIComponent(s.name)}`}>
-                  {s.total > s.items.length ? `All ${s.total}` : 'See all'} <Icon.arrow />
-                </Link>
-              </div>
-              <div className="home-product-grid">{s.items.map(card)}</div>
-            </section>
+          {useShelves ? shelves.map((s, index) => (
+            <Fragment key={s.name}>
+              <section className="home-dept" aria-label={s.name}>
+                <div className="shelf-head">
+                  <h2>{s.name}</h2>
+                  <Link to={s.mixed ? '/search' : `/search?cat=${encodeURIComponent(s.name)}`}>
+                    {s.total > s.items.length ? `All ${s.total}` : 'See all'} <Icon.arrow />
+                  </Link>
+                </div>
+                <div className="home-product-grid">{s.items.map(card)}</div>
+              </section>
+              {index === 0 && <JournalHighlights />}
+            </Fragment>
           )) : (
-            <section className="home-product-first" aria-label="Products from local sellers">
-              <div className="home-product-grid">
-                {frontRow.map(card)}
-              </div>
-            </section>
+            <>
+              <section className="home-product-first" aria-label="Products from local sellers">
+                <div className="home-product-grid">
+                  {frontRow.map(card)}
+                </div>
+              </section>
+              <JournalHighlights />
+            </>
           )}
           {fresh.length >= 4 && (
             <Row title="Just added" link="/search?sort=new">

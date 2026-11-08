@@ -134,7 +134,7 @@ function Ideas({ products, onPick }) {
 }
 
 // ---------------------------------------------------------------------------
-function Editor({ post, products, onClose, onSaved }) {
+function Editor({ post, products, onClose, onSaved, onRequestDelete }) {
   const toast = useToast()
   const { profile } = useAuth()
   const [f, setF] = useState({ ...empty, ...post, secondary_keywords: post?.secondary_keywords || [] })
@@ -277,6 +277,12 @@ function Editor({ post, products, onClose, onSaved }) {
           <button className="btn primary" disabled={busy} onClick={() => save('published')}>
             {busy ? 'Saving…' : 'Publish'}
           </button>
+          {post?.id && (
+            <button type="button" className="btn danger" disabled={busy || aiBusy}
+              onClick={() => onRequestDelete({ id: post.id, title: f.title, status: f.status })}>
+              Delete article
+            </button>
+          )}
         </div>
       </div>
 
@@ -383,6 +389,30 @@ function Editor({ post, products, onClose, onSaved }) {
   )
 }
 
+
+function DeletePostDialog({ post, busy, confirmation, onConfirmation, onClose, onDelete }) {
+  if (!post) return null
+  return (
+    <Modal title="Delete this article?" onClose={busy ? () => {} : onClose}>
+      <div className="stack-sm">
+        <p><strong>{post.title}</strong></p>
+        <p className="small">This permanently removes the {post.status === 'published' ? 'published' : 'saved'} article from ZaMarket.
+          Its public link and linked-product cards will no longer work. Uploaded media files are not deleted.</p>
+        <p className="small muted">This cannot be undone. Type DELETE below to confirm.</p>
+        <Field label="Confirmation">
+          <Input value={confirmation} onChange={onConfirmation} placeholder="Type DELETE" autoComplete="off" />
+        </Field>
+        <div className="btn-row wrap">
+          <button type="button" className="btn" disabled={busy} onClick={onClose}>Keep article</button>
+          <button type="button" className="btn danger" disabled={busy || confirmation !== 'DELETE'} onClick={onDelete}>
+            {busy ? 'Deleting…' : 'Delete permanently'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 // ---------------------------------------------------------------------------
 export default function Blog() {
   const [report, setReport] = useState(null)
@@ -390,6 +420,37 @@ export default function Blog() {
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
   const [tab, setTab] = useState('posts')
+  const [deleting, setDeleting] = useState(null)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteText, setDeleteText] = useState('')
+  const toast = useToast()
+
+  const requestDelete = (post) => {
+    if (!post?.id) return
+    setDeleteText('')
+    setDeleting({ id: post.id, title: post.title, status: post.status })
+  }
+
+  const removePost = async () => {
+    if (!deleting?.id || deleteBusy || deleteText !== 'DELETE') return
+    setDeleteBusy(true)
+    try {
+      // Database RLS limits deletion to authorised marketing staff. Related
+      // post_products rows are removed by their existing ON DELETE CASCADE FK.
+      const { data, error: deletionError } = await supabase.from('posts')
+        .delete().eq('id', deleting.id).select('id')
+      if (deletionError) throw deletionError
+      if (!data?.length) throw new Error('Article was not deleted. Check your permissions or reload the list.')
+      toast('Article deleted')
+      setDeleting(null)
+      setEditing(null)
+      load()
+    } catch (error) {
+      toast(error.message || 'Unable to delete this article', true)
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
 
   const load = () => {
     setError(null)
@@ -406,8 +467,12 @@ export default function Blog() {
   if (!report) return <Loading shape="page" />
 
   if (editing) {
-    return <Editor post={editing.id ? editing : editing} products={products}
-      onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />
+    return <>
+      <Editor post={editing} products={products} onRequestDelete={requestDelete}
+        onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />
+      <DeletePostDialog post={deleting} busy={deleteBusy} confirmation={deleteText}
+        onConfirmation={setDeleteText} onClose={() => setDeleting(null)} onDelete={removePost} />
+    </>
   }
 
   const posts = report.posts || []
@@ -448,7 +513,7 @@ export default function Blog() {
       ) : (
         <ul className="post-list">
           {posts.map((p) => (
-            <li key={p.id}>
+            <li key={p.id} className="post-list-entry">
               <button type="button" className="post-row" onClick={() => loadOne(p, setEditing)}>
                 <span className={`post-score ${p.seo_score >= 80 ? 'ok' : p.seo_score >= 50 ? 'warn' : 'bad'}`}>
                   {p.seo_score ?? '—'}
@@ -463,10 +528,16 @@ export default function Blog() {
                 </span>
                 <span className="post-views">{p.views} read{p.views === 1 ? '' : 's'}</span>
               </button>
+              <button type="button" className="btn danger sm blog-delete-list" onClick={() => requestDelete(p)}
+                aria-label={`Delete article: ${p.title}`}>
+                Delete
+              </button>
             </li>
           ))}
         </ul>
       )}
+      <DeletePostDialog post={deleting} busy={deleteBusy} confirmation={deleteText}
+        onConfirmation={setDeleteText} onClose={() => setDeleting(null)} onDelete={removePost} />
     </div>
   )
 }
