@@ -55,9 +55,9 @@ test('a missing cover photo does not break the share', () => {
 test('anyone reading can share, with no sign-in', () => {
   // Affiliates, vendors, customers and the owner get the same buttons,
   // because this lives on the public article page.
-  assert.match(blog, /function ShareArticle\(\{ post \}\)/)
-  assert.match(blog, /<ShareArticle post=\{post\} \/>/)
-  assert.doesNotMatch(blog.slice(blog.indexOf('function ShareArticle')), /useAuth|isStaff|role ===/)
+  assert.match(blog, /function ShareArticle\(\{ post, onShare \}\)/)
+  assert.match(blog, /<ShareArticle post=\{post\} onShare=\{onTrackShare\} \/>/)
+  assert.doesNotMatch(blog.slice(blog.indexOf('function ShareArticle'), blog.indexOf('export function BlogPost')), /useAuth|isStaff|role ===/)
 })
 
 test('the share offers the three places people actually post to', () => {

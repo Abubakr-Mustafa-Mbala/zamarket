@@ -10,10 +10,13 @@ import Icon from '../../lib/icons'
 import BlogMediaTools from '../../components/BlogMediaTools'
 import { Article } from '../public/Blog'
 import { Link } from 'react-router-dom'
+import { JOURNAL_THEMES, resolveJournalTheme } from '../../lib/journalTheme'
+import JournalFounderPanel from '../../components/JournalFounderPanel'
 
 const empty = {
   title: '', body: '', excerpt: '', keyword: '', secondary_keywords: [],
   meta_title: '', meta_description: '', category: '', cover_url: '', status: 'draft',
+  reading_theme: 'auto', featured_vendor_id: null,
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +142,11 @@ function Editor({ post, products, onClose, onSaved, onRequestDelete }) {
   const { profile } = useAuth()
   const [f, setF] = useState({ ...empty, ...post, secondary_keywords: post?.secondary_keywords || [] })
   const [linked, setLinked] = useState([])
+  const linkedVendors = useMemo(() => {
+    const unique = new Map()
+    for (const product of products) if (product.vendor_id && linked.includes(product.id)) unique.set(product.vendor_id, product.vendor_name)
+    return [...unique.entries()]
+  }, [products, linked])
   const [busy, setBusy] = useState(false)
   const [aiBusy, setAiBusy] = useState(false)
   const [aiInstructions, setAiInstructions] = useState('')
@@ -178,6 +186,8 @@ function Editor({ post, products, onClose, onSaved, onRequestDelete }) {
       secondary_keywords: f.secondary_keywords, meta_title: f.meta_title || null,
       meta_description: f.meta_description || null, category: f.category || null,
       cover_url: f.cover_url || null, status, seo_score: result.score,
+      reading_theme: f.reading_theme || 'auto',
+      featured_vendor_id: f.featured_vendor_id || null,
       author_id: profile?.id || null,
     }
     const q = post?.id
@@ -277,6 +287,8 @@ function Editor({ post, products, onClose, onSaved, onRequestDelete }) {
           <button className="btn primary" disabled={busy} onClick={() => save('published')}>
             {busy ? 'Saving…' : 'Publish'}
           </button>
+          {post?.slug && post?.status === 'published' && <Link to={`/blog/${post.slug}?export=pdf`}
+            target="_blank" rel="noopener noreferrer" className="btn" title="Open a print-ready document, then save as PDF">Export PDF</Link>}
           {post?.id && (
             <button type="button" className="btn danger" disabled={busy || aiBusy}
               onClick={() => onRequestDelete({ id: post.id, title: f.title, status: f.status })}>
@@ -345,6 +357,24 @@ function Editor({ post, products, onClose, onSaved, onRequestDelete }) {
           <Field label="Short summary" hint="Shown on the blog index.">
             <Textarea value={f.excerpt} onChange={set('excerpt')} rows={2} />
           </Field>
+          <section className="card stack-sm journal-editor-settings">
+            <h3>Journal presentation</h3>
+            <p className="small muted">Choose how this story feels. Automatic uses warm ivory for food, quiet sage for home and bedding, and soft stone for equipment. The rest of ZaMarket stays unchanged.</p>
+            <Field label="Reading palette">
+              <select className="input" value={f.reading_theme || 'auto'} onChange={e => setF(x => ({ ...x, reading_theme: e.target.value }))}>
+                {JOURNAL_THEMES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </select>
+            </Field>
+            <div className={`journal-theme-chip journal-theme-${resolveJournalTheme(f.category, f.reading_theme)}`}>
+              <strong>Reading preview</strong><span>Comfortable text, consistent headings and a calm background for this category.</span>
+            </div>
+            <Field label="Featured vendor" hint="Shown by name and storefront link near the article title. Choose a seller associated with a linked product.">
+              <select className="input" value={f.featured_vendor_id || ''} onChange={e => setF(x => ({ ...x, featured_vendor_id: e.target.value || null }))}>
+                <option value="">Automatically feature the first linked vendor</option>
+                {linkedVendors.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </Field>
+          </section>
 
           <section className="card stack-sm">
             <h3>What a reader can buy at the end</h3>
@@ -458,7 +488,7 @@ export default function Blog() {
       if (e) return setError(e)
       setReport(data)
     })
-    supabase.from('public_products').select('id,name,images,vendor_name,category,fulfilment,offering_type')
+    supabase.from('public_products').select('id,name,images,vendor_id,vendor_name,category,fulfilment,offering_type')
       .then(({ data }) => setProducts(data || []))
   }
   useEffect(load, [])
@@ -492,6 +522,8 @@ export default function Blog() {
         <Stat label="Drafts" value={report.drafts} />
         <Stat label="Reads" value={report.views} />
       </div>
+
+      <JournalFounderPanel />
 
       <div className="chips wrap">
         <button className={`chip ${tab === 'posts' ? 'on' : ''}`} onClick={() => setTab('posts')}>Posts</button>

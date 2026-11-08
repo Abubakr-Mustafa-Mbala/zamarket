@@ -13,6 +13,8 @@ import './refinements.css'
 import './giveaway-premium.css'
 import './studio-premium.css'
 import './ai-blog.css'
+import './journal-editorial.css'
+import './journal-v2.css'
 
 // Clear out anything an older version of the site left behind in this browser.
 // We cache nothing ourselves, so whatever is in there is wreckage.

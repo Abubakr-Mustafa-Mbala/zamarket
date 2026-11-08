@@ -1,0 +1,294 @@
+/* ZaMarket Journal — editorial reading system
+   Loaded last and intentionally scoped to the public Journal and the staff
+   article preview. It does not alter the marketplace's checkout, cards, or
+   global theme. Uses the site's existing Fraunces and Plus Jakarta Sans. */
+
+.shop .journal-index,
+.shop .post-page {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Landing page: a calm, confident editorial introduction. */
+.shop .journal-index .blog-head {
+  max-width: 790px;
+  margin: clamp(10px, 2.8vw, 32px) 0 clamp(26px, 4vw, 44px);
+  padding: 0 0 clamp(22px, 3vw, 32px);
+  border-bottom: 1px solid var(--line-strong);
+}
+.shop .journal-index .journal-eyebrow,
+.shop .post-head .post-overline,
+.shop .post-section-kicker {
+  font-family: var(--font);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--brass-text);
+}
+.shop .journal-index .journal-eyebrow {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.shop .journal-index .blog-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.3rem, 5vw, 4.35rem);
+  font-weight: 700;
+  line-height: 1.11;
+  letter-spacing: -.042em;
+  max-width: 15ch;
+  color: var(--ink);
+}
+.shop .journal-index .blog-head p {
+  margin-top: 17px;
+  max-width: 58ch;
+  color: var(--ink-2);
+  font-family: var(--font);
+  font-size: clamp(.97rem, 1.6vw, 1.12rem);
+  line-height: 1.68;
+  letter-spacing: 0;
+}
+.shop .journal-index .blog-grid { gap: clamp(16px, 2.4vw, 26px); }
+.shop .journal-index .blog-grid-single { grid-template-columns: minmax(0, 700px); }
+.shop .journal-index .blog-card {
+  border-radius: 19px;
+  border: 1px solid var(--line-strong);
+  background: var(--coal);
+  overflow: hidden;
+  color: var(--ink);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+}
+.shop .journal-index .blog-card:hover,
+.shop .journal-index .blog-card:focus-visible {
+  transform: translateY(-2px);
+  border-color: var(--brass-text);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .16);
+}
+.shop .journal-index .bc-pic { aspect-ratio: 16 / 10; background: var(--coal-2); }
+.shop .journal-index .bc-pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.shop .journal-index .bc-body { gap: 11px; padding: clamp(17px, 2vw, 24px); }
+.shop .journal-index .bc-cat { font-size: .7rem; letter-spacing: .11em; }
+.shop .journal-index .bc-body strong {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: clamp(1.25rem, 1.8vw, 1.6rem);
+  letter-spacing: -.022em;
+  line-height: 1.24;
+  color: var(--ink);
+}
+.shop .journal-index .bc-ex { color: var(--ink-2); font-size: .9rem; line-height: 1.57;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.shop .journal-index .bc-foot { gap: 14px; color: var(--muted); font-size: .77rem; margin: 3px 0 0; }
+.shop .journal-index .bc-read {
+  display: inline-flex; gap: 9px; align-items: center; margin-top: 3px;
+  color: var(--brass-text); font-weight: 800; font-size: .85rem;
+}
+
+/* The article page reads like a journal feature, not an admin textarea. */
+.shop .post-page { max-width: 850px; margin-inline: auto; gap: 0; }
+.shop .post-page > .crumbs {
+  margin: 6px 0 clamp(20px, 3vw, 32px);
+  font-size: .79rem; line-height: 1.4;
+  min-width: 0;
+}
+.shop .post-page > .crumbs > span:last-child {
+  display: block; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; max-width: min(45vw, 370px);
+}
+.shop .post-head { margin-bottom: 27px; }
+.shop .post-head .post-overline { display: flex; align-items: center; flex-wrap: wrap; gap: 9px 18px; margin-bottom: 16px; }
+.shop .post-head .post-overline > span { color: var(--muted); }
+.shop .post-head .post-overline .bc-cat { color: var(--brass-text); }
+.shop .post-head h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 4.5vw, 3.55rem);
+  line-height: 1.12;
+  letter-spacing: -.036em;
+  font-weight: 700;
+  overflow-wrap: break-word;
+  color: var(--ink);
+}
+.shop .post-meta {
+  display: flex; align-items: center; flex-wrap: wrap;
+  column-gap: 12px; row-gap: 5px;
+  margin: 17px 0 0;
+  color: var(--muted); font-family: var(--font);
+  font-size: .82rem; line-height: 1.5; letter-spacing: .005em;
+}
+.shop .post-meta span + span::before { content: '·'; margin-right: 12px; color: var(--brass-text); }
+.shop .post-meta span:first-child { color: var(--ink-2); font-weight: 650; }
+.shop .post-cover {
+  margin: 0 0 clamp(27px, 5vw, 48px);
+  aspect-ratio: 16 / 9;
+  max-height: 445px;
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--coal-2);
+}
+.shop .post-cover img { width: 100%; height: 100%; display: block; object-fit: cover; }
+
+/* Reading rhythm: headlines are expressive, text stays quiet and legible. */
+.shop .post-page .article,
+.blog-editor-preview .article {
+  font-family: var(--font);
+  font-size: 1.035rem;
+  font-weight: 400;
+  line-height: 1.83;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  overflow-wrap: break-word;
+}
+.shop .post-page .article { max-width: 69ch; margin: 0 auto; width: 100%; }
+.shop .post-page .article > p:first-child,
+.blog-editor-preview .article > p:first-child {
+  font-size: 1.12em; line-height: 1.75; color: var(--ink);
+}
+.shop .post-page .article p,
+.blog-editor-preview .article p { margin: 0 0 1.22em; }
+.shop .post-page .article h2,
+.blog-editor-preview .article h2 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 3vw, 1.85rem);
+  line-height: 1.26;
+  letter-spacing: -.025em;
+  color: var(--ink);
+  margin: clamp(38px, 5vw, 55px) 0 15px;
+  padding-top: 0;
+}
+.shop .post-page .article h2::before,
+.blog-editor-preview .article h2::before {
+  display: block;
+  content: '';
+  width: 30px; height: 3px;
+  background: var(--brass);
+  border-radius: 5px;
+  margin: 0 0 13px;
+}
+.shop .post-page .article h3,
+.blog-editor-preview .article h3 {
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: 1.12rem;
+  line-height: 1.4;
+  letter-spacing: -.015em;
+  color: var(--ink);
+  margin: 28px 0 10px;
+}
+.shop .post-page .article strong,
+.blog-editor-preview .article strong { color: var(--ink); font-weight: 750; }
+.shop .post-page .article ul,
+.shop .post-page .article ol,
+.blog-editor-preview .article ul,
+.blog-editor-preview .article ol { padding-left: 1.35em; margin: 0 0 1.35em; }
+.shop .post-page .article li,
+.blog-editor-preview .article li { padding-left: .2em; margin-bottom: .45em; }
+.shop .post-page .article li::marker,
+.blog-editor-preview .article li::marker { color: var(--brass-text); }
+.shop .post-page .article a,
+.blog-editor-preview .article a { color: var(--brass-text); font-weight: 700; }
+.shop .post-page .article blockquote,
+.blog-editor-preview .article blockquote {
+  margin: 1.6em 0; padding: 17px 21px;
+  border-left: 3px solid var(--brass);
+  background: var(--coal-2);
+  color: var(--ink);
+  border-radius: 0 12px 12px 0;
+}
+.shop .post-page .article .article-media,
+.blog-editor-preview .article .article-media { margin: 31px 0 36px; }
+.shop .post-page .article .article-media > img,
+.blog-editor-preview .article .article-media > img {
+  display: block;
+  width: auto; max-width: 100%; height: auto;
+  max-height: 520px;
+  object-fit: contain;
+  margin: 0 auto;
+  border-radius: 14px;
+  border: 1px solid var(--line-strong);
+  background: var(--coal-2);
+}
+.shop .post-page .article .article-media figcaption,
+.blog-editor-preview .article .article-media figcaption {
+  max-width: 64ch;
+  margin: 12px auto 0;
+  font-family: var(--font);
+  color: var(--muted);
+  font-size: .79rem;
+  line-height: 1.55;
+  text-align: center;
+  opacity: 1;
+}
+.shop .post-page .article .article-video,
+.blog-editor-preview .article .article-video { max-height: none; aspect-ratio: 16/9; }
+
+/* Keep the product purchase path beautiful and unmissable, not pushy. */
+.shop .post-page .post-buy { margin-top: 48px; padding-top: 31px; border-top: 1px solid var(--line-strong); }
+.shop .post-page .post-section-kicker { margin: 0 0 8px; }
+.shop .post-page .post-buy h2 {
+  font: 700 clamp(1.55rem, 2.8vw, 2rem)/1.25 var(--font-display);
+  letter-spacing: -.025em; margin: 0 0 7px;
+}
+.shop .post-page .post-section-description {
+  margin: 0 0 20px;
+  font-size: .89rem;
+  line-height: 1.6; color: var(--ink-2);
+}
+.shop .post-page .post-buy-grid { gap: 15px; }
+.shop .post-page .pb-card { border: 1px solid var(--line-strong); border-radius: 15px; }
+.shop .post-page .pb-card:hover,
+.shop .post-page .pb-card:focus-visible { border-color: var(--brass-text); }
+.shop .post-page .pb-body { gap: 8px; padding: 16px; }
+.shop .post-page .pb-body strong { color: var(--ink); font-size: .98rem; line-height: 1.4; }
+.shop .post-page .pb-price { color: var(--ink); font-variant-numeric: tabular-nums; }
+.shop .post-page .post-share,
+.shop .post-page .post-foot {
+  margin-top: 28px;
+  padding: clamp(18px, 3vw, 26px);
+  border-radius: 16px;
+  border: 1px solid var(--line-strong);
+  background: var(--coal);
+}
+.shop .post-page .post-share h2 { font: 700 1.45rem/1.3 var(--font-display); letter-spacing: -.015em; }
+.shop .post-page .post-share .btn-row { gap: 9px; }
+
+/* Home page teasers use the same journal typography, while respecting shop layout. */
+.shop .home-journal-heading h2 { font-family: var(--font-display); font-weight: 700; letter-spacing: -.02em; }
+.shop .home-journal-info strong { font-family: var(--font-display); font-weight: 650; font-size: 1.15rem; line-height: 1.32; }
+
+@media (max-width: 740px) {
+  .shop .journal-index .blog-head { margin: 7px 0 23px; padding-bottom: 22px; }
+  .shop .journal-index .blog-head h1 { font-size: clamp(2.2rem, 8.5vw, 3rem); }
+  .shop .journal-index .blog-head p { margin-top: 12px; font-size: .98rem; line-height: 1.62; }
+  .shop .journal-index .blog-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .shop .journal-index .bc-pic { aspect-ratio: 16 / 10; }
+  .shop .journal-index .bc-body { padding: 16px 18px 18px; gap: 9px; }
+  .shop .journal-index .bc-body strong { font-size: 1.3rem; }
+  .shop .post-page > .crumbs { margin: 0 0 22px; }
+  .shop .post-head { margin-bottom: 21px; }
+  .shop .post-head .post-overline { font-size: .65rem; gap: 8px 11px; margin-bottom: 13px; }
+  .shop .post-head h1 { font-size: clamp(2rem, 8vw, 2.75rem); line-height: 1.15; }
+  .shop .post-meta { font-size: .75rem; gap: 4px 9px; margin-top: 14px; }
+  .shop .post-meta span + span::before { margin-right: 9px; }
+  .shop .post-cover { border-radius: 14px; aspect-ratio: 4 / 3; max-height: 335px; margin-bottom: 27px; }
+  .shop .post-page .article { font-size: 1rem; line-height: 1.75; }
+  .shop .post-page .article > p:first-child { font-size: 1.075rem; line-height: 1.72; }
+  .shop .post-page .article p { margin-bottom: 19px; }
+  .shop .post-page .article h2 { font-size: 1.55rem; line-height: 1.28; margin: 35px 0 12px; }
+  .shop .post-page .article h3 { font-size: 1.1rem; margin-top: 26px; }
+  .shop .post-page .article .article-media { margin: 26px 0 30px; }
+  .shop .post-page .article .article-media > img { max-height: 440px; }
+  .shop .post-page .article .article-media figcaption { font-size: .77rem; }
+  .shop .post-page .post-buy { margin-top: 39px; padding-top: 25px; }
+  .shop .post-page .post-buy-grid { grid-template-columns: minmax(0, 1fr); }
+  .shop .post-page .post-share,
+  .shop .post-page .post-foot { padding: 18px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shop .journal-index .blog-card,
+  .shop .journal-index .blog-card img { transition: none; }
+  .shop .journal-index .blog-card:hover { transform: none; }
+}
