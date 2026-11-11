@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { studioExportPlan, isActualOffer, isRecentProduct } from '../src/lib/studioPlan.js'
+import { studioExportPlan, STUDIO_TOOLS, isActualOffer, isRecentProduct } from '../src/lib/studioPlan.js'
 
 const recent = { id: 1, name: 'Handmade cake', price: 120, normal_price: 140, slug: 'cake', images: ['cake.jpg'], created_at: new Date().toISOString() }
 const old = { id: 2, name: 'Phone', price: 2200, normal_price: null, slug: 'phone', images: [], created_at: '2020-01-01T00:00:00Z' }
@@ -36,12 +36,20 @@ test('new-arrival design rejects old listings rather than claiming they are new'
   assert.throws(() => studioExportPlan('arrival', [old]), /last 21 days/)
   assert.doesNotThrow(() => studioExportPlan('arrival', [recent]))
 })
-test('offer ad requires a verified price comparison', () => {
-  assert.throws(() => studioExportPlan('offer', [old]), /genuine saving/)
-  assert.doesNotThrow(() => studioExportPlan('offer', [recent]))
+test('the studio offers only the two approved designs', () => {
+  // The owner approved Full-bleed hero and Several angles. The earlier
+  // studio-only layouts put the photograph in a small floating square on a
+  // heavy coloured field; they were removed rather than kept as options.
+  for (const kept of ['hero', 'gallery', 'sheet']) assert.ok(STUDIO_TOOLS[kept], `${kept} should be offered`)
+  for (const retired of ['offer', 'price', 'dark', 'editorial', 'detail']) {
+    assert.ok(!STUDIO_TOOLS[retired], `${retired} should no longer be offered`)
+    assert.throws(() => studioExportPlan(retired, [recent]), /Unknown/)
+  }
 })
-test('photo-first premium template requires a real product photo', () => {
-  assert.throws(() => studioExportPlan('dark', [old]), /photograph/)
+test('a photograph-led design refuses a product with no photograph', () => {
+  assert.throws(() => studioExportPlan('hero', [old]), /photograph/)
+  assert.throws(() => studioExportPlan('gallery', [old]), /photograph/)
+  assert.throws(() => studioExportPlan('sheet', [old]), /photograph/)
 })
 test('unknown template and empty selection give actionable errors', () => {
   assert.throws(() => studioExportPlan('nope', [recent]), /Unknown/)

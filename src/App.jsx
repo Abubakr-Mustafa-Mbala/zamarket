@@ -1,5 +1,6 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { PENDING, resumeTarget } from './lib/pendingApplication'
 import { useAuth } from './lib/auth'
 import { configured } from './lib/supabase'
 import Shell from './components/Shell'
@@ -7,7 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { Loading } from './components/ui'
 import { PublicShell, Storefront, ProductPage, ReferralCapture, StorePage, SearchPage, SellersPage, GoLink } from './pages/public/Marketplace'
 import { Cart, Checkout, OrderConfirmed, ReviewPage } from './pages/public/Checkout'
-import { Login, Account, Apply, homeFor } from './pages/public/Auth'
+import { Login, Account, ResetPassword, Apply, homeFor } from './pages/public/Auth'
 const named = (loader, name) => lazy(() => loader().then((m) => ({ default: m[name] })))
 const adminOrders = () => import('./pages/admin/Orders')
 const adminStock = () => import('./pages/admin/Stock')
@@ -39,6 +40,7 @@ const MagnetPage = named(growthPages, 'MagnetPage')
 const InvitePage = named(growthPages, 'InvitePage')
 const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
+const Motors = lazy(() => import('./pages/public/Motors'))
 const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
 const AffiliateRecruitment = lazy(() => import('./pages/public/AffiliateRecruitment'))
@@ -67,6 +69,9 @@ const Reports = named(adminSetup, 'Reports')
 const Team = named(adminSetup, 'Team')
 const Settings = named(adminSetup, 'Settings')
 const Audit = named(adminSetup, 'Audit')
+const Recover = lazy(() => import('./pages/public/Recover'))
+const Recovery = lazy(() => import('./pages/admin/Recovery'))
+const DeliveryFund = lazy(() => import('./pages/admin/DeliveryFund'))
 const FindCustomers = lazy(() => import('./pages/reseller/FindCustomers'))
 const Training = lazy(() => import('./pages/reseller/Training'))
 const ResellerHome = named(resellerPages, 'ResellerHome')
@@ -113,7 +118,24 @@ function Founder({ children }) {
   return isFounder ? children : <Navigate to="/admin" replace />
 }
 
+// Somebody who filled in an application and then chose a Google account may
+// be handed back to the front page instead of the form. Take them to the
+// form, which sends what they wrote.
+function useResumeApplication() {
+  const { user, loading } = useAuth()
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  useEffect(() => {
+    if (loading || !user) return
+    let raw = null
+    try { raw = localStorage.getItem(PENDING) } catch { return }
+    const target = resumeTarget(pathname, raw)
+    if (target) navigate(target, { replace: true })
+  }, [user, loading, pathname])
+}
+
 export default function App() {
+  useResumeApplication()
   if (!configured) {
     return (
       <div className="auth-wrap">
@@ -133,6 +155,7 @@ export default function App() {
         <Route path="/giveaways/:slug" element={<GiveawayPage />} />
         <Route path="/store/:id" element={<StorePage />} />
         <Route path="/search" element={<SearchPage />} />
+        <Route path="/motors" element={<Motors />} />
         <Route path="/sellers" element={<SellersPage />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
@@ -159,6 +182,8 @@ export default function App() {
       <Route path="/r/:code/:product" element={<ReferralCapture />} />
       <Route path="/go/:code" element={<GoLink />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/recover" element={<Recover />} />
 
       <Route path="/admin/orders/:id/receipt" element={<Guard roles={STAFF}><ErrorBoundary home="/admin/orders"><Receipt /></ErrorBoundary></Guard>} />
       <Route path="/admin" element={<Guard roles={STAFF}><Shell kind="staff" /></Guard>}>
@@ -187,12 +212,14 @@ export default function App() {
         <Route path="marketing/:section" element={<MarketingHub />} />
         <Route path="reviews" element={<Reviews />} />
         <Route path="finance" element={<Finance />} />
+        <Route path="delivery-fund" element={<DeliveryFund />} />
         <Route path="earnings" element={<AdminEarnings />} />
         <Route path="earnings/:scope/:id" element={<PartnerEarnings />} />
         <Route path="reports" element={<Reports />} />
         <Route path="team" element={<Founder><Team /></Founder>} />
         <Route path="settings" element={<Founder><Settings /></Founder>} />
         <Route path="audit" element={<Founder><Audit /></Founder>} />
+        <Route path="recovery" element={<Founder><Recovery /></Founder>} />
       </Route>
 
       <Route path="/sell" element={<Guard roles={['reseller']}><Shell kind="reseller" /></Guard>}>

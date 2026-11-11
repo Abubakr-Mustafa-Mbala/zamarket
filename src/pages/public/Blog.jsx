@@ -287,7 +287,7 @@ export function BlogPost() {
   const [searchParams] = useSearchParams()
   const [post, setPost] = useState(null)
   const [editorial, setEditorial] = useState({})
-  const printMode = isStaff && searchParams.get('export') === 'pdf'
+  const printMode = isStaff && searchParams.get('export') === 'pdf' 
 
   useEffect(() => {
     if (!slug) return

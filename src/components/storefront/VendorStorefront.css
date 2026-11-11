@@ -1,0 +1,185 @@
+/* Vendor storefront, from the approved design. Every rule is scoped to .zsv,
+   so nothing here reaches the rest of the site. Colours are variables: the
+   violet below is the approved default, and a seller who chose their own
+   colours gets the same layout in theirs (see storefrontVars). */
+.zsv {
+  --zsv-bg: #0C0B16;
+  --zsv-panel: #1E1A2B;
+  --zsv-panel-2: #292238;
+  --zsv-ink: #F9F6FF;
+  --zsv-muted: #C4BBD1;
+  --zsv-line: rgba(198, 174, 232, .18);
+  --zsv-accent: #C996FA;
+  --zsv-accent-text: #DCB1FA;
+  --zsv-on-accent: #1F1229;
+  --zsv-hero-a: #524071;
+  --zsv-hero-b: #312441;
+  --zsv-hero-c: #1B1529;
+  color: var(--zsv-ink);
+  background: var(--zsv-bg);
+  width: 100%;
+  max-width: 1380px;
+  margin: 0 auto;
+  padding: 8px clamp(12px, 2.1vw, 28px) 40px;
+  border-radius: 18px;
+  min-width: 0;
+}
+.zsv *, .zsv *::before, .zsv *::after { box-sizing: border-box; }
+.zsv a { color: inherit; text-decoration: none; }
+.zsv :focus-visible { outline: 3px solid var(--zsv-accent); outline-offset: 3px; }
+.zsv h1, .zsv h2 { color: var(--zsv-ink); font-family: var(--font); }
+/* On a seller's own page the marketplace's department circles and the
+   "by <seller>" line on every card say nothing new. */
+body:has(.zsv) .cat-rail { display: none; }
+.zsv .oc-seller { display: none; }
+
+.zsv-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 2px 16px; color: var(--zsv-muted); font-size: .82rem; }
+.zsv-crumbs [aria-current] { color: var(--zsv-ink); }
+
+/* Hero */
+.zsv-hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .92fr);
+  min-height: 330px; border-radius: 26px; overflow: hidden; position: relative;
+  border: 1px solid var(--zsv-line);
+  background: radial-gradient(circle at 5% 0%, var(--zsv-hero-a) 0%, var(--zsv-hero-b) 45%, var(--zsv-hero-c) 100%);
+}
+.zsv-hero-content { padding: clamp(20px, 3.6vw, 48px); display: flex; flex-direction: column; gap: 16px; min-width: 0; position: relative; z-index: 1; }
+.zsv-brand { display: flex; align-items: center; gap: 18px; min-width: 0; }
+.zsv-logo {
+  width: clamp(72px, 8vw, 104px); height: clamp(72px, 8vw, 104px); flex: none;
+  border-radius: 22px; border: 1px solid rgba(255, 255, 255, .22);
+  background: #fff; object-fit: contain; padding: 6px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .25);
+}
+.zsv-logo-letter { display: grid; place-items: center; padding: 0; background: var(--zsv-panel); color: var(--zsv-ink); font-size: 2.6rem; font-weight: 800; }
+.zsv-brand-text { min-width: 0; display: grid; gap: 8px; justify-items: start; }
+.zsv-brand-text h1 { margin: 0; font-size: clamp(1.7rem, 2.9vw, 2.9rem); line-height: 1.06; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.zsv-verified { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: .78rem; font-weight: 700;
+  color: var(--zsv-ink); border: 1px solid var(--zsv-accent); background: color-mix(in srgb, var(--zsv-accent) 22%, transparent); }
+.zsv-line { margin: 0; max-width: 56ch; color: var(--zsv-ink); opacity: .9; line-height: 1.6; font-size: .98rem; }
+.zsv-line:not(.open) { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.zsv-link-button { align-self: start; margin-top: -8px; padding: 0; border: 0; background: none; font: inherit; font-weight: 700; font-size: .88rem; color: var(--zsv-accent-text); cursor: pointer; }
+.zsv-facts { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--zsv-muted); font-size: .9rem; }
+.zsv-facts span { display: inline-flex; align-items: center; gap: 6px; }
+.zsv-actions { margin-top: auto; display: flex; flex-wrap: wrap; gap: 10px; }
+.zsv-btn { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 48px; padding: 12px 20px; border-radius: 13px; font-weight: 750; text-align: center; }
+.zsv-btn.primary { background: var(--zsv-accent); color: var(--zsv-on-accent); box-shadow: 0 6px 18px color-mix(in srgb, var(--zsv-accent) 30%, transparent); }
+.zsv-btn.secondary { border: 1px solid var(--zsv-accent); color: var(--zsv-ink); }
+.zsv-share .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 12px 20px; border-radius: 13px;
+  border: 1px solid var(--zsv-line); border-color: color-mix(in srgb, var(--zsv-ink) 45%, transparent); background: transparent; color: var(--zsv-ink); font-weight: 700; }
+
+.zsv-hero-art { position: relative; min-height: 320px; overflow: hidden; }
+.zsv-hero-art.has-cover::before { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg, var(--zsv-hero-c), transparent 28%); z-index: 1; pointer-events: none; opacity: .6; }
+.zsv-cover { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.zsv-collage { position: absolute; inset: 0; padding: 14px; display: grid; gap: 8px; grid-template-columns: 1.25fr 1fr; grid-template-rows: 1fr 1fr; }
+.zsv-collage span { min-width: 0; min-height: 0; overflow: hidden; border-radius: 14px; background: #F7F5F8; }
+.zsv-collage span:first-child { grid-row: 1 / span 2; }
+.zsv-collage img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.zsv-collage.n1 { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.zsv-collage.n2 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr; }
+.zsv-collage.n2 span:first-child { grid-row: auto; }
+.zsv-hero.no-art { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.zsv-art-empty { position: absolute; inset: 0; display: grid; place-items: center; font-size: 7rem; font-weight: 800; color: var(--zsv-ink); opacity: .08; }
+
+/* Category chips */
+.zsv-chips { display: flex; gap: 9px; overflow-x: auto; padding: 20px 2px 8px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.zsv-chips::-webkit-scrollbar { display: none; }
+.zsv-chips a { flex: none; scroll-snap-align: start; min-height: 44px; display: inline-flex; align-items: center; padding: 10px 18px; border-radius: 999px; white-space: nowrap;
+  border: 1px solid var(--zsv-line); background: var(--zsv-panel); color: var(--zsv-ink); font-size: .88rem; font-weight: 700; }
+.zsv-chips a.on { background: var(--zsv-accent); color: var(--zsv-on-accent); border-color: transparent; }
+
+/* About */
+.zsv-about { margin: 16px 0 26px; padding: 20px 24px; border-radius: 20px; border: 1px solid var(--zsv-line);
+  background: linear-gradient(110deg, var(--zsv-panel-2), var(--zsv-panel)); display: flex; gap: 24px; align-items: center; justify-content: space-between; }
+.zsv-about-copy { min-width: 0; display: grid; gap: 8px; }
+.zsv-about-copy .zsv-link-button { margin-top: 0; }
+.zsv-about h2 { margin: 0; font-size: 1.25rem; }
+.zsv-about p { margin: 0; max-width: 72ch; color: var(--zsv-muted); line-height: 1.55; font-size: .93rem; }
+.zsv-points { list-style: none; margin: 0; padding: 0 0 0 22px; border-left: 1px solid var(--zsv-line); display: grid; gap: 10px; min-width: 200px; max-width: 300px; font-size: .86rem; }
+.zsv-points li { display: flex; gap: 9px; align-items: baseline; overflow-wrap: anywhere; }
+.zsv-points li span { color: var(--zsv-accent-text); }
+
+/* Sections */
+.zsv-anchor { scroll-margin-top: 130px; }
+.zsv-section { margin: 22px 0 32px; scroll-margin-top: 130px; }
+.zsv-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.zsv-title h2 { margin: 0; font-size: clamp(1.15rem, 2vw, 1.6rem); font-weight: 750; display: flex; align-items: center; gap: 11px; min-width: 0; }
+.zsv-title h2::before { content: ''; flex: none; width: 5px; height: 1.1em; border-radius: 8px; background: var(--zsv-accent); }
+.zsv-title a { color: var(--zsv-accent-text); font-weight: 700; font-size: .86rem; white-space: nowrap; }
+.zsv-count { color: var(--zsv-muted); font-size: .82rem; white-space: nowrap; }
+
+/* Collections */
+.zsv-collections { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.zsv-collection { position: relative; min-height: 140px; overflow: hidden; border-radius: 18px; border: 1px solid var(--zsv-line);
+  background: linear-gradient(120deg, var(--zsv-hero-b), var(--zsv-hero-a)); }
+.zsv-collection img { position: absolute; top: 10px; right: 10px; bottom: 10px; width: 44%; height: calc(100% - 20px); object-fit: contain; background: #F7F5F8; border-radius: 13px; }
+.zsv-collection-shade { display: none; }
+.zsv-collection-copy { position: absolute; inset: 16px 14px 14px 18px; display: flex; flex-direction: column; align-items: flex-start; }
+.zsv-collection-copy strong { max-width: 52%; font-size: 1.06rem; line-height: 1.2; color: var(--zsv-ink); overflow-wrap: anywhere; }
+.zsv-collection-copy small { margin-top: 5px; font-size: .8rem; color: var(--zsv-muted); }
+.zsv-collection-go { margin-top: auto; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--zsv-accent); color: var(--zsv-on-accent); font-weight: 800; }
+
+/* Products: the existing card, restyled only inside the store */
+.zsv-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.zsv-grid > * { min-width: 0; }
+.zsv-section .grid-listings { min-width: 0; }
+.zsv .oc { min-width: 0; overflow: hidden; border-radius: 19px; background: var(--zsv-panel); border: 1px solid var(--zsv-line); box-shadow: 0 6px 16px rgba(0, 0, 0, .18); }
+.zsv .oc-media { aspect-ratio: 4 / 3; background: #F7F5F8; overflow: hidden; }
+.zsv .oc-media img { width: 100%; height: 100%; object-fit: contain; background: #F7F5F8; }
+.zsv .oc-body { padding: 13px; }
+.zsv .oc-name { color: var(--zsv-ink); font-size: 1rem; font-weight: 750; line-height: 1.3; }
+.zsv .oc-desc { color: var(--zsv-muted); }
+.zsv .oc-action-btn { min-height: 44px; border-radius: 11px; background: var(--zsv-accent); color: var(--zsv-on-accent); font-weight: 750; border: 0; }
+
+.zsv-empty { text-align: center; padding: 34px 20px; border-radius: 20px; border: 1px solid var(--zsv-line); background: var(--zsv-panel); display: grid; gap: 10px; justify-items: center; }
+.zsv-empty h2, .zsv-empty p { margin: 0; }
+.zsv-footer { margin-top: 10px; padding: 18px 24px; border-radius: 18px; border: 1px solid var(--zsv-line); background: var(--zsv-panel);
+  display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .zsv .oc, .zsv-collection { transition: transform .18s ease, border-color .18s ease; }
+  .zsv .oc:hover, .zsv-collection:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--zsv-accent) 55%, transparent); }
+}
+
+@media (max-width: 860px) {
+  .zsv-hero { grid-template-columns: minmax(0, 1fr) minmax(0, .75fr); }
+  .zsv-collections, .zsv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .zsv-points { display: none; }
+}
+
+@media (max-width: 600px) {
+  .zsv { padding: 2px 12px 32px; border-radius: 0; }
+  .zsv-crumbs { padding: 6px 2px 12px; font-size: .74rem; }
+  /* Picture first on a phone, then who the seller is. */
+  .zsv-hero { display: flex; flex-direction: column-reverse; min-height: 0; border-radius: 19px; }
+  .zsv-hero-art { min-height: 0; height: 200px; }
+  .zsv-hero-art.has-cover::before { background: linear-gradient(0deg, var(--zsv-hero-c), transparent 35%); }
+  .zsv-hero-content { padding: 16px; gap: 12px; }
+  .zsv-logo { width: 64px; height: 64px; border-radius: 16px; padding: 4px; }
+  .zsv-logo-letter { font-size: 2rem; }
+  .zsv-brand { gap: 12px; }
+  .zsv-brand-text h1 { font-size: clamp(1.4rem, 6.4vw, 1.8rem); }
+  .zsv-line { font-size: .9rem; }
+  .zsv-facts { font-size: .8rem; gap: 6px 14px; }
+  .zsv-actions { flex-wrap: nowrap; }
+  .zsv-actions > * { flex: 1 1 0; min-width: 0; }
+  .zsv-btn, .zsv-share .btn { width: 100%; padding: 11px 8px; font-size: .86rem; }
+  .zsv-chips { padding: 14px 0 4px; gap: 7px; margin: 0 -12px; padding-left: 12px; padding-right: 12px; }
+  .zsv-chips a { padding: 9px 14px; font-size: .8rem; }
+  .zsv-about { margin: 12px 0 20px; padding: 15px; border-radius: 15px; }
+  .zsv-about h2 { font-size: 1.02rem; }
+  .zsv-about p { font-size: .86rem; }
+  .zsv-section { margin: 18px 0 24px; }
+  .zsv-title h2 { font-size: 1.12rem; }
+  .zsv-collections { display: flex; overflow-x: auto; gap: 10px; padding-bottom: 4px; scroll-snap-type: x mandatory; margin: 0 -12px; padding-left: 12px; padding-right: 12px; scrollbar-width: none; }
+  .zsv-collections::-webkit-scrollbar { display: none; }
+  .zsv-collection { flex: 0 0 76%; min-height: 124px; scroll-snap-align: start; }
+  .zsv-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .zsv .oc { border-radius: 15px; }
+  .zsv .oc-media { aspect-ratio: 1 / 1; }
+  .zsv .oc-body { padding: 9px; }
+  .zsv .oc-name { font-size: .86rem; }
+  .zsv .oc-desc { font-size: .76rem; }
+  .zsv .oc-action-btn { font-size: .8rem; min-height: 44px; }
+  .zsv-footer { flex-direction: column; align-items: stretch; text-align: center; padding: 16px; }
+}

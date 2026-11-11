@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { PENDING, packPending, readPending } from '../../lib/pendingApplication'
 import { Link, useNavigate, useParams, Navigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
@@ -43,6 +44,7 @@ export function Login() {
   const next = sp.get('next')
   const [f, setF] = useState({ email: '', password: '', full_name: '', phone: '' })
   const [busy, setBusy] = useState(false)
+  const [recovery, setRecovery] = useState(false)
   const set = (k) => (v) => setF((c) => ({ ...c, [k]: v }))
 
   // Where to go after signing in.
@@ -76,18 +78,31 @@ export function Login() {
   const submit = async (e) => {
     e.preventDefault()
     setBusy(true)
-    const res = mode === 'in'
-      ? await supabase.auth.signInWithPassword({ email: f.email, password: f.password })
-      : await supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name, phone: f.phone } } })
+    // Sign in only. New accounts are created through Google, so there is no
+    // signUp call behind this form to reach even if the mode were wrong.
+    const res = await supabase.auth.signInWithPassword({ email: f.email, password: f.password })
     setBusy(false)
     if (res.error) return toast(res.error.message, true)
-    if (mode === 'up' && !res.data.session) toast('Check your email to confirm your account')
+
+  }
+
+  const requestReset = async (event) => {
+    event.preventDefault()
+    if (!f.email.trim()) return toast('Enter your account email first', true)
+    setBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(f.email.trim(), {
+      redirectTo: `${window.location.origin}/reset-password`,
+    })
+    setBusy(false)
+    if (error) return toast('Could not request a recovery link. Please check your details or contact ZaMarket support.', true)
+    setRecovery(true)
+    toast('If the address is registered, you will receive a password recovery email.')
   }
 
   return (
     <div className="auth-wrap">
       <div className="card auth-card stack">
-        <Link to="/" className="brand" style={{ color: 'var(--green-deep)', padding: 0 }}>Za<span style={{ color: 'var(--copper)' }}>Market</span></Link>
+        <Link to="/" className="brand" style={{ color: 'var(--ink)', padding: 0 }}>Za<span style={{ color: 'var(--copper)' }}>Market</span></Link>
         <div>
           <h1>Welcome back</h1>
           <p className="small muted">Sign in to continue to ZaMarket.</p>
@@ -99,27 +114,40 @@ export function Login() {
         </button>
         <p className="tiny muted center">You choose your Google account. Your Google password is never seen or stored by ZaMarket.</p>
 
-        {!withEmail ? (
-          <button type="button" className="btn ghost block" onClick={() => setWithEmail(true)}>Use an email and password instead</button>
+        {/* A password is offered for signing IN, never for creating a new
+            account. People who already have one keep working and can attach
+            Google from their account page; everyone new gets an account whose
+            recovery Google handles, because a lost password on a Supabase
+            account is close to unrecoverable and an affiliate's earnings sit
+            behind it. */}
+        {mode === 'up' ? (
+          <button type="button" className="btn ghost block" onClick={() => setMode('in')}>
+            Already have an account? Sign in
+          </button>
+        ) : !withEmail ? (
+          <button type="button" className="btn ghost block" onClick={() => setWithEmail(true)}>I already have a password</button>
         ) : (
           <>
             <div className="auth-or"><span>or</span></div>
             <form onSubmit={submit} className="stack-sm">
-              {mode === 'up' && (
-                <>
-                  <Field label="Full name"><Input value={f.full_name} onChange={set('full_name')} required /></Field>
-                  <Field label="Phone"><Input value={f.phone} onChange={set('phone')} type="tel" required /></Field>
-                </>
-              )}
               <Field label="Email"><Input value={f.email} onChange={set('email')} type="email" required autoComplete="email" /></Field>
-              <Field label="Password"><Input value={f.password} onChange={set('password')} type="password" required minLength={6} autoComplete={mode === 'in' ? 'current-password' : 'new-password'} /></Field>
-              <button className="btn primary block" disabled={busy}>{busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}</button>
-              <button type="button" className="btn ghost block" onClick={() => setMode(mode === 'in' ? 'up' : 'in')}>
-                {mode === 'in' ? 'New here? Create an account' : 'Already have an account? Sign in'}
-              </button>
+              <Field label="Password"><Input value={f.password} onChange={set('password')} type="password" required minLength={6} autoComplete="current-password" /></Field>
+              <button className="btn primary block" disabled={busy}>{busy ? 'Please wait…' : 'Sign in'}</button>
+              <p className="tiny muted">
+                Once you are in, attach Google from your account page. After that
+                a forgotten password is something Google can put right for you.
+              </p>
+            </form>
+            <form onSubmit={requestReset} className="stack-sm">
+              <p className="small muted">Forgot your password? Enter your email above and request a secure recovery link.</p>
+              <button className="btn block" disabled={busy}>Send password recovery link</button>
+              {recovery && <p className="small">Check your inbox and spam folder. For security, we do not confirm whether an email address has an account.</p>}
             </form>
           </>
         )}
+        <p className="tiny muted center">
+          Seller or affiliate, and cannot sign in at all? <Link to="/recover">Get back into your account</Link>
+        </p>
       </div>
     </div>
   )
@@ -137,9 +165,63 @@ function GoogleMark() {
   )
 }
 
+export function ResetPassword() {
+  const toast = useToast()
+  const [password, setPassword] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [done, setDone] = useState(false)
+
+  useEffect(() => {
+    let alive = true
+    // Supabase completes the recovery URL exchange and exposes the resulting
+    // recovery session. This never asks a user to send a password to support.
+    supabase.auth.getSession().then(({ data }) => { if (alive) setReady(!!data?.session) })
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (alive && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN')) setReady(!!session)
+    })
+    return () => { alive = false; listener.subscription.unsubscribe() }
+  }, [])
+
+  const save = async (event) => {
+    event.preventDefault()
+    if (password.length < 12) return toast('Use at least 12 characters', true)
+    if (password !== confirm) return toast('Passwords do not match', true)
+    if (!ready) return toast('Open the latest recovery link in your email first', true)
+    setBusy(true)
+    const { error } = await supabase.auth.updateUser({ password })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    setDone(true)
+    toast('Password changed successfully')
+  }
+
+  return <div className="auth-wrap"><div className="card auth-card stack">
+    <h1>Recover your ZaMarket account</h1>
+    {done ? <><p>Password updated. Your listings, orders and earnings stay with the same account.</p><Link className="btn primary" to="/account">Go to account</Link></> :
+      <><p className="small muted">Open the secure link from your email, then choose a new password. Never share a recovery link with anyone.</p>
+      {!ready && <p className="small">No recovery session yet. Please open the email recovery link or request a new one from the login page.</p>}
+      <form className="stack-sm" onSubmit={save}>
+        <Field label="New password"><Input type="password" value={password} onChange={setPassword} autoComplete="new-password" minLength={12} required /></Field>
+        <Field label="Confirm new password"><Input type="password" value={confirm} onChange={setConfirm} autoComplete="new-password" minLength={12} required /></Field>
+        <button className="btn primary block" disabled={!ready || busy}>{busy ? 'Saving…' : 'Update password'}</button>
+      </form></>}
+  </div></div>
+}
+
 // Plain customer account page (no partner role yet)
 export function Account() {
-  const { profile, signOut, loading } = useAuth()
+  const { profile, user, signOut, loading } = useAuth()
+  const toast = useToast()
+  const [linking, setLinking] = useState(false)
+  const googleConnected = user?.identities?.some((identity) => identity.provider === 'google')
+  const connectGoogle = async () => {
+    setLinking(true)
+    const { error } = await supabase.auth.linkIdentity({ provider: 'google', options: { redirectTo: `${window.location.origin}/account` } })
+    setLinking(false)
+    if (error) toast(error.message || 'Could not link Google. Contact support without sharing your password.', true)
+  }
   if (loading) return <Loading />
   if (!profile) return <Navigate to="/login" replace />
   return (
@@ -152,12 +234,19 @@ export function Account() {
           <Link className="btn" to="/apply/vendor">Apply to sell as a vendor</Link>
         </div>
       </div>
+      <div className="card stack-sm">
+        <h2>Account security and recovery</h2>
+        <p className="small muted">Your purchases, seller listings and affiliate earnings remain tied to this account. Link Google while you are already signed in; never create a second account to recover earnings.</p>
+        <p className="small">Google sign-in: <strong>{googleConnected ? 'Connected' : 'Not linked yet'}</strong></p>
+        {!googleConnected && <button className="btn primary" disabled={linking} onClick={connectGoogle}>{linking ? 'Opening Google…' : 'Link Google to this account'}</button>}
+        <p className="tiny muted">Google linking requires the identity-linking option to be enabled in Supabase Auth. Keep your existing login method until linking and sign-in have both been tested.</p>
+        <p className="tiny muted">Lost access to all login methods? Contact ZaMarket support for identity verification and a protected account-recovery review. We do not reset payouts based only on a message.</p>
+      </div>
       <button className="btn ghost" onClick={signOut}>Sign out</button>
     </div>
   )
 }
 
-const PENDING = 'zm-pending-apply'
 
 function buildRow(isVendor, f, user, profile, attribution = {}) {
   return isVendor
@@ -205,7 +294,8 @@ export function Apply() {
       const { data } = await supabase.from(table).select('*').eq('user_id', user.id).maybeSingle()
       if (!data) {
         try {
-          const pending = JSON.parse(localStorage.getItem(PENDING) || 'null')
+          const pending = readPending(localStorage.getItem(PENDING))
+          if (!pending) localStorage.removeItem(PENDING)
           if (pending && pending.kind === kind) {
             const { data: made } = await supabase.from(table).insert(buildRow(isVendor, pending.f, user, profile, pending.attribution || attribution)).select().single()
             localStorage.removeItem(PENDING)
@@ -223,8 +313,17 @@ export function Apply() {
       <div className="done-card">
         <div className="done-tick">{existing.status === 'approved' ? '✓' : '⏳'}</div>
         <div className="strong">{existing.status === 'pending' ? 'Application received' : existing.status === 'approved' ? "You're approved" : 'Application not active'}</div>
-        <div className="small">{existing.status === 'pending' ? "Our team will review your application. You can revisit this page to check the result." : existing.status === 'approved' ? 'Your dashboard is ready.' : 'Please contact us if you think this is a mistake.'}</div>
+        <div className="small">{existing.status === 'pending' ? "We have it. Our team reviews every application and calls the phone number you gave. Come back to this page any time to see the result." : existing.status === 'approved' ? 'Your dashboard is ready.' : 'Please contact us if you think this is a mistake.'}</div>
       </div>
+      {existing.status === 'pending' && (
+        <div className="card flat small stack-sm">
+          <strong>While you wait</strong>
+          {isVendor
+            ? <p>Get clear photographs and prices ready for the first things you want to list. Once you are approved you can add them straight away.</p>
+            : <p>Read how affiliate selling works, so you are ready to share your first product the day you are approved.</p>}
+          <Link to={isVendor ? '/sellers' : '/affiliates'}>{isVendor ? 'See the shops already on ZaMarket →' : 'How affiliate selling works →'}</Link>
+        </div>
+      )}
       {existing.status === 'approved' && <Link className="btn big primary block" to={isVendor ? '/vendor' : '/sell'}>Open my dashboard</Link>}
     </div>
   )
@@ -245,14 +344,17 @@ export function Apply() {
     try {
       let u = user
       if (!u) {
-        const { data, error } = await supabase.auth.signUp({ email: f.email, password: f.password, options: { data: { full_name: f.full_name, phone: f.phone } } })
+        // Sellers and affiliates hold earnings, so their account is the one
+        // that must not become unrecoverable. Applying signs them in with
+        // Google first and the application is kept until they come back,
+        // rather than creating a password account here.
+        localStorage.setItem(PENDING, packPending({ kind, f, attribution }))
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: { redirectTo: `${window.location.origin}${window.location.pathname}` },
+        })
         if (error) throw error
-        if (!data.session) {
-          localStorage.setItem(PENDING, JSON.stringify({ kind, f: { ...f, password: undefined }, attribution }))
-          setWaitingEmail(true)
-          return
-        }
-        u = data.user
+        return
       }
       const { data: made, error } = await supabase.from(table).insert(buildRow(isVendor, f, u, profile, attribution)).select().single()
       if (error) throw error
@@ -265,33 +367,47 @@ export function Apply() {
     }
   }
 
+  const steps = user
+    ? ['Tell us about you', 'We review it', 'We call you']
+    : ['Tell us about you', 'Choose your Google account', 'We review and call you']
+
   return (
-    <form onSubmit={submit} className="wizard">
-      <div>
-        <h1>{isVendor ? 'Sell your products with us' : 'Apply to become a ZaMarket affiliate'}</h1>
+    <form onSubmit={submit} className="wizard apply-form">
+      <div className="stack-sm">
+        <h1>{isVendor ? 'Sell your products on ZaMarket' : 'Become a ZaMarket affiliate'}</h1>
         <p className="lead">{isVendor
-          ? 'Fill this in and we will call you.'
-          : 'Promote ZaMarket products, access free training and earn commission on qualifying completed sales. This is independent, commission-based work, not a salaried job. We review each application.'}</p>
-        {isVendor && (
-          <div className="card flat small stack-sm">
-            <strong>Before you fill this in, here is who we are.</strong>
-            <p>Listing is free. We only earn when something of yours sells. We take the order, confirm it with the customer by phone, and deliver it. You are paid after delivery, and you can ask to be paid from your dashboard.</p>
-            <p><strong>What we ask for now:</strong> your business name, your phone, and the area you work from. That is all.</p>
-            <p><strong>What we ask for later:</strong> if you want to list expensive items, or before a large payout, we meet you and look at an ID or PACRA paper. We write down that the check happened — <strong>we never store your ID number</strong>.</p>
-            <p>You must own what you sell, or have the owner's permission.</p>
-            <p><Link to="/about">See our contacts, address and what we do with your details →</Link></p>
-          </div>
-        )}
-        {!isVendor && (
-          <ul className="sell-points">
-            <li>Your own link, with prepared product posts, photos and current prices</li>
-            <li>No stock to buy, nothing to carry, no deliveries to make</li>
-            <li>Commission on qualifying completed sales, tracked in your dashboard</li>
-            <li>Paid after the customer receives the order</li>
-            <li>Your income varies with actual sales. There is no salary or guaranteed earnings.</li>
-          </ul>
-        )}
+          ? 'Three short steps. It takes a couple of minutes and costs nothing.'
+          : 'Share products you believe in and earn commission when they sell. Free to join, and applying takes a couple of minutes.'}</p>
+        <ol className="apply-steps" aria-label="How applying works">
+          {steps.map((label, i) => (
+            <li key={label} className={i === 0 ? 'on' : ''}><b>{i + 1}</b><span>{label}</span></li>
+          ))}
+        </ol>
       </div>
+
+      {isVendor ? (
+        <ul className="apply-facts">
+          <li><b>Listing is free.</b> We only earn when something of yours sells.</li>
+          <li><b>We handle the order.</b> We take it, confirm it with the customer by phone and deliver it.</li>
+          <li><b>You are paid after delivery,</b> and you ask for your money from your dashboard.</li>
+          <li><b>We ask for little now:</b> your business name, your phone and the area you work from.</li>
+          <li><b>Later, for expensive items or a large payout,</b> we meet you and look at an ID or PACRA paper. We record that the check happened. We never store your ID number.</li>
+          <li><b>You must own what you sell,</b> or have the owner's permission.</li>
+        </ul>
+      ) : (
+        <ul className="apply-facts">
+          <li><b>Your own link,</b> with ready-made product posts, photos and current prices.</li>
+          <li><b>No stock to buy,</b> nothing to carry and no deliveries to make.</li>
+          <li><b>Commission on completed sales,</b> tracked in your dashboard.</li>
+          <li><b>Paid after the customer receives the order.</b></li>
+          <li><b>This is commission work, not a job.</b> Your income depends on real sales. There is no salary and no guaranteed earnings.</li>
+        </ul>
+      )}
+      <p className="small muted" style={{ marginTop: -6 }}>
+        {isVendor
+          ? <Link to="/about">Who we are, our contacts and what we do with your details →</Link>
+          : <Link to="/affiliates">How affiliate selling and the free training work →</Link>}
+      </p>
 
       {isVendor && <BigText label="Business name" value={f.business_name || ''} onChange={set('business_name')} required />}
       <BigText label="Your name" value={f.full_name ?? profile?.full_name ?? ''} onChange={set('full_name')} required autoComplete="name" />
@@ -299,7 +415,7 @@ export function Apply() {
       <BigText label="Town or area" value={f.location || ''} onChange={set('location')} required placeholder="e.g. Chilenje, Lusaka" />
       {isVendor
         ? <BigText label="What do you sell?" value={f.description || ''} onChange={set('description')} required placeholder="e.g. Cakes and bread" />
-        : <BigText label="What would you like to sell?" optional value={f.categories || ''} onChange={set('categories')} placeholder="e.g. phones, beauty" />}
+        : <BigText label="What would you like to promote?" optional value={f.categories || ''} onChange={set('categories')} placeholder="e.g. phones, beauty" />}
       {isVendor && <BigText label="How should we pay you?" optional value={f.payout_info || ''} onChange={set('payout_info')} placeholder="Airtel / MTN number or bank" />}
 
       <details>
@@ -319,14 +435,18 @@ export function Apply() {
         </div>
       </details>
 
-      {!isVendor && <p className="small muted">Want to understand the programme first? <Link to="/affiliates">Read how affiliate selling and the training work</Link>.</p>}
-
       {!user && (
         <div className="stack card">
-          <div className="big-label">Make your login</div>
-          <BigText label="Email" type="email" value={f.email || ''} onChange={set('email')} required autoComplete="email" />
-          <BigText label="Password" type="password" value={f.password || ''} onChange={set('password')} required minLength={6} autoComplete="new-password" hint="At least 6 letters or numbers" />
-          <span className="small muted">Prefer Google or already have an account? <Link to={loginPath}>Continue with Google or sign in</Link></span>
+          <div className="big-label">Next: your Google account</div>
+          <p className="small">
+            The button below opens Google. Pick your account and you come
+            straight back here. Your answers are kept and sent for you.
+          </p>
+          <p className="small muted">
+            That Google account becomes your ZaMarket login, so your earnings
+            are behind a password only Google holds. ZaMarket never sees it.
+          </p>
+          <span className="small muted">Already have an account? <Link to={loginPath}>Sign in first</Link></span>
         </div>
       )}
 
@@ -345,7 +465,10 @@ export function Apply() {
         </span>
       </label>
 
-      <button className="btn big primary block" disabled={busy}>{busy ? 'Sending…' : 'Send'}</button>
+      <button className="btn big primary block" disabled={busy}>
+        {busy ? (user ? 'Sending…' : 'Opening Google…') : (user ? 'Send my application' : 'Continue with Google')}
+      </button>
+      {!user && <p className="tiny muted" style={{ textAlign: 'center', marginTop: -8 }}>Nothing is sent until you have chosen your account.</p>}
     </form>
   )
 }

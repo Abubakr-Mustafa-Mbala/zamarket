@@ -7,6 +7,7 @@ import { money, n } from '../../lib/format'
 import { Loading, Field, Input, Select, Textarea, Segmented, useToast, Empty, Badge } from '../../components/ui'
 import { OfferingView, BENEFIT_ICONS, defaultCta } from '../public/Offering'
 import PhotoUpload from '../../components/PhotoUpload'
+import { vehicleDealBreakdown } from '../../lib/vehicleDealMath'
 
 const TYPES = [['product', 'Product'], ['service', 'Service'], ['course', 'Course'], ['class', 'Class'], ['vehicle', 'Vehicle'], ['event', 'Event'], ['other', 'Other']]
 const MODELS = [
@@ -22,7 +23,7 @@ const HINTS = {
   course: { hero: 'Learn with confidence', points: ['Experienced instructors', 'Practical training', 'Flexible schedules'], media: 'Where you learn', packages: 'Choose your course', schedule: 'Class schedule' },
   class: { hero: 'Join the next class', points: ['Small classes', 'Practical work', 'Flexible times'], media: 'Our space', packages: 'Choose your class', schedule: 'Class schedule' },
   service: { hero: 'Booked in minutes, done properly', points: ['Trained staff', 'Quality work', 'Fair prices'], media: 'Our setup', packages: 'Choose a package', schedule: 'Opening hours' },
-  vehicle: { hero: 'Clean, well-kept and ready to drive', points: ['Full service history', 'Inspection welcome', 'Paperwork in order'], media: 'The vehicle', packages: 'Options', schedule: 'Viewing times' },
+  vehicle: { hero: 'Explore this vehicle', points: [], media: 'The vehicle', packages: 'Options', schedule: 'Viewing times' },
   event: { hero: "Don't miss it", points: ['Limited places', 'Great line-up'], media: 'The venue', packages: 'Tickets', schedule: 'Programme' },
   product: { hero: '', points: [], media: 'Gallery', packages: 'Choose a package', schedule: 'Opening hours' },
   other: { hero: '', points: [], media: 'Gallery', packages: 'Choose a package', schedule: 'Opening hours' },
@@ -89,9 +90,32 @@ export default function OfferingBuilder() {
   const addRow = (key, blank) => setPg((x) => ({ ...x, [key]: [...(x[key] || []), blank] }))
   const delRow = (key, i) => setPg((x) => ({ ...x, [key]: (x[key] || []).filter((_, k) => k !== i) }))
 
+  const isVehicle = p.offering_type === 'vehicle'
+  const vehicleFee = Number(p.deal_fee_pct ?? 0)
+  const vehicleAffiliateShare = Number(p.vehicle_affiliate_share_pct ?? 50)
+  const vehicleMath = isVehicle && Number(p.price) > 0 && vehicleFee > 0
+    ? vehicleDealBreakdown(Number(p.price), vehicleFee, vehicleAffiliateShare, true)
+    : null
+  const addVehicleFacts = () => {
+    const fields = ['Make', 'Model', 'Year', 'Variant / trim', 'Mileage (km)', 'Transmission', 'Fuel type', 'Engine size', 'Drivetrain', 'Body type', 'Exterior colour', 'Condition / known defects', 'Registration / documentation', 'Service history']
+    setPg((current) => {
+      const old = current.specs || []
+      const seen = new Set(old.map((x) => (x.label || '').toLowerCase()))
+      return { ...current, specs: [...old, ...fields.filter((name) => !seen.has(name.toLowerCase())).map((label) => ({ label, value: '' }))] }
+    })
+  }
+
   const previewPacks = packs.filter((k) => k.active !== false && k.name).map((k) => ({ ...k, items: lines(k.items_text), price: n(k.price), normal_price: k.normal_price === '' ? null : n(k.normal_price) }))
 
   const save = async (publish) => {
+    if (isVehicle && publish && !['enquire', 'negotiate'].includes(p.sales_model)) {
+      toast('Vehicles must use Enquire first or Open to offers, not a normal checkout.', true)
+      return
+    }
+    if (isVehicle && isStaff && publish && (!(vehicleFee > 0 && vehicleFee <= 100) || !(vehicleAffiliateShare >= 0 && vehicleAffiliateShare <= 100) || !p.vehicle_seller_agreement_note?.trim())) {
+      toast('Confirm the seller success fee, affiliate share and private seller agreement before publishing.', true)
+      return
+    }
     setSaving(true)
     try {
       const clean = {
@@ -107,6 +131,18 @@ export default function OfferingBuilder() {
         sections: (pg.sections || []).filter((s) => s?.title && (s.items || []).filter(Boolean).length).map((s) => ({ ...s, items: s.items.filter(Boolean) })),
       }
       const row = { page: clean, offering_type: p.offering_type, sales_model: p.sales_model, images: p.images || [], price: n(p.price) }
+      // Only staff can set the seller's private fee agreement. Vendors must not
+      // be allowed to change the financial terms on their own listings.
+      if (isVehicle && isStaff) {
+        row.deal_fee_pct = vehicleFee
+        row.vehicle_affiliate_share_pct = vehicleAffiliateShare
+        row.vehicle_seller_agreement_note = p.vehicle_seller_agreement_note?.trim() || null
+        // Affiliate tools already understand a percentage of advertised price.
+        // This is an *estimate* equivalent to the negotiated share of the seller fee.
+        // Only the deal RPC determines the actual payout at the closing price.
+        row.commission_type = 'pct'
+        row.commission_value = Math.round(vehicleFee * vehicleAffiliateShare) / 100
+      }
       if (publish) row.status = vendorId ? 'submitted' : 'published'
       const { error } = await supabase.from('products').update(row).eq('id', id)
       if (error) throw new Error(error.message)
@@ -145,7 +181,28 @@ export default function OfferingBuilder() {
             </button>
           ))}
         </div>
+        {isVehicle && <p className="small muted">Vehicle listings use an enquiry or negotiated sale. The public asking price is the seller's agreed price; ZaMarket's success fee is not added to it.</p>}
       </section>
+
+      {isVehicle && <section className="card stack-sm" aria-label="Vehicle seller commission agreement">
+        <h3>Vehicle seller agreement · private</h3>
+        <p className="small muted">Enter the fee the owner has agreed to pay ZaMarket once the car is sold. An affiliate receives a portion of that fee only if a valid tracked affiliate brought the buyer. These terms are not shown to shoppers.</p>
+        {isStaff ? <>
+          <div className="form-grid">
+            <Field label="Seller's agreed success fee (%)" hint="For example, 5 or 10 percent of the final agreed sale price"><Input money value={p.deal_fee_pct ?? ''} onChange={setField('deal_fee_pct')} /></Field>
+            <Field label="Affiliate share of ZaMarket's fee (%)" hint="Example: 50 means the affiliate receives half of the seller's agreed fee"><Input money value={p.vehicle_affiliate_share_pct ?? 50} onChange={setField('vehicle_affiliate_share_pct')} /></Field>
+          </div>
+          <Field label="Private seller agreement / authorization reference" hint="Record the seller's identity, consent, how terms were agreed, and evidence reference. This does not appear publicly."><Textarea rows={3} value={p.vehicle_seller_agreement_note || ''} onChange={setField('vehicle_seller_agreement_note')} /></Field>
+          {vehicleMath && <div className="card flat stack-sm">
+            <strong>Illustration at the public asking price of {money(p.price)}</strong>
+            <div className="between small"><span>Seller receives after success fee</span><strong>{money(vehicleMath.sellerReceives)}</strong></div>
+            <div className="between small"><span>Seller's fee payable to ZaMarket (gross)</span><strong>{money(vehicleMath.grossFee)}</strong></div>
+            <div className="between small"><span>If an affiliate sourced the buyer, affiliate earns</span><strong>{money(vehicleMath.affiliateEarns)}</strong></div>
+            <div className="between small"><span>ZaMarket keeps after affiliate (before other costs)</span><strong>{money(vehicleMath.marketplaceKeeps)}</strong></div>
+            <p className="small muted">If the buyer comes directly or organically, ZaMarket keeps the entire {money(vehicleMath.grossFee)} fee. The final payout is recalculated from the verified closing price, which may differ from the asking price.</p>
+          </div>}
+        </> : <p className="small muted">ZaMarket agrees and manages the private seller commission. Please provide the vehicle's details and photographs; the marketplace will confirm the commercial terms with the seller.</p>}
+      </section>}
 
       <section className="card stack-sm">
         <h3>Top of the page</h3>
@@ -213,8 +270,9 @@ export default function OfferingBuilder() {
       </section>
 
       <section className="card stack-sm">
-        <h3>Key facts (optional)</h3>
-        <p className="small muted">Shown as a clean list: duration, what's certified, mileage, capacity — whatever matters here.</p>
+        <h3>{isVehicle ? 'Vehicle specifications and condition' : 'Key facts (optional)'}</h3>
+        <p className="small muted">{isVehicle ? 'Record only details the seller has supplied and that can be supported. Leave unconfirmed items blank. Do not claim the car is inspected, registered or in perfect condition without evidence.' : 'Shown as a clean list: duration, what is certified, mileage, capacity — whatever matters here.'}</p>
+        {isVehicle && <button type="button" className="btn sm" onClick={addVehicleFacts}>Add vehicle specification fields</button>}
         {(pg.specs || []).map((s, i) => (
           <div key={i} className="ob-row">
             <Input value={s.label} onChange={(v) => setRow('specs', i, { label: v })} placeholder="Duration" />

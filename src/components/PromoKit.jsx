@@ -4,14 +4,14 @@ import { money } from '../lib/format'
 import { commissionLabel } from '../lib/economics'
 import { buildKit, CHANNELS } from '../lib/promoKit'
 import { sharePicture } from '../lib/shareCard'
-import { renderPromo, FORMATS, compositionsFor } from '../lib/promoArt'
+import { renderProductPoster, PRODUCT_FORMATS, PRODUCT_DESIGNS, recommendedDesign, shotsOf, sellingPoints } from '../lib/productPoster'
 import { approvedFacts, buildHooks, FAMILIES } from '../lib/hooks'
 import { checkCreative } from '../lib/creativeCheck'
 import { Modal, useToast, Segmented, Badge } from './ui'
 
 // Everything an affiliate needs to promote one product, in one place.
 // The facts come from the marketplace; only the personal opening is theirs.
-export default function PromoKit({ product, offer, code, settings, onClose }) {
+export default function PromoKit({ product, offer, code, settings, vehicleReward = 0, onClose }) {
   const toast = useToast()
   const [channel, setChannel] = useState('whatsapp')
   const [variant, setVariant] = useState(0)
@@ -30,19 +30,32 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   const kit = useMemo(() => buildKit({ product, offer, link, channel, variant, settings, intro }), [product, offer, link, channel, variant, settings, intro])
   const text = edited ?? kit.text
   const earn = commissionLabel(product, settings)
+  const isVehicle = product.offering_type === 'vehicle'
 
   useEffect(() => { setEdited(null) }, [channel, variant, intro])
 
   const hooks = useMemo(() => buildHooks(approvedFacts({ product, offer, reviews: product.reviews || [], settings })), [product, offer, settings])
   const hook = hooks[hookIndex % Math.max(1, hooks.length)]
 
-  const looks = useMemo(() => compositionsFor(product, offer), [product, offer])
-  const composition = looks[look % Math.max(1, looks.length)] || looks[0]
+  // Affiliate and public product promotions now share the same proven image
+  // renderer. This avoids the old mismatched templates and missing photographs.
+  const store = useMemo(() => product.vendor_name ? ({
+    business_name: product.vendor_name,
+    logo_url: product.vendor_logo,
+    location: product.vendor_location,
+    category: product.vendor_category,
+  }) : null, [product])
+  const looks = useMemo(() => Object.values(PRODUCT_DESIGNS).filter((design) =>
+    (design.key !== 'gallery' || shotsOf(product, 4).length > 1)
+    && (design.key !== 'detail' || sellingPoints(product, 4).length > 0)
+  ), [product])
+  const preferred = recommendedDesign(product, store)
+  const composition = looks[look % Math.max(1, looks.length)] || looks.find((c) => c.key === preferred) || looks[0]
 
   useEffect(() => {
     let dead = false
     setBusy(true)
-    renderPromo({ product, offer, settings, hook: hook?.text, link, format, composition: composition?.key })
+    renderProductPoster({ product, store, settings, link, format, design: composition?.key })
       .then((b) => {
         if (dead || !b) return
         setBlob(b)
@@ -55,7 +68,7 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
       .catch(() => toast('Could not make the picture', true))
       .finally(() => !dead && setBusy(false))
     return () => { dead = true }
-  }, [product, offer, settings, hook?.text, link, format, composition?.key])
+  }, [product, store, settings, link, format, composition?.key])
 
   const check = useMemo(() => checkCreative({ product, offer, hook: hook?.text, caption: text, link, settings }),
     [product, offer, hook?.text, text, link, settings])
@@ -67,12 +80,17 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
   }
   const copy = () => copyValue(text, 'Message')
   const copyLink = () => copyValue(link, 'Referral link')
-  const canShareFiles = typeof navigator !== 'undefined' && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
+  const canShareFiles = typeof navigator !== 'undefined' && typeof navigator.canShare === 'function' && typeof File !== 'undefined' && navigator.canShare({ files: [new File([], 'poster.jpg', { type: 'image/jpeg' })] })
   const share = async () => {
     if (!blob) return copy()
     if (madeId.current) supabase.rpc('creative_shared', { p_id: madeId.current }).catch(() => {})
-    const how = await sharePicture(blob, { caption: text, filename: `${product.slug}.jpg` })
-    if (how === 'downloaded') toast('Picture saved to your downloads')
+    try {
+      const how = await sharePicture(blob, { caption: text, filename: `${product.slug}.jpg` })
+      if (how === 'downloaded') {
+        try { await navigator.clipboard.writeText(text); toast('Poster downloaded and caption copied. Paste the caption when posting.') }
+        catch { toast('Poster downloaded. Please copy the caption separately.') }
+      }
+    } catch (error) { if (error?.name !== 'AbortError') toast('Sharing failed. Download the poster and copy the caption.', true) }
   }
 
   return (
@@ -118,8 +136,8 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
 
           <div className="btn-row">
             {canShareFiles
-              ? <button className="btn primary" onClick={share} disabled={!check.ok}>Share picture and message</button>
-              : <button className="btn primary" onClick={share} disabled={!check.ok}>Download the picture</button>}
+              ? <button className="btn primary" onClick={share} disabled={!check.ok}>Share picture (copy caption separately if needed)</button>
+              : <button className="btn primary" onClick={share} disabled={!check.ok}>Save poster and copy caption</button>}
             <a className="btn buy" href={check.ok ? `https://wa.me/?text=${encodeURIComponent(text)}` : undefined} aria-disabled={!check.ok} onClick={(e) => { if (!check.ok) e.preventDefault() }} target="_blank" rel="noreferrer">WhatsApp (text only)</a>
             <button className="btn" onClick={copy} disabled={!check.ok}>Copy the message</button>
             <button className="btn" onClick={copyLink}>Copy referral link</button>
@@ -132,18 +150,18 @@ export default function PromoKit({ product, offer, code, settings, onClose }) {
             <div className="between"><span className="muted small">Customer pays</span><strong>{money(product.price)}</strong></div>
             {product.normal_price > product.price && <div className="between"><span className="muted small">Normally</span><span className="strike">{money(product.normal_price)}</span></div>}
             {offer?.copy && <div className="between"><span className="muted small">Offer</span><Badge tone="warn">{offer.copy}</Badge></div>}
-            <div className="between"><span className="muted small">You earn</span><strong className="copper">{money(earn.perUnit)}</strong></div>
-            <p className="tiny muted">Paid after the order is delivered and checked. Prices and offers come from the marketplace — if they change, your link always shows the current price.</p>
+            <div className="between"><span className="muted small">You earn</span><strong className="copper">{isVehicle ? (vehicleReward > 0 ? `Estimate ${money(vehicleReward)}` : 'Reward not confirmed yet') : money(earn.perUnit)}</strong></div>
+            <p className="tiny muted">{isVehicle ? 'Vehicle payout is an estimate at the advertised price. It depends on the final sale price, the agreed seller success fee being received by ZaMarket, and verification of your referral.' : 'Paid after the order is delivered and checked. Prices and offers come from the marketplace — if they change, your link always shows the current price.'}</p>
           </div>
 
-          <Segmented options={Object.values(FORMATS).map((f) => [f.key, f.label])} value={format} onChange={setFormat} />
+          <Segmented options={Object.values(PRODUCT_FORMATS).map((f) => [f.key, f.label])} value={format} onChange={setFormat} />
           <div className="chips wrap">
             {looks.map((c, i) => (
               <button key={c.key} className={`chip ${i === look % looks.length ? 'on' : ''}`} onClick={() => setLook(i)} title={c.note}>{c.label}</button>
             ))}
           </div>
           {busy || !img ? <p className="small muted">Making the picture…</p> : <img className="share-preview" src={img} alt={`Promotion preview for ${product.name}`} />}
-          <p className="tiny muted">Your referral link is included in the promotion. Customers who follow it reach the current product listing.</p>
+          <p className="tiny muted">Real catalogue photographs and a tracked QR link are included. On some phones the caption must be pasted separately after sharing the photo.</p>
           <button className="btn ghost sm" type="button" onClick={() => setShowLink(!showLink)} aria-expanded={showLink}>{showLink ? "Hide referral link" : "Show referral link"}</button>
           {showLink && <input className="input" readOnly value={link} aria-label="Your referral link" onFocus={(e) => e.target.select()} />}
         </aside>

@@ -24,18 +24,23 @@ test('the card carries the real brand mark, not a drawn stand-in', () => {
 
 test('the text is laid out to fit, never over the picture or the foot', () => {
   const article = card.slice(card.indexOf('export async function articleCard'))
-  // Lines are only drawn when there is measured room for them.
-  assert.match(article, /const titleRoom = Math\.max\(1, Math\.floor\(\(textBottom - y\) \/ titleLead\)\)/)
-  assert.match(article, /const lines = Math\.floor\(\(textBottom - y\) \/ exLead\)/)
+  // Lines are only drawn when there is measured room above the foot.
+  assert.match(article, /const titleRoom = Math\.max\(1, Math\.floor\(\(footTop - y\) \/ titleLead\)\)/)
+  assert.match(article, /const lines = Math\.floor\(\(footTop - y - Math\.round\(pad \* 0\.3\)\) \/ exLead\)/)
   assert.match(article, /if \(lines >= 1\)/)
 })
 
-test('the photo runs to the edge with square corners', () => {
-  // `cover` rounds its corners, which is right on an inset card and wrong on
-  // a photo that bleeds to the edge of the image.
+test('the card is drawn on the journal page, not a dark slab', () => {
+  // The first version set the words on a dark band under a full-bleed photo.
+  // The owner called it ugly, and it looked nothing like the journal it was
+  // advertising. It is paper and ink now, with the photograph framed.
   const article = card.slice(card.indexOf('export async function articleCard'))
-  assert.doesNotMatch(article, /cover\(ctx, photo/)
-  assert.match(article, /ctx\.rect\(0, 0, w, picH\); ctx\.clip\(\)/)
+  assert.match(article, /const PAPER = '#F8F2E9'/)
+  assert.match(article, /ctx\.fillStyle = PAPER\s*\n\s*ctx\.fillRect\(0, 0, w, h\)/)
+  assert.doesNotMatch(article, /ctx\.fillStyle = INK\s*\n\s*ctx\.fillRect\(0, 0, w, h\)/)
+  assert.doesNotMatch(article, /#121A22/)
+  // Headline in a serif, as the journal sets its own.
+  assert.match(article, /Playfair Display, Georgia/)
 })
 
 test('the address is not printed twice', () => {
@@ -49,7 +54,9 @@ test('the address is not printed twice', () => {
 test('a missing cover photo does not break the share', () => {
   assert.match(card, /img\.onerror = \(\) => res\(null\)/)
   const article = card.slice(card.indexOf('export async function articleCard'))
-  assert.match(article, /\} else \{\s*\n\s*ctx\.fillStyle = PINE/)
+  // No photograph: the frame is filled with a quiet tone rather than left
+  // empty or throwing.
+  assert.match(article, /\} else \{\s*\n\s*ctx\.fillStyle = '#EEE4D8'; ctx\.fillRect\(x, fy, fw, fh\)/)
 })
 
 test('anyone reading can share, with no sign-in', () => {

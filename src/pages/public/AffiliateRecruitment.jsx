@@ -30,7 +30,7 @@ export default function AffiliateRecruitment() {
     <section className="affiliate-hero">
       <div className="affiliate-glow" aria-hidden="true" />
       <div className="affiliate-hero-inner">
-        <p className="affiliate-eyebrow"><span /> ZA MARKET · AFFILIATE PROGRAMME · ZAMBIA</p>
+        <p className="affiliate-eyebrow"><span /> ZAMARKET · AFFILIATE PROGRAMME · ZAMBIA</p>
         <h1>Turn your ability to connect people into a <em>selling skill.</em></h1>
         <p className="affiliate-intro">Promote products from the ZaMarket marketplace. Earn commission when qualifying sales are completed. Approved affiliates are trained in our academy and given ready-to-use marketing tools.</p>
         <div className="affiliate-actions"><Link to={apply} className="affiliate-button affiliate-button-primary">Apply to join <span aria-hidden="true">↗</span></Link><a href="#how-it-works" className="affiliate-button affiliate-button-outline">See how it works</a></div>
@@ -52,6 +52,6 @@ export default function AffiliateRecruitment() {
     <section className="affiliate-section affiliate-two-col"><div className="affiliate-heading"><span>WHO CAN APPLY</span><h2>Start with your phone and your willingness to learn.</h2><p>Designed for people across Zambia who want to build a practical sales skill, including adult students, content creators, people already selling through social media and beginners. Product and delivery availability vary by area.</p><p>Use your own honest promotional messages and follow platform rules. No unsolicited bulk messaging, false product claims or fake earnings screenshots.</p></div><div className="affiliate-steps"><div><b>1</b><span><strong>Submit your application</strong><small>Tell us your name, contact details, location and interests.</small></span></div><div><b>2</b><span><strong>Receive a review decision</strong><small>We review applications and activate eligible accounts.</small></span></div><div><b>3</b><span><strong>Complete the training</strong><small>You are sent into our academy and taught how to sell responsibly.</small></span></div><div><b>4</b><span><strong>Share, improve and track</strong><small>Promote products, review performance and build consistency.</small></span></div></div></section>
 
     <section className="affiliate-section affiliate-faq"><div className="affiliate-heading"><span>GOOD TO KNOW</span><h2>Questions before you join?</h2></div><div>{faq.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div></section>
-    <section className="affiliate-final"><span className="affiliate-eyebrow">ZA MARKET · ZAMBIA</span><h2>Ready to learn and promote real products?</h2><p>Apply to be considered for the affiliate programme and begin your ZaMarket sales journey.</p><Link to={apply} className="affiliate-button affiliate-button-primary">Start my application <span aria-hidden="true">↗</span></Link></section>
+    <section className="affiliate-final"><span className="affiliate-eyebrow">ZAMARKET · ZAMBIA</span><h2>Ready to learn and promote real products?</h2><p>Apply to be considered for the affiliate programme and begin your ZaMarket sales journey.</p><Link to={apply} className="affiliate-button affiliate-button-primary">Start my application <span aria-hidden="true">↗</span></Link></section>
   </div>
 }

@@ -33,7 +33,7 @@ export default function Receipt() {
   const paid = o.payments.reduce((t, p) => t + n(p.amount), 0)
   const balance = Math.max(0, n(o.total) - paid)
   const savings = o.items.reduce((t, i) => t + Math.max(0, n(i.product?.normal_price || i.product?.price) * i.quantity - n(i.line_total)), 0)
-  const biz = 'ZA MARKET'
+  const biz = 'ZAMARKET'
   const vendorNames = [...new Set(o.items.map(i => i.vendor?.business_name || i.product?.vendor?.business_name).filter(Boolean))]
   const sellerFor = (i) => i.vendor?.business_name || i.product?.vendor?.business_name || 'ZaMarket'
   const pick = (v) => { setSize(v); localStorage.setItem('zm-receipt-size', v) }

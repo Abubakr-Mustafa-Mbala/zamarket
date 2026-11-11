@@ -47,6 +47,9 @@ export const Icon = {
   info: (p) => wrap(<><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5M12 8h.01" /></>, p),
   check: (p) => wrap(<path d="m5 12.5 4.5 4.5L19 7" />, p),
   box: (p) => wrap(<><path d="M3.5 8 12 3.5 20.5 8v8L12 20.5 3.5 16Z" /><path d="M3.5 8 12 12.5 20.5 8M12 12.5v8" /></>, p),
+  coins: (p) => wrap(<><ellipse cx="12" cy="5.5" rx="8.5" ry="3"/><path d="M3.5 5.5v7c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3v-7M3.5 12.5v6c0 1.7 3.8 3 8.5 3s8.5-1.3 8.5-3v-6"/></>, p),
+  edit: (p) => wrap(<><path d="M4 20h4l11-11-4-4L4 16v4Z" /><path d="m13 7 4 4" /></>, p),
+  target: (p) => wrap(<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1" /></>, p),
   ticket: (p) => wrap(<><path d="M3.5 8.5V6.5h17v2a2.5 2.5 0 0 0 0 5v2h-17v-2a2.5 2.5 0 0 0 0-5Z" /><path d="M13 6.5v11" strokeDasharray="2 2.5" /></>, p),
 }
 

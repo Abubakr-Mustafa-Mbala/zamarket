@@ -35,6 +35,7 @@ export default async function sitemap() {
     { loc: `${SITE}/`, pri: '1.0' },
     { loc: `${SITE}/sellers`, pri: '0.7' },
     { loc: `${SITE}/blog`, pri: '0.8' },
+    { loc: `${SITE}/motors`, pri: '0.8' },
     { loc: `${SITE}/categories`, pri: '0.6' },
     { loc: `${SITE}/about`, pri: '0.4' },
     { loc: `${SITE}/apply/vendor`, pri: '0.6' },

@@ -53,8 +53,9 @@ export default function AffiliatePlan() {
       </div>
 
       <div className="card flat stack-sm">
-        <h3>What would a target take?</h3>
-        <Field label="I want to earn this much in a month (K)"><Input money value={goal} onChange={setGoal} /></Field>
+        <h3>Explore a hypothetical target</h3>
+        <Field label="Try a different earnings scenario (K)"><Input money value={goal} onChange={setGoal} /></Field>
+        <p className="tiny muted">This is a what-if calculator, not the saved monthly goal. Set your actual goal on your affiliate home screen.</p>
         {!plan ? (
           <p className="small muted">Once you have made a sale or two, this works out what a target would take, using your own numbers.</p>
         ) : (

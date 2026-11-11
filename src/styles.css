@@ -709,10 +709,23 @@ details summary { cursor: pointer; color: var(--green); font-weight: 600; }
 .bb-meta span:last-child { text-align: right; }
 .mobile-buybar { display: none; }
 @media (max-width: 760px) {
-  .mobile-buybar { display: flex; align-items: center; gap: 8px; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--paper); border-top: 1px solid var(--line); padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
+  /* The buy bar sits ABOVE the bottom navigation. Both were fixed to
+     bottom: 0 and the navigation had the higher z-index, so the price and
+     the buy buttons were drawn and then completely covered: on a phone the
+     product page had no visible way to buy. --shop-nav-h is the height of
+     that navigation. */
+  .mobile-buybar { display: flex; align-items: center; gap: 8px; position: fixed; left: 0; right: 0;
+    bottom: calc(var(--shop-nav-h, 62px) + env(safe-area-inset-bottom, 0px)); z-index: 39;
+    background: var(--paper); border-top: 1px solid var(--line); padding: 10px 12px;
+    box-shadow: 0 -10px 24px rgba(0,0,0,.28); }
   .mobile-buybar .price-tag { margin-right: auto; }
   .mobile-buybar .btn { border-radius: 999px; padding: 10px 14px; }
-  .pdp { padding-bottom: 70px; }
+  .pdp { padding-bottom: 150px; }
+  /* Show the photograph at its own shape. A square frame around a wide photo
+     left a dead band above and below it and spent half the first screen on
+     nothing. */
+  .pdp .main-img, .shop .product-page .gallery { aspect-ratio: auto; }
+  .pdp .main-img img, .shop .product-page .gallery img { height: auto; max-height: 58vh; }
 }
 
 /* footer */
@@ -2401,7 +2414,12 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .shop .pcard:hover { border-color: #5D4C91; transform: translateY(-2px); box-shadow: 0 12px 28px rgba(0,0,0,.22); }
 .shop .pcard .pbody { padding: 13px 14px 15px; gap: 7px; }
 .shop .pcard .pimg { background: var(--coal-2); }
-.shop .pcard .pimg img { object-fit: contain; }
+/* A product photo fills its frame. `contain` showed the whole image but left
+   bars down the sides of anything that was not exactly square, which made a
+   shelf of real photographs look like a row of half-empty boxes. The whole
+   product is shown uncropped on its own page; in a grid, the card has to
+   look full. */
+.shop .pcard .pimg img { object-fit: cover; object-position: center; }
 .shop .shelf { margin-bottom: 34px; }
 .shop .shelf-head { gap: 12px; }
 .shop .shelf-head h2 { font-weight: 750; letter-spacing: -.025em; }
@@ -2625,3 +2643,225 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
   .post-list-entry .post-views { display: none; }
   .post-list-entry .blog-delete-list { align-self: center; }
 }
+
+/* Affiliate sales workspace: photograph-led, usable on narrow Android screens. */
+.affiliate-playbook .aff-focus-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.affiliate-playbook .aff-focus-grid > div { min-width:0; }
+.affiliate-playbook .aff-focus-grid > div strong { display:block; font-size:1.3rem; }
+.affiliate-playbook .aff-product-chooser { display:flex; gap:10px; max-width:100%; overflow-x:auto; padding:4px 1px 12px; scrollbar-width:thin; }
+.affiliate-playbook .aff-product-option { border:1px solid var(--border, #41415b); border-radius:13px; background:var(--coal-2,#1f1d30); color:inherit; display:flex; flex:0 0 225px; gap:10px; padding:8px; text-align:left; cursor:pointer; }
+.affiliate-playbook .aff-product-option.on { outline:2px solid var(--copper,#b18cff); outline-offset:-2px; }
+.affiliate-playbook .aff-product-option img { width:68px;height:68px;object-fit:contain;background:#242332;border-radius:9px; }
+.affiliate-playbook .aff-product-option span { display:flex; flex-direction:column; min-width:0; justify-content:center; }
+.affiliate-playbook .aff-product-option strong { font-size:.8rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden; }
+.affiliate-playbook .aff-product-option small { font-size:.72rem;color:var(--muted,#c1bacb);margin-top:7px; }
+.affiliate-playbook .aff-featured-product { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;align-items:center; }
+.affiliate-playbook .aff-featured-product > img { width:100%;max-height:320px;object-fit:contain;background:#232332;border-radius:14px; }
+.affiliate-playbook .aff-no-photo { min-height:70px;display:flex;align-items:center;justify-content:center;font-size:.75rem;text-align:center;color:var(--muted,#c1bacb); }
+.affiliate-playbook .aff-message { padding:15px;border:1px solid var(--border,#35344c);border-radius:15px; }
+.affiliate-playbook .aff-message .share-box { margin-top:12px;overflow-wrap:anywhere;white-space:pre-wrap; }
+@media(max-width:700px){.affiliate-playbook .aff-focus-grid{grid-template-columns:1fr}.affiliate-playbook .aff-featured-product{grid-template-columns:1fr}.affiliate-playbook .aff-featured-product > img {height:220px}.affiliate-playbook .aff-product-option{flex-basis:200px}}
+/* Primary affiliate actions and readable zero-state on mobile */
+.aff-home-intro { border:1px solid rgba(171,128,255,.35); background:linear-gradient(125deg,rgba(110,57,173,.22),rgba(31,25,48,.95)); }
+.aff-home-intro h1 { font-size:clamp(1.6rem,3vw,2.4rem);line-height:1.14;letter-spacing:-.035em;margin:0; }
+.aff-home-intro p { max-width:600px;color:var(--muted,#cac6dd); }
+.aff-home-intro .btn-row { gap:10px; flex-wrap:wrap; }
+@media(max-width:640px){.aff-home-intro .btn-row .btn{width:100%;justify-content:center}}
+/* ZaMarket Motors: a premium but functional showroom, using live listing data. */
+.motors-root { max-width:1320px;margin:0 auto; }
+.motors-intro { display:grid;grid-template-columns:1.05fr .95fr;min-height:330px;overflow:hidden;border-radius:23px;border:1px solid rgba(177,136,255,.25);background:linear-gradient(135deg,#231732 0%,#12111d 65%,#15131e); }
+.motors-intro-copy{padding:clamp(24px,4vw,56px);display:flex;flex-direction:column;justify-content:center;gap:14px;z-index:1}
+.motors-intro h1{font-size:clamp(1.85rem,3.4vw,3.4rem);letter-spacing:-.045em;line-height:1.08;margin:0;max-width:630px;color:#f8f5ff}
+.motors-intro p{max-width:600px;color:#cbc5df;line-height:1.55}
+.motors-intro-photo{position:relative;background:radial-gradient(circle at 55% 50%,#543d83,#171126 67%);display:flex;justify-content:center;align-items:center;color:#beb0e1}
+.motors-intro-photo img{width:100%;height:100%;object-fit:contain;padding:20px;filter:drop-shadow(0 20px 25px rgba(0,0,0,.35))}
+.motors-assurance{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0}
+.motors-assurance span{display:block;border:1px solid rgba(167,136,226,.22);border-radius:12px;padding:14px;text-align:center;color:#d8d1e8;font-size:.84rem;background:rgba(34,30,49,.7)}
+.motors-filters{display:grid;grid-template-columns:minmax(0,2fr) 1fr 1fr;gap:10px}
+.motors-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}
+.motors-card{border:1px solid rgba(178,158,213,.28);border-radius:18px;overflow:hidden;background:#201b2a;color:#f8f4ff;text-decoration:none;display:flex;flex-direction:column;transition:transform .2s,border-color .2s}
+.motors-card:hover{transform:translateY(-3px);border-color:#a67ce9}
+.motors-photo{aspect-ratio:1.6;background:#282535;display:flex;align-items:center;justify-content:center;text-align:center;color:#a7a2b3;font-size:.84rem}
+.motors-photo img{width:100%;height:100%;object-fit:cover}
+.motors-card-body{padding:15px;display:flex;flex-direction:column;gap:9px;flex:1}
+.motors-card h3{font-size:1.05rem;line-height:1.3;margin:0}
+.motors-card .small{font-size:.8rem}
+.motors-card-bottom{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.motors-card-bottom strong{font-size:1.25rem;color:#bf91ff}
+.motors-card-bottom span{color:#c5c0d2;font-size:.78rem}
+.motors-card-cta{color:#d3a9ff;font-size:.83rem;font-weight:700;margin-top:auto;padding-top:6px}
+@media(max-width:850px){.motors-intro{grid-template-columns:1fr}.motors-intro-photo{height:220px}.motors-assurance{grid-template-columns:repeat(2,1fr)}.motors-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){.motors-filters{grid-template-columns:1fr}.motors-grid{grid-template-columns:1fr}.motors-intro-copy{padding:24px}.motors-intro-photo{height:200px}}
+.motors-detail{max-width:1300px;margin:0 auto;padding:8px 0 60px;color:#eee9f7}
+.motors-detail-top{display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:14px;color:#bcb2ce;font-size:.84rem}
+.motors-detail-columns{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,1fr);gap:19px;align-items:start}
+.motors-gallery-card,.motors-deal-card{padding:17px;border-radius:19px;background:#1c1928;border:1px solid rgba(160,126,210,.24);min-width:0}
+.motors-gallery-card .of-gallery-main{background:#282435;border-radius:13px;overflow:hidden}
+.motors-gallery-card .of-gallery-main img{max-height:530px;object-fit:contain}
+.motors-detail h1{font-size:clamp(1.6rem,2.8vw,2.65rem);line-height:1.16;color:#faf7ff;margin:0}
+.motors-deal-card .motors-price{color:#bf8afa;font-size:clamp(1.6rem,3.1vw,2.6rem);font-weight:800;letter-spacing:-.03em}
+.motors-price small{display:block;font-weight:500;color:#beb5cc;font-size:.78rem;letter-spacing:0}
+.motors-spec-chips{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.motors-spec-chips>div{border:1px solid #383148;background:#282335;border-radius:11px;padding:10px;min-width:0}
+.motors-spec-chips span{font-size:.71rem;color:#c3b7d3;display:block}
+.motors-spec-chips strong{font-size:.84rem;word-break:break-word}
+.motors-deal-card .btn-row{gap:9px;display:flex;flex-wrap:wrap}
+.motors-seller{margin-top:10px;border-top:1px solid #3b3149;padding-top:14px;display:flex;flex-direction:column;gap:8px}
+.motors-detail-lower{display:grid;grid-template-columns: minmax(0,1fr) minmax(0,1fr);gap:18px;margin-top:19px}
+.motors-spec-list{display:flex;flex-direction:column;margin:0}
+.motors-spec-list>div{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid rgba(178,163,205,.18)}
+.motors-spec-list dt{color:#bdb6cc}.motors-spec-list dd{color:#f7f2ff;text-align:right;font-weight:650;margin:0}
+.motors-description{white-space:pre-wrap;overflow-wrap:anywhere}
+.motors-detail-end{margin-top:20px;border:1px solid #66458a;border-radius:16px;padding:20px;display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(125deg,#2d1e42,#1a1626)}
+.motors-detail-end p{margin:5px 0 0}
+.motors-missing{display:block;padding:70px 25px;text-align:center;color:#c7bed3}
+@media(max-width:860px){.motors-detail-columns,.motors-detail-lower{grid-template-columns:1fr}.motors-detail-end{align-items:start;flex-direction:column}}
+.offering-share-controls{max-width:1320px;margin:12px auto 22px;padding:0 16px}
+
+
+/* Affiliate promotion studio — product-first, restrained editorial layout. */
+.affiliate-studio { --aff-edge: rgba(180,160,246,.15); --aff-surface: #181824; --aff-raised: #222034; max-width:1160px; gap:18px; }
+.affiliate-studio h1,.affiliate-studio h2,.affiliate-studio h3 { font-family:var(--font); letter-spacing:-.035em; }
+.affiliate-studio .eyebrow { font-size:.66rem; letter-spacing:.15em; font-weight:800; color:#ae91ff; }
+.aff-studio-intro { display:flex;align-items:end;justify-content:space-between;gap:16px; padding:7px 3px 6px; }
+.aff-studio-intro h1 { font-size:clamp(1.8rem,3.5vw,2.5rem);font-weight:800;line-height:1.1;margin:7px 0; }
+.aff-studio-intro p { color:#a5a7b6;max-width:620px;font-size:.92rem; }
+.aff-studio-results,.aff-studio-text-link { white-space:nowrap;color:#c6b4ff;font-weight:700;font-size:.79rem; }
+.aff-studio-results { border:1px solid #403951;border-radius:12px;padding:10px 14px; }
+.aff-studio-process { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;background:#191722;border:1px solid var(--aff-edge);padding:7px;border-radius:13px; }
+.aff-studio-process span { display:flex;align-items:center;gap:7px;color:#9691a8;font-weight:650;font-size:.75rem;padding:8px 12px; }
+.aff-studio-process b { display:inline-grid;place-items:center;width:26px;height:26px;border-radius:7px;background:#292534;color:#aaa1bf;font-size:.69rem; }
+.aff-studio-process span.is-current { color:#e9dcff; }
+.aff-studio-process span.is-current b { color:#20142f;background:#b58dff; }
+.aff-studio-panel { background:var(--aff-surface);border:1px solid var(--aff-edge);border-radius:19px;padding:21px;box-shadow:0 12px 42px -32px #000; }
+.aff-studio-section-top { display:flex;align-items:end;justify-content:space-between;gap:16px;margin-bottom:16px; }
+.aff-studio-section-top h2 {font-size:1.27rem;line-height:1.24;margin-top:5px;font-weight:750;}
+.aff-studio-mini-note { font-size:.75rem;color:#a2a0af; }
+.aff-studio-products { display:flex;gap:10px;overflow-x:auto;padding:2px 1px 12px;scrollbar-width:thin; }
+.aff-studio-product-choice { display:flex;align-items:center;gap:9px;background:#211f2c;border:1px solid #373245;color:#f1edf8;min-width:198px;max-width:230px;flex:1 0 198px;border-radius:13px;padding:7px;text-align:left;cursor:pointer; }
+.aff-studio-product-choice.is-selected {border-color:#ae87ff;box-shadow:0 0 0 1px #ae87ff inset;background:#282239;}
+.aff-studio-product-choice img,.aff-studio-product-choice .aff-studio-photo-fallback { width:64px;height:64px;flex:none;object-fit:cover;border-radius:9px;background:#2c2b32; }
+.aff-studio-photo-fallback {display:grid;place-items:center;font-size:.7rem;color:#9d98aa;text-align:center;padding:6px;}
+.aff-studio-choice-body { display:grid;min-width:0;gap:5px; }
+.aff-studio-choice-body strong {font-size:.75rem;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+.aff-studio-choice-body small {font-size:.75rem;color:#cbb8ff;font-weight:800;}
+.aff-studio-product-feature {display:grid;grid-template-columns:minmax(0,.93fr) minmax(0,1fr);gap:23px;padding-top:10px;align-items:center;}
+.aff-studio-product-photo { position:relative;overflow:hidden;border:1px solid #3b3549;background:#242132;min-height:255px;max-height:410px;display:grid;place-items:center;border-radius:16px; }
+.aff-studio-product-photo > img {height:100%;width:100%;max-height:410px;object-fit:contain;display:block;}
+.aff-studio-photo-pill {position:absolute;bottom:12px;left:12px;background:rgba(17,15,26,.84);color:#e3dfe9;padding:5px 9px;border-radius:50px;font-size:.65rem;letter-spacing:.02em;}
+.aff-studio-product-copy {display:grid;align-content:center;gap:9px;}
+.aff-studio-product-copy h3 {font-size:clamp(1.4rem,2.5vw,2rem);font-weight:800;line-height:1.2;}
+.aff-studio-seller {color:#aaa1bd;font-size:.85rem;}
+.aff-studio-product-price {display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--aff-edge);}
+.aff-studio-product-price span,.aff-studio-reward span {color:#a9a5ba;font-size:.8rem;}
+.aff-studio-product-price strong {font-size:1.26rem;font-weight:800;}
+.aff-studio-reward {display:flex;align-items:center;justify-content:space-between;gap:12px;border-radius:11px;background:#2b223f;padding:12px;}
+.aff-studio-reward strong {font-size:1.18rem;color:#d1b9ff;white-space:nowrap;}
+.aff-studio-disclaimer {font-size:.69rem;color:#9793a7;line-height:1.5;}
+.aff-studio-actions,.aff-studio-message-actions {display:flex;flex-wrap:wrap;gap:9px;margin-top:5px;}
+.affiliate-studio .btn.primary {background:#a986ff;color:#171121;font-weight:750;border-color:transparent;}
+.affiliate-studio .btn {border-radius:11px;min-height:42px;display:inline-flex;align-items:center;justify-content:center;}
+.aff-studio-link-row {border-top:1px solid var(--aff-edge);margin-top:18px;padding-top:15px;display:grid;grid-template-columns:minmax(0,.7fr) minmax(0,1.3fr);gap:15px;align-items:center;}
+.aff-studio-link-row strong {font-size:.84rem;display:block;}
+.aff-studio-link-row small {display:block;color:#918e9f;font-size:.7rem;max-width:270px;margin-top:3px;}
+.aff-studio-copy-line {min-width:0;overflow-wrap:anywhere;}
+.aff-studio-segments {display:flex;gap:7px;flex-wrap:wrap;margin-bottom:13px;}
+.aff-studio-segments button {background:#24202f;color:#b4afc0;border:1px solid #3b3549;padding:9px 14px;border-radius:10px;cursor:pointer;font-size:.77rem;font-weight:700;}
+.aff-studio-segments button.is-selected {background:#44305e;border-color:#8c6bc4;color:#fff;}
+.aff-studio-message-preview {padding:20px;background:#11141a;border:1px solid #33303d;border-radius:13px;min-height:135px;}
+.aff-studio-message-preview p {font-size:.88rem;line-height:1.7;color:#e3dee9;white-space:pre-wrap;overflow-wrap:anywhere;}
+.aff-studio-growth {background:#171720;}
+.aff-studio-channel-intro {font-size:.87rem;color:#c0bad0;margin-bottom:11px;}
+.aff-studio-channel-steps {display:grid;grid-template-columns:1fr 1fr;gap:10px;counter-reset:aff-channel;list-style:none;margin:0;padding:0;}
+.aff-studio-channel-steps li {counter-increment:aff-channel;font-size:.78rem;color:#c4c0ce;background:#22202e;border:1px solid #393445;border-radius:11px;padding:12px;line-height:1.55;}
+.aff-studio-channel-steps li:before {content:counter(aff-channel,decimal-leading-zero);color:#b995fa;font-weight:800;margin-right:8px;}
+.aff-studio-bottom-line {display:flex;align-items:center;gap:24px;flex-wrap:wrap;border-top:1px solid var(--aff-edge);padding:13px 4px;color:#d6d0e1;}
+.aff-studio-bottom-line > div {display:grid;gap:1px;}
+.aff-studio-bottom-line strong {font-size:1.17rem;}
+.aff-studio-bottom-line span {font-size:.72rem;color:#9693a5;}
+.aff-studio-bottom-line a {margin-left:auto;color:#beabff;font-size:.8rem;font-weight:750;}
+.aff-studio-other-link {font-size:.78rem;padding:8px 4px;color:#aaa2bc;}
+.aff-studio-other-link summary {cursor:pointer;}
+.aff-studio-other-link .copy-line {margin-top:9px;}
+@media(max-width:750px){
+  .affiliate-studio {gap:13px;}
+  .aff-studio-intro {align-items:start;flex-wrap:wrap;}
+  .aff-studio-intro h1 {font-size:1.78rem;}
+  .aff-studio-intro p {font-size:.83rem;}
+  .aff-studio-results {display:none;}
+  .aff-studio-process {gap:0;padding:5px;}
+  .aff-studio-process span {font-size:.64rem;padding:6px;gap:4px;justify-content:center;text-align:center;flex-wrap:wrap;}
+  .aff-studio-process b {width:23px;height:23px;}
+  .aff-studio-panel {padding:13px;border-radius:15px;}
+  .aff-studio-section-top {align-items:start;gap:8px;}
+  .aff-studio-section-top h2 {font-size:1.04rem;}
+  .aff-studio-text-link {font-size:.7rem;}
+  .aff-studio-product-choice {min-width:170px;flex-basis:170px;}
+  .aff-studio-product-feature {grid-template-columns:1fr;gap:15px;}
+  .aff-studio-product-photo {min-height:225px;max-height:300px;}
+  .aff-studio-product-photo>img {max-height:300px;}
+  .aff-studio-product-copy h3 {font-size:1.35rem;}
+  .aff-studio-link-row {grid-template-columns:1fr;gap:8px;}
+  .aff-studio-actions .btn {flex:1 1 165px;}
+  .aff-studio-channel-steps {grid-template-columns:1fr;}
+  .aff-studio-segments button {font-size:.7rem;padding:8px 10px;}
+  .aff-studio-bottom-line {gap:18px;}
+}
+
+/* --- Affiliate Hub 2026: compact, product-first and commission-safe --- */
+.aff-dash{--aff-ink:#f9f5ff;--aff-sub:#aba5c0;--aff-purple:#aa79f5;--aff-edge:rgba(191,164,255,.18);max-width:1120px;margin:0 auto;display:grid;gap:20px;color:var(--aff-ink);padding-bottom:25px}
+.aff-dash *{box-sizing:border-box}
+.aff-dash-welcome{padding:7px 2px 3px}
+.aff-home-eyebrow{color:#bc9cfe;letter-spacing:.13em;font-size:.67rem;font-weight:800;line-height:1.3}
+.aff-dash-welcome h1{font:800 clamp(1.65rem,3.4vw,2.65rem)/1.12 var(--font,system-ui);letter-spacing:-.045em;margin:7px 0 10px;color:#fbf9ff}
+.aff-dash-welcome p{color:#afa9c1;font-size:.91rem;line-height:1.55;max-width:600px;margin:0}
+.aff-dash-numbers{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.aff-dash-number{min-width:0;border:1px solid var(--aff-edge);border-radius:17px;padding:17px 16px;background:linear-gradient(145deg,#222036,#191723);display:flex;flex-direction:column;gap:7px;box-shadow:0 12px 28px -26px #000}
+.aff-dash-number.is-primary{background:linear-gradient(145deg,#443068,#271c42);border-color:rgba(183,128,255,.42)}
+.aff-dash-number span{color:#c8c1d8;font-weight:650;font-size:.76rem}
+.aff-dash-number strong{font-weight:850;letter-spacing:-.045em;font-size:clamp(1.3rem,2.3vw,1.85rem);overflow-wrap:anywhere;line-height:1.1}
+.aff-dash-number small{color:#a9a3bc;font-size:.69rem}
+.aff-dash-action-block{display:grid;gap:10px}
+.aff-dash-main-action{display:flex;gap:12px;align-items:center;justify-content:center;border:1px solid #b688f6;border-radius:15px;padding:17px 18px;background:linear-gradient(105deg,#ad58f5,#8541d5);color:#fff!important;font-size:1rem;font-weight:800;box-shadow:0 12px 28px -21px #c67aff;text-decoration:none!important}
+.aff-dash-main-action svg{font-size:1.22rem}.aff-dash-main-action svg:last-child{margin-left:auto}.aff-dash-main-action span{flex:1;text-align:center}
+.aff-dash-shortcuts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.aff-dash-shortcuts a,.aff-dash-shortcuts button{display:flex;justify-content:center;align-items:center;gap:9px;background:#1d1b2b;border:1px solid var(--aff-edge);border-radius:12px;padding:13px 10px;color:#eee5ff;text-decoration:none!important;font-weight:700;font-size:.78rem;transition:background .15s}
+.aff-dash-shortcuts a:hover,.aff-dash-shortcuts button:hover{background:#302543}.aff-dash-shortcuts svg{color:#bc93ff;font-size:1.2rem;flex:none}
+.aff-goal-card{border:1px solid rgba(189,144,255,.32);border-radius:19px;padding:22px;background:linear-gradient(140deg,#29223d 0%,#1d1a2d 62%,#1b1a28 100%);box-shadow:0 18px 35px -34px #000}
+.aff-goal-header,.aff-dash-section-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.aff-goal-header h2,.aff-dash-section-head h2{font:800 clamp(1.1rem,2.2vw,1.42rem)/1.18 var(--font,system-ui);letter-spacing:-.025em;margin:7px 0 0;color:#f6f1ff}
+.aff-goal-edit{white-space:nowrap;border:1px solid #514267;border-radius:10px;background:#332746;color:#e5cdff;padding:10px 13px;display:flex;gap:6px;align-items:center;font-weight:700;font-size:.77rem;cursor:pointer}
+.aff-goal-form{margin-top:16px;padding:15px;border-radius:13px;background:rgba(9,7,16,.36);display:grid;gap:7px}
+.aff-goal-form label{font-size:.79rem;font-weight:750;color:#eee3ff}
+.aff-goal-form-line{display:flex;gap:9px;flex-wrap:wrap}.aff-goal-form input{background:#171522;border:1px solid #584b72;border-radius:10px;padding:11px 13px;color:#fff;font:inherit;min-width:115px;flex:1}
+.aff-goal-form .btn{border-radius:10px}.aff-goal-notice{color:#b7ebc4;margin-top:10px}
+.aff-goal-display{display:flex;align-items:center;gap:20px;padding:19px 0 17px}
+.aff-goal-ring{--goal-progress:0%;height:102px;width:102px;flex:none;border-radius:50%;display:grid;place-items:center;background:conic-gradient(#b684ff var(--goal-progress),#443957 0);position:relative}
+.aff-goal-ring:before{content:"";position:absolute;inset:10px;background:#232034;border-radius:50%}
+.aff-goal-ring div{position:relative;text-align:center;display:grid;gap:1px}.aff-goal-ring strong{font-size:1.38rem;line-height:1.1}.aff-goal-ring span{font-size:.63rem;color:#aaa1bc}
+.aff-goal-amounts span{display:block;color:#bcb5d3;font-size:.74rem}.aff-goal-amounts strong{font-size:clamp(1.58rem,3vw,2.1rem);line-height:1.25;display:block;letter-spacing:-.04em}.aff-goal-amounts p{margin:0;font-size:.83rem;color:#c7bad9}
+.aff-goal-track{height:8px;background:#443955;border-radius:40px;overflow:hidden}.aff-goal-track span{display:block;background:linear-gradient(90deg,#8546df,#d5afff);height:100%;border-radius:40px;transition:width .3s}
+.aff-goal-balance{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.aff-goal-balance>div{display:grid;gap:5px;border-radius:11px;padding:12px;background:rgba(13,11,24,.38)}
+.aff-goal-balance span{color:#a9a4bc;font-size:.73rem}.aff-goal-balance strong{font-weight:850;font-size:1.05rem}
+.aff-goal-advice{margin-top:13px;border:1px solid rgba(196,166,251,.17);border-radius:11px;background:#302841;padding:13px 15px}
+.aff-goal-advice strong{font-weight:780;color:#e7d7ff;font-size:.85rem}.aff-goal-advice p{font-size:.77rem;line-height:1.6;color:#c7bdd7;margin:4px 0 0}
+.aff-goal-footnote{font-size:.68rem;color:#9a92ac;margin:13px 0 0;line-height:1.5}
+.aff-goal-empty{display:flex;gap:14px;align-items:center;margin:18px 0 10px;min-height:80px}.aff-goal-empty-mark{display:grid;place-items:center;border-radius:15px;width:65px;height:65px;font-size:1.9rem;background:#44315c;color:#dec6ff;flex:none}.aff-goal-empty strong{font-size:.93rem}.aff-goal-empty p{font-size:.79rem;color:#bcb5cb;line-height:1.5;margin:6px 0 0}
+.aff-goal-setup{background:#33242b;border:1px solid #6f4859;border-radius:11px;padding:15px;margin:14px 0}.aff-goal-setup p{font-size:.81rem}.aff-goal-setup small{overflow-wrap:anywhere}
+.aff-dash-products{display:grid;gap:13px}.aff-dash-section-head a{color:#c6a8ff;font-size:.79rem;font-weight:750;display:flex;gap:7px;align-items:center;text-decoration:none!important;white-space:nowrap}
+.aff-dash-product-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px}
+.aff-dash-product{min-width:0;display:flex;flex-direction:column;background:#1d1b2b;border:1px solid var(--aff-edge);border-radius:14px;overflow:hidden;color:#faf5ff!important;text-decoration:none!important;transition:transform .15s,border-color .15s}
+.aff-dash-product:hover{transform:translateY(-2px);border-color:#966de0}
+.aff-dash-product img,.aff-dash-no-photo{width:100%;aspect-ratio:4/3;object-fit:cover;background:#302c3a}
+.aff-dash-no-photo{display:grid;place-content:center;justify-items:center;gap:6px;font-size:.72rem;color:#b7aec8}
+.aff-dash-product>div:last-child{padding:12px;display:grid;gap:6px;height:100%}
+.aff-dash-product strong{font-size:.84rem;line-height:1.4;font-weight:800;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.aff-dash-product small{font-size:.71rem;color:#a59fb6}
+.aff-dash-product-bottom{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:auto;padding-top:9px}.aff-dash-product-bottom b{font-size:1rem;color:#d6b4ff}.aff-dash-product-bottom span{background:#8044c1;color:#fff;border-radius:10px;display:grid;place-items:center;width:29px;height:29px}
+.aff-dash-empty{color:#bbb4c9;font-size:.86rem;border:1px dashed #51425f;padding:19px;border-radius:12px}.aff-dash-empty a{color:#dfc5ff}
+.aff-dash-secondary{border:1px solid var(--aff-edge);border-radius:13px;background:#1b1a29}.aff-dash-secondary summary{cursor:pointer;display:flex;align-items:center;gap:10px;padding:15px;font-size:.85rem;font-weight:750;list-style:none}.aff-dash-secondary summary::-webkit-details-marker{display:none}.aff-dash-secondary summary svg{color:#bb92ff;font-size:1.1rem}.aff-dash-secondary summary span{margin-left:auto;color:#a9a0ba;font-size:.72rem}.aff-dash-secondary-body{padding:3px 15px 15px;overflow:auto}
+.aff-dash-disclaimer{font-size:.68rem;color:#9993a9;line-height:1.55;margin:0}
+@media(max-width:820px){.aff-dash-numbers{grid-template-columns:repeat(2,minmax(0,1fr))}.aff-dash-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.aff-dash-number strong{font-size:1.42rem}}
+@media(max-width:540px){.aff-dash{gap:17px}.aff-dash-welcome h1{font-size:1.7rem}.aff-dash-welcome p{font-size:.83rem}.aff-dash-numbers{gap:8px}.aff-dash-number{padding:13px 11px;gap:7px;border-radius:13px}.aff-dash-number strong{font-size:1.22rem}.aff-dash-number small{font-size:.65rem}.aff-dash-main-action{padding:15px}.aff-dash-shortcuts{gap:7px}.aff-dash-shortcuts a,.aff-dash-shortcuts button{font-size:.7rem;padding:12px 5px;flex-direction:column;text-align:center;gap:5px}.aff-dash-shortcuts svg{font-size:1.3rem}.aff-goal-card{padding:15px;border-radius:16px}.aff-goal-header h2{font-size:1.1rem}.aff-goal-edit{padding:9px;font-size:.71rem}.aff-goal-ring{width:83px;height:83px}.aff-goal-ring:before{inset:8px}.aff-goal-ring strong{font-size:1.1rem}.aff-goal-display{gap:15px}.aff-goal-amounts strong{font-size:1.45rem}.aff-goal-balance{gap:7px}.aff-goal-balance>div{padding:10px}.aff-goal-balance strong{font-size:.95rem}.aff-dash-product-grid{gap:8px}.aff-dash-product>div:last-child{padding:9px}.aff-dash-product-bottom b{font-size:.9rem}}
+
+.aff-goal-presets{display:flex;gap:7px;flex-wrap:wrap}.aff-goal-presets button{border:1px solid #66517f;border-radius:9px;background:#2e2440;color:#e3d2f9;padding:6px 11px;font-size:.75rem;cursor:pointer}.aff-goal-presets button:hover{background:#483263}

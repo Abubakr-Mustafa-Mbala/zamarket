@@ -1,290 +1,199 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { money, n } from '../../lib/format'
+import { money } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
-import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
-import ShareThis from '../../components/ShareThis'
 import ShareProduct from '../../components/ShareProduct'
-import { trustPosts, POST_KINDS } from '../../lib/trustPosts'
-import { Loading, Empty, CopyLine, useToast, Select, Field } from '../../components/ui'
+import { Loading, Empty, CopyLine, useToast } from '../../components/ui'
+import { productShareUrl } from '../../lib/affiliateLinks'
 
-const wa = (text) => `https://wa.me/?text=${encodeURIComponent(text)}`
-
-// Four ways to find customers. Plain, honest, and doable from a phone.
-const WAYS = [
+const ROUTES = [
   {
-    key: 'known', title: 'People you already know', target: '10 people today',
-    what: 'Family, friends, church, work, neighbours, old school group, your WhatsApp contacts.',
-    how: [
-      'Open your WhatsApp contacts and pick 10 people you have spoken to this year.',
-      'Send one person at a time, with their name in it. Never a broadcast list.',
-      "Ask about them first. Then mention what you're selling, once.",
-      'If they say no, thank them and ask if they know someone who might need it.',
+    name: 'WhatsApp & communities',
+    lead: 'Reach people who have shown an interest in this kind of product.',
+    steps: [
+      'Post one clear image or a short product video on your status, with the price and your tracked link.',
+      'Answer product questions with verified details; ask permission before sending someone a direct message.',
+      'Contribute helpfully in relevant groups and respect every group’s advertising rules.',
+      'Follow up once with people who asked for details, unless they opt out.',
     ],
   },
   {
-    key: 'status', title: 'Your status and social posts', target: '1 post a day',
-    what: 'WhatsApp status, Facebook, TikTok, Instagram. Free, and people already follow you.',
-    how: [
-      'Post a real photo of the product, not a poster.',
-      'Say the price, where you deliver, and how to order.',
-      'Show it being used, or your own honest opinion of it.',
-      'Put your link in the caption, and repeat it in the comments.',
+    name: 'Facebook & Instagram',
+    lead: 'Make useful, searchable posts for buyers, not just broadcasts to friends.',
+    steps: [
+      'Pick a real customer question and show how the product fits their need.',
+      'Use genuine seller photos or an approved ZaMarket poster; clearly show the current price.',
+      'Use a relevant local caption and your tracked product link. Reels can demonstrate features when real footage is available.',
+      'Reply promptly to genuine enquiries and track which products bring completed orders.',
     ],
   },
   {
-    key: 'groups', title: 'Groups and places where people gather', target: '3 groups a week',
-    what: 'WhatsApp and Facebook buying-and-selling groups, estate groups, work groups, markets, salons, offices.',
-    how: [
-      'Check the group rules first. Some ban selling, and getting removed helps nobody.',
-      'Answer questions in the group before you ever sell anything.',
-      'Post once, clearly, with a photo and the price.',
-      'Reply to every comment quickly, even the rude ones.',
+    name: 'TikTok & video',
+    lead: 'Show what a product actually does, using real video you have permission to use.',
+    steps: [
+      'Make a short demonstration, unpacking, comparison, or answer to a common question.',
+      'Lead with the real problem or feature, not an exaggerated income or discount claim.',
+      'Add accurate price and availability information; guide interested viewers to the product link in your profile or permitted location.',
+      'Repeat the formats that produce qualified enquiries and completed purchases.',
     ],
   },
   {
-    key: 'strangers', title: 'People you have not met yet', target: '5 a day',
-    what: 'Shops, offices, salons, taxi ranks, hostels, anyone whose work matches the product.',
-    how: [
-      "Lead with a question, not a pitch: 'Do you ever get asked for this?'",
-      'Show them the product on your phone.',
-      'Take their number and message them the same day.',
-      'Follow up once after two days. Then leave it.',
+    name: 'Workplaces & referrals',
+    lead: 'Reach relevant buyers through genuine introductions and group opportunities.',
+    steps: [
+      'Approach office organisers or businesses with products actually useful to them.',
+      'Offer to answer practical questions or help coordinate an enquiry; never claim unapproved discounts.',
+      'Use the tracked product link when you introduce the offer.',
+      'For group enquiries, confirm stock, price and fulfilment with ZaMarket before making commitments.',
     ],
   },
 ]
 
-const OBJECTIONS = [
-  ['It is too expensive', "Ask what they're comparing it to. Then explain what's included — delivery, the warranty, the quality. If it's still too much, offer a cheaper product instead of dropping the price."],
-  ["I'll think about it", "Fine. Ask: 'What would you need to know to decide?' Then answer that, and agree when you'll check back."],
-  ['Is it original?', 'Say exactly what you know and nothing more. Show the photos, and say where it comes from. Never promise what you cannot back up.'],
-  ["I don't trust buying online", 'ZaMarket calls to confirm every order before any money moves, and the customer pays by mobile money or on delivery depending on the item.'],
-  ['Can I get a discount?', "You don't set prices, but tell them about any live offer. If there isn't one, say so honestly."],
-  ['Send it and I pay later', 'Say no politely. Orders are confirmed by ZaMarket and paid on delivery.'],
-]
+const wa = text => `https://wa.me/?text=${encodeURIComponent(text)}`
+const getFirst = value => Array.isArray(value) ? value.find(x => typeof x === 'string' && x.trim()) : null
+const safeFacts = p => (Array.isArray(p?.benefits) ? p.benefits : []).filter(x => typeof x === 'string' && x.trim()).slice(0, 3)
+
+function messagesFor(product, link) {
+  if (!product) return []
+  const name = product.name
+  const price = money(product.price)
+  const vendor = product.vendor_name ? ` from ${product.vendor_name}` : ''
+  const details = safeFacts(product)
+  const benefits = details.length ? `\n${details.map(x => `• ${x}`).join('\n')}` : ''
+  const enquiry = ['negotiate', 'enquire'].includes(product.sales_model)
+  const action = enquiry ? 'View the details and enquire' : 'See the real photographs and current ordering details'
+  return [
+    {
+      label: 'Social media caption',
+      text: `Looking for ${name.toLowerCase()}?\n\n${name}${vendor} is listed on ZaMarket at ${price}.${benefits}\n\n${action}:\n${link}`,
+    },
+    {
+      label: 'Personal reply to an interested buyer',
+      text: `Hi {name}, following up on your interest in ${name}. The current listed price is ${price}.${details[0] ? `\n${details[0]}` : ''}\n\nYou can see the photos and full details here: ${link}\n\nIs there anything specific you'd like me to check?`,
+    },
+    {
+      label: 'Offer-focused post (only genuine offers)',
+      text: `${name}${vendor}\nPrice: ${price}${product.normal_price > product.price ? `\nPrevious listed price: ${money(product.normal_price)}` : ''}${benefits}\n\n${action}: ${link}`,
+    },
+  ]
+}
 
 export default function FindCustomers() {
   const { profile, settings } = useAuth()
   const toast = useToast()
   const r = profile?.partner
   const [productId, setProductId] = useState('')
-  const [way, setWay] = useState('known')
+  const [route, setRoute] = useState(0)
+  const [messageIndex, setMessageIndex] = useState(0)
   const { data, loading } = useData(async () => ({
-    vendors: await q(supabase.from('public_vendors').select('id,slug,business_name,town,tagline,description').limit(6)),
-    products: await q(supabase.from('public_products').select('id,name,slug,price,normal_price,description,benefits,commission_type,commission_value,vendor_slug,fulfilment,boost_pct,boost_until').eq('status', 'published').order('name')),
+    products: await q(supabase.from('public_products').select('*').eq('status', 'published').order('name').limit(150)),
     summary: r ? await q(supabase.rpc('reseller_summary', { p_reseller: r.id })) : null,
+    vehicleRewards: r ? (await supabase.rpc('affiliate_vehicle_reward_estimates')).data || [] : [],
   }), [r?.id])
 
-  const product = (data?.products || []).find((p) => p.id === productId) || (data?.products || [])[0]
-  const link = r ? `${window.location.host}/r/${r.code}` : ''
-  const productLink = product && r ? `${window.location.host}/r/${r.code}/${product.slug}` : link
-  const earn = product ? commissionLabel(product, settings) : null
+  const products = data?.products || []
+  const product = products.find(p => p.id === productId) || products[0]
+  const link = product ? productShareUrl(window.location.origin, product, 'reseller', r?.code) : ''
+  const baseLink = r?.code ? `${window.location.origin}/r/${r.code}` : ''
+  const messages = useMemo(() => messagesFor(product, link), [product, link])
+  const earned = p => p.offering_type === 'vehicle' ? Number(data?.vehicleRewards?.find(x => x.product_id === p.id)?.estimated_reward || 0) : commissionLabel(p, settings).perUnit
+  const active = ROUTES[route] || ROUTES[0]
+  const activeMessage = messages[messageIndex] || messages[0]
+  const copy = async (value) => {
+    try { await navigator.clipboard.writeText(value); toast('Copied. Check the price and details before posting.') }
+    catch { toast('Could not copy. Select the text to copy it.', true) }
+  }
 
-  const messages = useMemo(() => {
-    if (!product) return []
-    const price = money(product.price)
-    const benefit = (product.benefits || [])[0]
-    return [
-      { label: 'Someone you know', text: `Hi ${'{name}'}, how are you? I've started selling on ZaMarket. We have ${product.name} at ${price}${benefit ? ` — ${benefit.toLowerCase()}` : ''}. Delivery in Lusaka. Want me to send you the details?\n\n${productLink}` },
-      { label: 'Status or social post', text: `${product.name} — ${price}\n${(product.benefits || []).slice(0, 3).map((b) => `• ${b}`).join('\n')}\nDelivery in Lusaka. We confirm every order by phone.\nOrder here: ${productLink}` },
-      { label: 'A group', text: `Selling ${product.name} at ${price}. ${benefit || ''} Delivery in Lusaka, other areas arranged. Order through ZaMarket here: ${productLink}` },
-      { label: 'Following up', text: `Hi ${'{name}'}, just checking if you still want the ${product.name}. No problem either way — I'll keep you posted if the price changes.` },
-      { label: 'After they buy', text: `Thank you! ZaMarket will call you to confirm and arrange delivery. If you're happy with it, telling one friend helps me a lot.` },
-    ]
-  }, [product, productLink])
-
-  if (!r) return <Empty title="No reseller profile">Your account isn't linked to an approved reseller application.</Empty>
+  if (!r) return <Empty title="No affiliate profile">This account is not linked to an approved affiliate.</Empty>
   if (loading) return <Loading />
-  const s = data.summary || {}
-  const active = WAYS.find((w) => w.key === way)
-
+  const s = data?.summary || {}
   return (
-    <div className="stack">
-      <div className="page-head">
+    <div className="affiliate-studio stack">
+      <header className="aff-studio-intro">
         <div>
-          <h1>Find customers</h1>
-          <p>You don't need to be a salesperson. You need to tell enough people, honestly, every day.</p>
+          <span className="eyebrow">ZAMARKET / AFFILIATE STUDIO</span>
+          <h1>Create. Share. Earn.</h1>
+          <p>Choose a real listing, make a beautiful promotion and share a link that credits your account.</p>
         </div>
+        <Link to="/sell/earnings" className="aff-studio-results">My earnings <span aria-hidden="true">↗</span></Link>
+      </header>
+
+      <div className="aff-studio-process" aria-label="Promotion steps">
+        <span className="is-current"><b>01</b> Pick a product</span>
+        <span><b>02</b> Create a poster</span>
+        <span><b>03</b> Share &amp; follow up</span>
       </div>
 
-      <div className="fc-plan">
-        <div>
-          <h3>Your plan for today</h3>
-          <ol>
-            <li>Message <strong>10 people you know</strong>, one at a time</li>
-            <li>Post <strong>once</strong> on your status or social media</li>
-            <li>Follow up with <strong>anyone who replied yesterday</strong></li>
-          </ol>
-          <p className="tiny muted">Do this for two weeks before deciding whether it works. Most sales come after the second message, not the first.</p>
+      <section className="aff-studio-panel" aria-labelledby="aff-products-title">
+        <div className="aff-studio-section-top">
+          <div><span className="eyebrow">YOUR CATALOGUE</span><h2 id="aff-products-title">What would you like to promote?</h2></div>
+          <Link to="/sell/products" className="aff-studio-text-link">Explore all products <span aria-hidden="true">→</span></Link>
         </div>
-        <div className="fc-score">
-          <div><b>{s.sales_today ?? 0}</b><span>sales today</span></div>
-          <div><b>{s.sales_month ?? 0}</b><span>this month</span></div>
-          <div><b>{money(s.pending ?? 0)}</b><span>waiting to be paid</span></div>
-          <div><b>{money(s.paid ?? 0)}</b><span>paid to you</span></div>
-        </div>
-      </div>
-
-      <section className="card stack-sm">
-        <h3>Your link</h3>
-        <p className="small muted">Every sale through this link is credited to you. Share the product link when you're talking about one thing, and the main link otherwise.</p>
-        <CopyLine text={`https://${link}`} />
-        <ShareThis store={{ business_name: 'ZaMarket', tagline: 'Everything in one place, delivered in Lusaka', category: 'Marketplace', town: 'Lusaka', product_count: (data.products || []).length }}
-          products={data.products || []} link={`https://${link}`}
-          caption={`Everything I sell is here — phones, home goods, cakes made to order and services. Delivered in Lusaka, we confirm every order by phone first.\nShop here: https://${link}`}
-          className="btn buy" label="Create a shop promotion" />
-        {product && <CopyLine text={`https://${productLink}`} />}
-      </section>
-
-      <section className="card stack-sm">
-        <div className="between"><h3>Ready messages</h3>
-          <Field label=""><Select value={product?.id || ''} onChange={setProductId} options={(data.products || []).map((p) => [p.id, p.name])} /></Field>
-        </div>
-        {!product ? <p className="small muted">No products published yet.</p> : (
+        {!product ? <Empty title="No published products yet">Try again when a seller has a live listing.</Empty> : (
           <>
-            <p className="small">You earn <strong className="copper">{earn.text}</strong> on {product.name} — about {money(earn.perUnit)} per sale.</p>
-            {messages.map((m) => (
-              <div key={m.label} className="msg">
-                <div className="between"><strong className="small">{m.label}</strong>
-                  <div className="btn-row">
-                    <button className="btn sm" onClick={() => { navigator.clipboard.writeText(m.text).then(() => toast('Copied')) }}>Copy</button>
-                    <a className="btn sm buy" href={wa(m.text)} target="_blank" rel="noreferrer">WhatsApp</a>
-                  </div>
-                </div>
-                <div className="share-box">{m.text}</div>
+            <div className="aff-studio-products" aria-label="Choose a product to promote">
+              {products.map(p => (
+                <button type="button" key={p.id} onClick={() => { setProductId(p.id); setMessageIndex(0) }} aria-pressed={product.id === p.id} className={`aff-studio-product-choice ${product.id === p.id ? 'is-selected' : ''}`}>
+                  {getFirst(p.images) ? <img src={getFirst(p.images)} alt="" loading="lazy" /> : <span className="aff-studio-photo-fallback">Photo not available</span>}
+                  <span className="aff-studio-choice-body"><strong>{p.name}</strong><small>{money(p.price)}</small></span>
+                </button>
+              ))}
+            </div>
+
+            <div className="aff-studio-product-feature">
+              <div className="aff-studio-product-photo">
+                {getFirst(product.images) ? <img src={getFirst(product.images)} alt={product.name} loading="lazy" /> : <div className="aff-studio-photo-fallback">Ask the seller for an authentic product photograph</div>}
+                <span className="aff-studio-photo-pill">Actual listing photo</span>
               </div>
-            ))}
-            <p className="tiny muted">Replace {'{name}'} with the person's name. A message written to one person works far better than the same message sent to everyone.</p>
+              <div className="aff-studio-product-copy">
+                <span className="eyebrow">READY TO PROMOTE</span>
+                <h3>{product.name}</h3>
+                <p className="aff-studio-seller">{product.vendor_name || 'ZaMarket seller'}</p>
+                <div className="aff-studio-product-price"><span>Customer price</span><strong>{money(product.price)}</strong></div>
+                <div className="aff-studio-reward"><span>Your estimated reward per qualified sale</span><strong>{product.offering_type === 'vehicle' && !earned(product) ? 'To be confirmed' : money(earned(product))}</strong></div>
+                <p className="aff-studio-disclaimer">Final earnings depend on the agreed commission, completed sale and applicable checks.</p>
+                <div className="aff-studio-actions">
+                  <ShareProduct product={product} store={product.vendor_name ? { business_name: product.vendor_name, logo_url: product.vendor_logo, location: product.vendor_location, category: product.vendor_category } : null} settings={settings} link={link} className="btn primary" label="Create promotion poster" />
+                  <a className="btn" href={wa(messages[0]?.text || link)} target="_blank" rel="noreferrer">WhatsApp message</a>
+                </div>
+              </div>
+            </div>
+            <div className="aff-studio-link-row">
+              <div><strong>Tracked product link</strong><small>Every sale attributed through this link follows your affiliate terms.</small></div>
+              <div className="aff-studio-copy-line"><CopyLine text={link} /></div>
+            </div>
           </>
         )}
       </section>
 
-      <TrustContent link={`https://${link}`} vendors={data.vendors || []} />
-      <PostIdeas products={data.products || []} code={r.code} settings={settings} />
-
-      <section className="card stack-sm">
-        <h3>Where to find people</h3>
-        <div className="chips wrap">{WAYS.map((w) => <button key={w.key} className={`chip ${way === w.key ? 'on' : ''}`} onClick={() => setWay(w.key)}>{w.title}</button>)}</div>
-        <div className="fc-way">
-          <p className="strong">{active.what}</p>
-          <p className="small muted">Aim for {active.target}.</p>
-          <ol className="fc-steps">{active.how.map((h, i) => <li key={i}>{h}</li>)}</ol>
+      {product && <section className="aff-studio-panel" aria-labelledby="aff-messages-title">
+        <div className="aff-studio-section-top"><div><span className="eyebrow">COPY &amp; SHARE</span><h2 id="aff-messages-title">Your ready-to-edit message</h2></div><span className="aff-studio-mini-note">Only verified product facts</span></div>
+        <div className="aff-studio-segments" role="group" aria-label="Choose message type">
+          {messages.map((m, i) => <button type="button" key={m.label} className={i === messageIndex ? 'is-selected' : ''} aria-pressed={i === messageIndex} onClick={() => setMessageIndex(i)}>{['Social post', 'Reply to buyer', 'Product offer'][i]}</button>)}
         </div>
+        <div className="aff-studio-message-preview"><p>{activeMessage?.text}</p></div>
+        <div className="aff-studio-message-actions"><button type="button" className="btn primary" onClick={() => copy(activeMessage?.text || '')}>Copy message</button><a className="btn" href={wa(activeMessage?.text || '')} target="_blank" rel="noreferrer">Open WhatsApp</a></div>
+        <p className="tiny muted">Adapt the message for your audience. Never imply you used the product or promise discounts or delivery that the seller hasn't confirmed.</p>
+      </section>}
+
+      <section className="aff-studio-panel aff-studio-growth" aria-labelledby="aff-growth-title">
+        <div className="aff-studio-section-top"><div><span className="eyebrow">GROW YOUR SALES</span><h2 id="aff-growth-title">Where to find interested buyers</h2></div><Link to="/sell/training" className="aff-studio-text-link">Go to Academy <span aria-hidden="true">↗</span></Link></div>
+        <div className="aff-studio-segments aff-studio-channels" role="group" aria-label="Promotion channel">
+          {ROUTES.map((item, i) => <button type="button" className={route === i ? 'is-selected' : ''} onClick={() => setRoute(i)} key={item.name} aria-pressed={route === i}>{item.name}</button>)}
+        </div>
+        <p className="aff-studio-channel-intro">{active.lead}</p>
+        <ol className="aff-studio-channel-steps">{active.steps.map(step => <li key={step}>{step}</li>)}</ol>
       </section>
 
-      <section className="card stack-sm">
-        <h3>When they hesitate</h3>
-        {OBJECTIONS.map(([q1, a]) => <div key={q1} className="faq"><strong>“{q1}”</strong><p className="small">{a}</p></div>)}
-      </section>
-
-      <section className="card stack-sm">
-        <h3>The rules, plainly</h3>
-        <ul className="fc-rules">
-          <li>Never promise what a product cannot do. One angry customer costs more than one sale.</li>
-          <li>Don't take money yourself. ZaMarket confirms and collects, then pays you.</li>
-          <li>Don't buy through your own link. It isn't paid.</li>
-          <li>Don't spam. Getting blocked ends your reach.</li>
-          <li>You're paid after the customer receives the order, once it's checked.</li>
-        </ul>
-        <Link to="/sell/products" className="btn">See all products and what you earn</Link>
-      </section>
+      <div className="aff-studio-bottom-line">
+        <div><strong>{s.sales_month ?? 0}</strong><span>Orders placed this month</span></div>
+        <div><strong>{money(s.pending ?? 0)}</strong><span>Pending approval</span></div>
+        <Link to="/sell/earnings">See full performance <span aria-hidden="true">→</span></Link>
+      </div>
+      <details className="aff-studio-other-link"><summary>Need your general marketplace referral link?</summary><CopyLine text={baseLink} /><p className="tiny muted">For a particular product, use the tracked product link above instead.</p></details>
     </div>
-  )
-}
-
-
-// The same posting plan the marketplace uses, with the affiliate's own link in every caption.
-function PostIdeas({ products, code, settings }) {
-  const toast = useToast()
-  const [shown, setShown] = useState(6)
-  const ideas = useMemo(() => buildIdeas(products, null, window.location.origin, code), [products, code])
-  if (!ideas.length) return null
-  const copy = async (text) => { try { await navigator.clipboard.writeText(text); toast('Copied') } catch { toast('Could not copy', true) } }
-  return (
-    <section className="card stack-sm">
-      <h3>What to post</h3>
-      <p className="small muted">Ready posts using your link, so any sale from them is yours. Copy the caption, film the shots, post it.</p>
-      <div className="week-plan">
-        {WEEK_PLAN.map(([day, what]) => <div key={day}><strong>{day}</strong><span>{what}</span></div>)}
-      </div>
-      <div className="idea-list">
-        {ideas.slice(0, shown).map((idea) => {
-          const earn = commissionLabel(idea.product, settings)
-          return (
-            <article key={idea.id} className="post-idea">
-              <div className="between">
-                <span className="pi-head"><strong>{idea.title}</strong><span className="tiny muted">{idea.platform} · {idea.kind}</span></span>
-                <span className="tiny copper strong">You earn {money(earn.perUnit)}</span>
-              </div>
-              <p className="pi-hook">{idea.hook}</p>
-              <ol className="pi-shots">{idea.shots.map((sh, i) => <li key={i}>{sh}</li>)}</ol>
-              <div className="share-box">{idea.caption}</div>
-              <div className="btn-row">
-                <ShareProduct
-                  product={idea.product}
-                  store={idea.product.vendor_name ? {
-                    business_name: idea.product.vendor_name,
-                    logo_url: idea.product.vendor_logo,
-                    location: idea.product.vendor_location,
-                    category: idea.product.vendor_category,
-                  } : null}
-                  settings={settings}
-                  link={`${window.location.origin}/r/${code}/${idea.product.slug}`}
-                  className="btn sm primary" label="Create promotion" />
-                <button className="btn sm" onClick={() => copy(idea.caption)}>Copy caption</button>
-                <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(idea.caption)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
-              </div>
-            </article>
-          )
-        })}
-      </div>
-      {shown < ideas.length && <button className="btn" onClick={() => setShown(shown + 6)}>More ideas ({ideas.length - shown} left)</button>}
-    </section>
-  )
-}
-
-
-// Not every post should ask for the sale. These build the reason to click the next one.
-function TrustContent({ link, vendors }) {
-  const toast = useToast()
-  const [proof, setProof] = useState(null)
-  const [quotes, setQuotes] = useState([])
-  const [open, setOpen] = useState(0)
-  useEffect(() => {
-    supabase.rpc('marketplace_proof').then(({ data }) => setProof(data || {}))
-    supabase.rpc('public_proof', { p_limit: 4 }).then(({ data }) => setQuotes(data || []))
-  }, [])
-  const posts = useMemo(() => (proof ? trustPosts({ proof, link, vendors, quotes }) : []), [proof, link, vendors, quotes])
-  if (!posts.length) return null
-  const copy = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copied') } catch { toast('Could not copy', true) } }
-
-  return (
-    <section className="card stack-sm">
-      <h3>Posts that build trust</h3>
-      <p className="small muted">People scroll past adverts. They stop for someone explaining why this is safer than sending money to a stranger. Use these between your product posts — about one in three.</p>
-      <div className="trust-posts">
-        {posts.map((p, i) => (
-          <article key={p.title} className={`tpost ${i === open ? 'on' : ''}`}>
-            <button type="button" className="tpost-head" onClick={() => setOpen(i === open ? -1 : i)}>
-              <span className="tpost-kind">{POST_KINDS[p.kind]}</span>
-              <strong>{p.title}</strong>
-            </button>
-            {i === open && (
-              <div className="stack-sm">
-                <div className="share-box">{p.text}</div>
-                <div className="btn-row">
-                  <button className="btn sm" onClick={() => copy(p.text)}>Copy</button>
-                  <a className="btn sm buy" href={`https://wa.me/?text=${encodeURIComponent(p.text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
-                </div>
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
-      <p className="tiny muted">Every number in these posts is counted by the system. If something hasn't happened yet, the post that needs it isn't offered.</p>
-    </section>
   )
 }

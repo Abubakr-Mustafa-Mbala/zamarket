@@ -21,11 +21,15 @@ export function facts(product, offer, link, settings) {
     benefits,
     offer: offer?.copy || null,
     link,
-    delivery: product.fulfilment === 'service'
-      ? `Book online. ${payCaption(product, settings)}`
-      : product.fulfilment === 'made_to_order'
-        ? `Made to order, delivered in Lusaka. ${payCaption(product, settings)}`
-        : `Delivered in Lusaka. ${payCaption(product, settings)}`,
+    // A vehicle is an enquiry, not something ZaMarket promises to ship. For
+    // ordinary products, do not invent a delivery location or included fee.
+    delivery: product.offering_type === 'vehicle'
+      ? 'View details and arrange an enquiry through ZaMarket'
+      : product.fulfilment === 'service'
+        ? `Ask about booking and availability. ${payCaption(product, settings)}`
+        : product.fulfilment === 'made_to_order'
+          ? `Made to order; confirm delivery and timing. ${payCaption(product, settings)}`
+          : `Confirm delivery or collection options. ${payCaption(product, settings)}`,
     kind: product.offering_type || 'product',
     vendor: product.vendor_name || null,
   }

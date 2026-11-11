@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { useAuth } from '../../lib/auth'
 
 // Training is NOT in ZaMarket.
@@ -29,8 +28,8 @@ export default function Training() {
     <div className="stack">
       <div className="page-head">
         <div>
-          <h1>Training</h1>
-          <p>Where to learn how to do this properly.</p>
+          <h1>Affiliate Academy</h1>
+          <p>Practical training for promoting real products and following up with customers.</p>
         </div>
       </div>
 
@@ -64,28 +63,9 @@ export default function Training() {
       </div>
 
       <div className="card stack-sm">
-        <h2>While you wait</h2>
-        <p>Three things you can do today without any lesson:</p>
-        <ol>
-          <li>
-            Open <Link to="/sell/products">Products to sell</Link> and find one
-            product you would happily use yourself. It is far easier to sell
-            something you actually believe in.
-          </li>
-          <li>
-            Copy your link and send it to yourself on WhatsApp, so you see
-            exactly what a customer sees before anyone else does.
-          </li>
-          <li>
-            Write a list of thirty people who already know you — family, church,
-            work, neighbours, old classmates — before you message anybody.
-          </li>
-        </ol>
-        <p className="small muted">
-          Never promise an income, a delivery date or a discount that is not on
-          the product page. What you earn depends on what you sell, and there is
-          no salary and no guaranteed amount.
-        </p>
+        <h2>Putting learning into practice</h2>
+        <p>Choose a product that fits the people you want to reach. Read its real description, check its listed price and seller, and create a clear, honest promotion that sends interested buyers to the product page.</p>
+        <p className="small muted">Your earning opportunities depend on eligible completed sales and the published commission terms. Training does not guarantee an income.</p>
       </div>
     </div>
   )

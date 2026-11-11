@@ -7,7 +7,8 @@ import { Loading, Empty, Input, Field, useToast, Problem, Segmented } from '../.
 import { SHEET } from '../../lib/priceList'
 import { renderPremiumStudio } from '../../lib/premiumStudio'
 import { STUDIO_PALETTES, DEFAULT_STUDIO_PALETTE, studioPalette, premiumPagesFor } from '../../lib/studioThemes'
-import { renderPromo, renderArrival, compositionsFor } from '../../lib/promoArt'
+import { renderArrival } from '../../lib/promoArt'
+import { renderProductPoster, PRODUCT_DESIGNS } from '../../lib/productPoster'
 import { approvedFacts, buildHooks } from '../../lib/hooks'
 import { sharePicture } from '../../lib/shareCard'
 import Icon from '../../lib/icons'
@@ -60,15 +61,14 @@ function Gallery({ products, vendor, onPick }) {
             out.arrival = previewUrl(await renderArrival({ product: arrivalItem, settings: {}, link: `${window.location.origin}/p/${arrivalItem.slug}`, resolution: 1 }))
           } catch { /* ignore */ }
         }
-        const facts = approvedFacts({ product: hero, offer: null, reviews: [], settings: {} })
-        const hook = buildHooks(facts)[0]?.text
-        for (const comp of compositionsFor(hero, null).slice(0, 3)) {
+        for (const design of ['sheet', 'hero', 'gallery']) {
           try {
-            out[comp.key] = previewUrl(await renderPromo({
-              product: hero, offer: null, settings: {}, hook, link: `${window.location.host}/p/${hero.slug}`,
-              format: 'portrait', composition: comp.key, resolution: 1,
+            out[design] = previewUrl(await renderProductPoster({
+              product: hero, store: vendor || null, settings: {},
+              link: `${window.location.origin}/p/${hero.slug}`,
+              format: 'portrait', design,
             }))
-          } catch { /* ignore */ }
+          } catch { /* preview unavailable; the editor can still render it */ }
         }
       }
       if (!dead) setShots(out)
@@ -92,7 +92,7 @@ function Gallery({ products, vendor, onPick }) {
   return (
     <section className="gallery studio-gallery">
       <div className="gallery-head">
-        <span className="eyebrow"><Icon.sparkles /> ZA MARKET CREATIVE SUITE</span>
+        <span className="eyebrow"><Icon.sparkles /> ZAMARKET CREATIVE SUITE</span>
         <div className="between"><div><h2>Bring your products into the spotlight.</h2>
         <p>Design ready-to-share adverts, collections and price lists from your published catalogue.</p></div>
         <span className="gallery-counter">{products.length} live product{products.length === 1 ? '' : 's'}</span></div>
@@ -221,9 +221,14 @@ export default function CreativeStudio({ vendorId, vendor }) {
       } else if (tool === 'arrival') {
         blobs = [await renderArrival({ product, settings: settings || {}, link: productLink, format: plan.format, theme: chosenPalette })]
       } else {
-        const facts = approvedFacts({ product, offer: null, reviews: [], settings: settings || {} })
-        const hook = buildHooks(facts)[0]?.text || product.name
-        blobs = [await renderPromo({ product, offer: null, settings: settings || {}, hook, link: productLink, format: plan.format, composition: tool, theme: chosenPalette })]
+        // One poster engine for the whole shop: the same drawing an affiliate
+        // gets from a product page, so a design approved in one place cannot
+        // quietly differ in another.
+        const design = PRODUCT_DESIGNS[tool] ? tool : 'hero'
+        blobs = [await renderProductPoster({
+          product, store: activeVendor || null, settings: settings || {},
+          link: productLink, format: plan.format, design,
+        })]
       }
       if (currentGeneration !== generationId.current) return
       if (!blobs?.length || blobs.some((b) => !b)) throw new Error('Image export returned no data')

@@ -204,7 +204,7 @@ test('the brand is spelled ZaMarket everywhere a person or a crawler sees it', (
       if (!/\.(jsx?|html|json|webmanifest)$/.test(name)) continue
       const text = read(rel)
       // "ZAMARKET" in full caps is deliberate poster and badge typography.
-      for (const variant of ['ZA Market', 'ZAMarket', 'Za Market', 'ZaMarkets', 'ZA MARKETS']) {
+      for (const variant of ['ZA Market', 'ZAMarket', 'Za Market', 'ZaMarkets', 'ZA MARKETS', 'ZA MARKET ', 'ZA MARKET\'', 'ZA MARKET<', 'ZA MARKET /', 'ZA MARKET ·']) {
         if (text.includes(variant)) bad.push(`${rel}: ${variant}`)
       }
     }

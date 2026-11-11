@@ -465,3 +465,57 @@ button.workspace-avatar:hover { filter: brightness(1.15); }
   .home-journal-info { padding: 12px 14px 14px; }
   .home-journal-heading p { font-size: .82rem; }
 }
+
+/* ---- Dashboards on a phone ---------------------------------------------
+   The affiliate's copy-link shortcut is a button among links; it takes the
+   same shape. */
+.aff-dash-shortcuts button { cursor: pointer; font-family: inherit; }
+
+/* A seller opening the app on a phone needs "2 orders to prepare" on the
+   first screen. The welcome block was tall enough to push it down, so on
+   narrow screens it keeps its greeting and its two buttons and drops the
+   sentence that says what a dashboard is for. */
+@media (max-width: 640px) {
+  .vendor-home-head { padding-top: 14px; padding-bottom: 14px; }
+  .vendor-home-head p { display: none; }
+  .vendor-home-head h1 { font-size: 1.35rem; margin-bottom: 0; }
+  .vendor-home-head .btn-row { flex-direction: row; flex-wrap: nowrap; gap: 8px; margin-top: 10px; }
+  .vendor-home-head .btn-row .btn { flex: 1 1 0; justify-content: center; padding-left: 8px; padding-right: 8px; font-size: .85rem; }
+}
+
+/* Application form: say what will happen before asking for anything. */
+.apply-steps { list-style: none; margin: 6px 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; counter-reset: none; }
+.apply-steps li { display: flex; flex-direction: column; gap: 6px; padding: 10px 10px 11px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255,255,255,.03); font-size: 12.5px; line-height: 1.3; color: var(--muted); }
+.apply-steps li b { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; background: rgba(255,255,255,.08); color: inherit; }
+.apply-steps li.on { border-color: var(--brass); color: var(--ink); }
+.apply-steps li.on b { background: var(--brass-text); color: var(--brass-on); }
+.apply-facts { list-style: none; margin: 0; padding: 14px 16px; border-radius: 16px; border: 1px solid var(--line); background: rgba(255,255,255,.03); display: grid; gap: 10px; font-size: 14.5px; line-height: 1.45; }
+.apply-facts li { position: relative; padding-left: 22px; }
+.apply-facts li::before { content: ''; position: absolute; left: 2px; top: .5em; width: 8px; height: 8px; border-radius: 50%; background: var(--brass-text); }
+.apply-form details > summary { cursor: pointer; }
+
+/* Small helpers used by account recovery, winner contacts and the AI helpers. */
+.warn-text { color: var(--warn); }
+.recover-steps { margin: 0; padding-left: 20px; display: grid; gap: 8px; color: var(--ink); }
+.winner-contacts .winner-row { padding-top: 10px; border-top: 1px solid var(--line); }
+.winner-contacts .winner-row:first-of-type { border-top: 0; padding-top: 0; }
+.name-advice { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 6px; font-size: 13px; min-width: 0; max-width: 100%; }
+.name-advice li, .name-suggestion strong { overflow-wrap: anywhere; }
+.field { min-width: 0; }
+.name-advice ul { margin: 0; padding-left: 18px; color: var(--warn); display: grid; gap: 3px; }
+.name-advice .ok-text { color: var(--ok); }
+.name-suggestion { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--brass); background: var(--brass-soft); }
+.name-suggestion strong { flex: 1 1 180px; min-width: 0; }
+.ai-draft { display: grid; gap: 8px; padding: 12px; border-radius: var(--radius-sm); border: 1px solid var(--line-strong); background: var(--surface); }
+.ai-draft textarea { width: 100%; min-height: 120px; }
+
+/* A form column must be allowed to shrink. With plain 1fr, one long option
+   in a dropdown pushed the whole form wider than a phone screen. */
+.form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-grid > * { min-width: 0; }
+.form-grid select, .form-grid input, .form-grid textarea { max-width: 100%; }
+@media (max-width: 560px) { .form-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* Delivery fund */
+.fund-balance { font-size: 2rem; line-height: 1.1; color: var(--ink); }
+.fund-low { border-color: var(--warn); }

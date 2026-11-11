@@ -28,28 +28,35 @@ export default function PriceMaths({ take }) {
   }
   if (!p) return <p className="tiny muted pm-hint">Working it out…</p>
 
+  const fund = Number(p.delivery_fund || 0)
+  const share = p.marketplace_share != null ? Number(p.marketplace_share) : Number(p.margin_total)
   return (
     <div className="price-maths">
       <div className="pm-row lead">
-        <span>The customer pays</span>
+        <span>The customer pays{p.free_delivery ? ', delivered free' : ''}</span>
         <strong>{money(p.shelf)}</strong>
       </div>
-      {/* price_preview returns margin_total — the whole amount above the vendor's
-          take-home. It is not fee_pct of the shelf price, because it also carries
-          the room reserved for an affiliate's commission. Showing a single
-          percentage here would understate it and read as a mistake. */}
+      {/* The share is everything above the seller's amount except the delivery
+          fund. It carries the room kept for an affiliate's commission, so a
+          single percentage would understate it. */}
       <div className="pm-row">
         <span>ZaMarket's share</span>
-        <span>− {money(p.margin_total)}</span>
+        <span>− {money(share)}</span>
       </div>
+      {fund > 0 && (
+        <div className="pm-row">
+          <span>Set aside for delivery</span>
+          <span>− {money(fund)}</span>
+        </div>
+      )}
       <div className="pm-row total">
         <span>You receive</span>
         <strong>{money(p.vendor_receives)}</strong>
       </div>
       {Number(p.allowance_pct) > 0 && (
         <p className="tiny muted">
-          That share includes the {p.allowance_pct}% set aside for commission if an affiliate
-          brings the sale. Either way, what you receive does not change.
+          ZaMarket's share includes the {p.allowance_pct}% kept for an affiliate who brings the sale.
+          Either way, what you receive does not change.
         </p>
       )}
       {p.below_minimum && (
@@ -59,7 +66,10 @@ export default function PriceMaths({ take }) {
         </p>
       )}
       <p className="tiny muted">
-        Delivery is charged once per order, separately, so it is not in this figure.
+        {p.free_delivery
+          ? 'Delivery is free to the customer. The amount set aside pays for it, so you never pay for a trip.'
+          : 'Delivery is charged once per order, separately, so it is not in this figure.'}
+        {' '}A lower amount here means a lower price for the customer, and shoppers compare.
       </p>
     </div>
   )

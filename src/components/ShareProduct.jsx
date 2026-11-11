@@ -45,7 +45,7 @@ export default function ShareProduct({
   const url = useRef(null)
 
   const recommended = recommendedDesign(product, store)
-  const chosen = design || recommended
+  const chosen = PRODUCT_DESIGNS[design || recommended] ? (design || recommended) : 'hero'
 
   const shots = shotsOf(product, 4)
   const points = sellingPoints(product, 4)
@@ -80,13 +80,17 @@ export default function ShareProduct({
 
   const slug = String(product?.name || 'product').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const filename = `${slug || 'product'}-${format}.jpg`
-  const canShareFiles = typeof navigator !== 'undefined'
-    && navigator.canShare?.({ files: [new File([], 'x.jpg', { type: 'image/jpeg' })] })
+  const canShareFiles = typeof navigator !== 'undefined' && typeof File !== 'undefined' && navigator.canShare?.({ files: [new File([], 'poster.jpg', { type: 'image/jpeg' })] })
 
   const share = async () => {
     if (!blob) return
-    const how = await sharePicture(blob, { caption, filename })
-    if (how === 'downloaded') toast('Poster saved to your downloads')
+    try {
+      const how = await sharePicture(blob, { caption, filename })
+      if (how === 'downloaded') {
+        try { await navigator.clipboard.writeText(caption); toast('Poster downloaded and caption copied. Paste the caption when posting.') }
+        catch { toast('Poster downloaded. Use Copy caption before posting.') }
+      }
+    } catch (error) { if (error?.name !== 'AbortError') toast('Sharing failed. Try downloading the poster.', true) }
   }
   const download = () => {
     if (!blob) return
@@ -192,11 +196,11 @@ export default function ShareProduct({
             )}
 
             <div className="btn-row">
-              {canShareFiles && <button className="btn primary" onClick={share} disabled={!blob}>Share the poster</button>}
+              <button className="btn primary" onClick={share} disabled={!blob}>{canShareFiles ? 'Share poster' : 'Save poster & caption'}</button>
               <button className="btn buy" onClick={download} disabled={!blob}>Download</button>
               <button className="btn" onClick={another}>Another design</button>
               <button className="btn ghost" onClick={copyCaption}>Copy caption</button>
-              <button className="btn ghost" onClick={copyLink}>Copy product link</button>
+              <button className="btn ghost" onClick={copyLink}>Copy {shareLink.includes('/r/') ? 'affiliate' : 'product'} link</button>
             </div>
 
             <details className="ss-caption">

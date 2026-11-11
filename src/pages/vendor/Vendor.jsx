@@ -45,14 +45,22 @@ export function VendorHome() {
   } : null, [v?.id])
   if (!v) return <Empty title="No vendor profile">Your account isn't linked to an approved vendor application.</Empty>
   if (loading || !data) return <Loading />
-  const { sum } = data
+  // vendor_summary answers null when it cannot match the caller to a seller
+  // record -- a seller who has only just been approved, say. Reading a field
+  // off that null used to take the whole home screen down, so a brand-new
+  // seller's first sight of their dashboard was an error page. An empty
+  // summary draws zeros instead.
+  const sum = { sales: 0, units: 0, returns: 0, to_make: 0, new: 0, completed: 0,
+    rating: null, referral_earned: 0, eligible: 0, ...(data.sum || {}) }
+  if (!Array.isArray(sum.reviews)) sum.reviews = []
+  data.setts = Array.isArray(data.setts) ? data.setts : []
   const open = data.setts.filter((s) => ['pending', 'eligible', 'approved'].includes(s.status)).reduce((t, s) => t + n(s.net_payable), 0)
   const paid = data.setts.filter((s) => s.status === 'paid').reduce((t, s) => t + n(s.net_payable), 0)
   const fees = data.setts.filter((s) => s.status !== 'cancelled').reduce((t, s) => t + n(s.marketplace_fee), 0)
   const couponsWaiting = (data.coupons || []).filter((c) => c.needs_my_answer).length
   return (
     <div className="stack">
-      <div className="page-head workspace-page-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR BUSINESS, AT A GLANCE</span><h1>Welcome back, {v.business_name}.</h1><p>Stay on top of orders, keep your catalogue fresh and grow your storefront.</p></div><div className="btn-row"><Link className="btn" to="/vendor/shopfront">Edit shopfront</Link><Link className="btn primary" to="/vendor/products">Manage products <Icon.arrow /></Link></div></div>
+      <div className="page-head workspace-page-head vendor-home-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR BUSINESS, AT A GLANCE</span><h1>Welcome back, {v.business_name}.</h1><p>Stay on top of orders, keep your catalogue fresh and grow your storefront.</p></div><div className="btn-row"><Link className="btn" to="/vendor/shopfront">Edit shopfront</Link><Link className="btn primary" to="/vendor/products">Manage products <Icon.arrow /></Link></div></div>
 
       <BigActions items={[
         {
@@ -99,7 +107,7 @@ export function VendorHome() {
       <VendorTraffic />
       <section className="card stack-sm">
         <h3>Your link to ZaMarket</h3>
-        <p className="small muted">Share this with anyone. If they buy from your store, you receive exactly what you asked for, as always. If they buy from another seller here, you still earn {settings.vendor_referral_pct}% of what they spend.</p>
+        <p className="small muted">Share this with anyone. If they buy from your store, you receive exactly what you asked for, as always. {Number(settings.vendor_referral_pct) > 0 ? ` If they buy from another seller here, you still earn ${Number(settings.vendor_referral_pct)}% of what they spend.` : ''}</p>
         <ShareStore store={v} products={(data.products || []).filter((x) => x.status === 'published')} sections={data.sections || []} settings={settings} link={`${window.location.origin}/${v.slug}`} className="btn buy" label="Make a picture of my shop" />
         <div className="store-qr">
           <QrCode value={`${window.location.origin}/${v.slug}`} size={132} />
@@ -111,7 +119,7 @@ export function VendorHome() {
         </div>
         {v.ref_code
           ? <CopyLine text={`${window.location.origin}/v/${v.ref_code}`} />
-          : <p className="small muted">Your link appears once your account is fully set up.</p>}
+          : null}
         {Number(sum.referral_earned) > 0 && <p className="small">Earned from people you sent: <strong className="copper">{money(sum.referral_earned)}</strong></p>}
       </section>
       <Link to="/vendor/earnings" className="card between" style={{ color: 'inherit' }}><span><span className="strong">See your earnings chart</span><br /><span className="small muted">Day by day, pick any dates, all your records</span></span><span aria-hidden>›</span></Link>
@@ -502,6 +510,7 @@ export function VendorMarketing() {
           ))}
         </div>
       )}
+      <ProposeGiveaway products={data.products} />
       <form onSubmit={submit} className="card stack">
         <h3>Ask us to run ads</h3>
         <Field label="What do you want to achieve?"><Input value={f.goal} onChange={set('goal')} placeholder="e.g. More cake orders for December" required /></Field>
@@ -528,6 +537,72 @@ export function VendorMarketing() {
   )
 }
 
+
+// A seller offers one of their own products as a prize. It is a proposal:
+// ZaMarket checks it and decides whether it opens, runs the draw and contacts
+// the winner. The seller never sees entrants' phone numbers.
+function ProposeGiveaway({ products }) {
+  const toast = useToast()
+  const v = useVendor()
+  const [f, setF] = useState({ title: '', product_id: '', days: '10', note: '' })
+  const [busy, setBusy] = useState(false)
+  const set = (k) => (val) => setF((x) => ({ ...x, [k]: val }))
+  const { data: mine, reload } = useData(() => v
+    ? q(supabase.from('giveaway_campaigns').select('slug,title,status,closes_at,prize_text').eq('vendor_id', v.id).order('created_at', { ascending: false }).limit(6))
+    : Promise.resolve([]), [v?.id])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!f.product_id) return toast('Choose the product you will give away', true)
+    setBusy(true)
+    const { error } = await supabase.rpc('propose_giveaway', {
+      p_title: f.title, p_product: f.product_id, p_days: Number(f.days) || 10, p_note: f.note,
+    })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast('Sent to ZaMarket. We will check it and let you know.')
+    setF({ title: '', product_id: '', days: '10', note: '' }); reload()
+  }
+  const withdraw = async (slug) => {
+    const { error } = await supabase.rpc('withdraw_giveaway_proposal', { p_slug: slug })
+    if (error) return toast(error.message, true)
+    toast('Proposal withdrawn'); reload()
+  }
+  const LABEL = { draft: 'Waiting for ZaMarket', scheduled: 'Scheduled', live: 'Open now', closed: 'Entries closed', drawn: 'Winner drawn', fulfilled: 'Prize handed over', cancelled: 'Not running' }
+
+  return (
+    <div className="card stack">
+      <div>
+        <h3>Run a giveaway</h3>
+        <p className="small muted">Give away one of your products and everyone who enters sees your shop. Entry is always free for customers. You provide the prize; ZaMarket runs the draw fairly, announces the winner and contacts them.</p>
+      </div>
+      {products.length === 0 ? (
+        <p className="small muted">You need at least one product live in your shop to offer as a prize.</p>
+      ) : (
+        <form onSubmit={submit} className="stack-sm">
+          <Field label="Prize"><Select value={f.product_id} onChange={set('product_id')} options={products.map((p) => [p.id, p.name])} placeholder="Choose one of your products" required /></Field>
+          <Field label="Title" hint="For example: Win a chocolate birthday cake"><Input value={f.title} onChange={set('title')} required /></Field>
+          <div className="form-grid">
+            <Field label="How many days should it run?"><Select value={f.days} onChange={set('days')} options={[['7', '7 days'], ['10', '10 days'], ['14', '14 days']]} /></Field>
+            <Field label="Anything we should know? (optional)"><Input value={f.note} onChange={set('note')} placeholder="e.g. For the December holidays" /></Field>
+          </div>
+          <button className="btn primary" disabled={busy}>{busy ? 'Sending…' : 'Send to ZaMarket'}</button>
+        </form>
+      )}
+      {(mine || []).length > 0 && (
+        <div className="mini-table">
+          {mine.map((g) => (
+            <div key={g.slug} className="mini-row">
+              <span className="grow"><strong>{g.title}</strong><span className="tiny muted">{g.prize_text} · {LABEL[g.status] || g.status}</span></span>
+              {g.status === 'draft' && <button className="btn sm ghost" onClick={() => withdraw(g.slug)}>Withdraw</button>}
+              {['live', 'closed', 'drawn', 'fulfilled'].includes(g.status) && <a className="btn sm" href={`/giveaways/${g.slug}`} target="_blank" rel="noreferrer">View</a>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 // A vendor sets up their shopfront: logo, cover, tagline, what makes them good, hours.
 export function VendorStore() {

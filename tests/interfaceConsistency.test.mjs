@@ -9,7 +9,9 @@ test('main font is loaded and not overwritten with missing Instrument Sans', () 
   assert.doesNotMatch(css, /--font: 'Instrument Sans'/)
   assert.match(html, /family=Plus\+Jakarta\+Sans/)
 })
-test('affiliate mobile Sell and Promote tabs lead to different valid pages', () => {
-  assert.match(shell, /to: '\/sell\/find-customers', label: 'Sell'/)
+test('affiliate mobile navigation prioritizes Home, Promote, Earnings and Academy', () => {
   assert.match(shell, /to: '\/sell\/products', label: 'Promote'/)
+  assert.match(shell, /to: '\/sell\/earnings', label: 'Earnings'/)
+  assert.match(shell, /to: '\/sell\/training', label: 'Academy'/)
+  assert.match(shell, /to: '\/sell\/find-customers', label: 'Promotion studio'/)
 })

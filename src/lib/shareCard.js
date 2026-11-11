@@ -288,98 +288,104 @@ export async function articleCard({ post, link, shape = 'post' }) {
   const c = document.createElement('canvas')
   c.width = w; c.height = h
   const ctx = c.getContext('2d')
-  const pad = Math.round(w * 0.06)
+  const wide = shape === 'wide'
+  const pad = Math.round(w * (wide ? 0.045 : 0.065))
 
-  ctx.fillStyle = INK
+  // The journal's own page: a warm paper ground with dark ink, the same as
+  // the article reads on the site. The first version of this card set the
+  // words on a dark slab under the photograph, which looked nothing like the
+  // journal and read as heavy on a status.
+  const PAPER = '#F8F2E9', INKJ = '#302922', SOFT = '#645B53', RULE = '#D9C7A8', ACTION = '#704D83'
+  ctx.fillStyle = PAPER
   ctx.fillRect(0, 0, w, h)
 
-  // Full bleed, square corners. `cover` rounds its corners, which is right on
-  // a card inset from the edge and wrong on a photo that runs to the edge.
   const photo = await loadImage(post?.cover_url)
-  const picH = Math.round(h * ({ story: 0.58, post: 0.52, wide: 0.40 }[shape] || 0.52))
-  if (photo) {
-    const scale = Math.max(w / photo.width, picH / photo.height)
-    const dw = photo.width * scale
-    const dh = photo.height * scale
+  const footH = Math.round(h * (wide ? 0.17 : 0.085))
+  const footTop = h - footH - Math.round(pad * 0.5)
+
+  // Wide cards put the photograph beside the words; tall ones put it above.
+  let textX = pad, textW = w - pad * 2, y
+  const radius = Math.round(w * 0.026)
+  const frame = (x, fy, fw, fh) => {
     ctx.save()
-    ctx.beginPath(); ctx.rect(0, 0, w, picH); ctx.clip()
-    ctx.drawImage(photo, (w - dw) / 2, (picH - dh) / 2, dw, dh)
+    roundRect(ctx, x, fy, fw, fh, radius); ctx.clip()
+    if (photo) {
+      const scale = Math.max(fw / photo.width, fh / photo.height)
+      const dw = photo.width * scale, dh = photo.height * scale
+      ctx.drawImage(photo, x + (fw - dw) / 2, fy + (fh - dh) / 2, dw, dh)
+    } else {
+      ctx.fillStyle = '#EEE4D8'; ctx.fillRect(x, fy, fw, fh)
+    }
     ctx.restore()
-  } else {
-    ctx.fillStyle = PINE
-    ctx.fillRect(0, 0, w, picH)
+    ctx.strokeStyle = RULE; ctx.lineWidth = Math.max(1, w * 0.0018)
+    roundRect(ctx, x, fy, fw, fh, radius); ctx.stroke()
   }
 
-  // Fade the photo into the text, so a bright picture does not end on a line.
-  const fade = ctx.createLinearGradient(0, picH - 140, 0, picH)
-  fade.addColorStop(0, 'rgba(31,41,51,0)')
-  fade.addColorStop(1, INK)
-  ctx.fillStyle = fade
-  ctx.fillRect(0, picH - 140, w, 140)
-
-  // The band at the foot holds the mark and the address. Everything between
-  // the photo and that band is the text area, and the text is laid out to
-  // fit it rather than hoping it does.
-  const bandH = Math.round(h * 0.1)
-  const bandTop = h - bandH
-  const textTop = picH + Math.round(pad * 0.75)
-  const textBottom = bandTop - Math.round(pad * 0.6)
-  let y = textTop
-
-  if (post?.category) {
-    const catSize = Math.round(w * 0.028)
-    ctx.fillStyle = GOLD
-    ctx.font = `700 ${catSize}px Instrument Sans, system-ui, sans-serif`
-    ctx.textBaseline = 'top'
-    ctx.fillText(String(post.category).toUpperCase(), pad, y)
-    y += Math.round(catSize * (shape === 'wide' ? 1.6 : 1.9))
+  if (wide) {
+    const fw = Math.round(w * 0.42)
+    frame(pad, pad, fw, footTop - pad - Math.round(pad * 0.4))
+    textX = pad + fw + Math.round(pad * 0.9)
+    textW = w - textX - pad
+    y = pad + Math.round(h * 0.02)
+  } else {
+    const picH = Math.round(h * (shape === 'story' ? 0.50 : 0.46))
+    frame(pad, pad, w - pad * 2, picH)
+    y = pad + picH + Math.round(pad * 0.75)
   }
 
   ctx.textBaseline = 'top'
-  ctx.fillStyle = '#FFFFFF'
-  const titleSize = shape === 'wide' ? Math.round(w * 0.045) : Math.round(w * 0.066)
+  const eyebrow = [post?.category, 'ZaMarket Journal'].filter(Boolean)[0]
+  const eyeSize = Math.round(w * (wide ? 0.019 : 0.027))
+  ctx.fillStyle = ACTION
+  ctx.font = `700 ${eyeSize}px Instrument Sans, system-ui, sans-serif`
+  ctx.fillText(String(eyebrow).toUpperCase(), textX, y)
+  y += Math.round(eyeSize * 2.0)
+
+  // Headline in a serif, as the journal sets its own headings.
+  const titleSize = Math.round(w * (wide ? 0.040 : 0.064))
   const titleLead = Math.round(titleSize * 1.16)
-  ctx.font = `700 ${titleSize}px Instrument Sans, system-ui, sans-serif`
-  // Never ask for more lines than there is room for.
-  const titleRoom = Math.max(1, Math.floor((textBottom - y) / titleLead))
-  const titleRows = wrap(ctx, post?.title || 'Read this on ZaMarket',
-                         w - pad * 2, Math.min(shape === 'wide' ? 2 : 3, titleRoom))
-  for (const row of titleRows) { ctx.fillText(row, pad, y); y += titleLead }
+  ctx.fillStyle = INKJ
+  ctx.font = `700 ${titleSize}px Playfair Display, Georgia, 'Times New Roman', serif`
+  const titleRoom = Math.max(1, Math.floor((footTop - y) / titleLead))
+  for (const row of wrap(ctx, post?.title || 'Read this on ZaMarket', textW, Math.min(wide ? 4 : 3, titleRoom))) {
+    ctx.fillText(row, textX, y); y += titleLead
+  }
 
   if (post?.excerpt) {
-    const exSize = Math.round(w * 0.032)
-    const exLead = Math.round(exSize * 1.4)
-    y += Math.round(pad * 0.35)
-    const lines = Math.floor((textBottom - y) / exLead)
+    const exSize = Math.round(w * (wide ? 0.021 : 0.031))
+    const exLead = Math.round(exSize * 1.45)
+    y += Math.round(pad * 0.3)
+    const lines = Math.floor((footTop - y - Math.round(pad * 0.3)) / exLead)
     if (lines >= 1) {
-      ctx.fillStyle = '#AEBECB'
+      ctx.fillStyle = SOFT
       ctx.font = `400 ${exSize}px Instrument Sans, system-ui, sans-serif`
-      const most = shape === 'story' ? 6 : shape === 'wide' ? 2 : 4
-      for (const row of wrap(ctx, post.excerpt, w - pad * 2, Math.min(most, lines))) {
-        ctx.fillText(row, pad, y); y += exLead
+      const most = shape === 'story' ? 7 : wide ? 3 : 4
+      for (const row of wrap(ctx, post.excerpt, textW, Math.min(most, lines))) {
+        ctx.fillText(row, textX, y); y += exLead
       }
     }
   }
 
-  // Foot: the mark on the left, the address on the right, with the address
-  // shortened to whatever room is actually left so the two never collide.
-  ctx.fillStyle = '#121A22'
-  ctx.fillRect(0, bandTop, w, bandH)
-  const markSize = Math.round(bandH * 0.40)
-  brandLockup(ctx, pad, bandTop + Math.round((bandH - markSize * 1.65) / 2), markSize)
+  // Foot: a hairline, the mark in ink, and what to do next. The lockup
+  // already reads zamarket.shop, so the address is not printed twice.
+  ctx.strokeStyle = RULE
+  ctx.lineWidth = Math.max(1, w * 0.0018)
+  ctx.beginPath(); ctx.moveTo(pad, footTop); ctx.lineTo(w - pad, footTop); ctx.stroke()
+  const markSize = Math.round(footH * (wide ? 0.42 : 0.50))
+  const footMid = footTop + Math.round((h - footTop) / 2)
+  brandLockup(ctx, pad, footMid - Math.round(markSize * 0.82), markSize, INKJ)
 
-  // The lockup already carries zamarket.shop, so repeating the address on
-  // the right would just say the same thing twice. Nobody can tap a picture
-  // either, so the useful thing to put here is what to do next; the full
-  // link travels in the caption beside the image.
-  const ctaSize = Math.round(w * 0.028)
-  ctx.font = `600 ${ctaSize}px Instrument Sans, system-ui, sans-serif`
-  ctx.fillStyle = GOLD
-  ctx.textAlign = 'right'
-  ctx.textBaseline = 'middle'
-  ctx.fillText('Read the full story', w - pad, bandTop + bandH / 2)
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
+  const ctaSize = Math.round(w * (wide ? 0.019 : 0.028))
+  ctx.font = `700 ${ctaSize}px Instrument Sans, system-ui, sans-serif`
+  const label = 'Read the full story'
+  const tw = ctx.measureText(label).width
+  const bw = tw + ctaSize * 2.2, bh = ctaSize * 2.5
+  ctx.fillStyle = ACTION
+  roundRect(ctx, w - pad - bw, footMid - bh / 2, bw, bh, bh / 2); ctx.fill()
+  ctx.fillStyle = '#FFFFFF'
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(label, w - pad - bw / 2, footMid + 1)
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
 
   return toBlob(c)
 }

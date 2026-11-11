@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase, q } from '../lib/supabase'
 import { useData } from '../lib/useData'
 import { money } from '../lib/format'
+import { useAuth } from '../lib/auth'
 import { Modal, Field, Input, Select, useToast, Badge, Loading } from './ui'
 
 const METHODS = [['airtel', 'Airtel Money'], ['mtn', 'MTN Money'], ['zamtel', 'Zamtel Kwacha'], ['bank', 'Bank transfer'], ['cash', 'Cash']]
@@ -9,6 +10,9 @@ const METHODS = [['airtel', 'Airtel Money'], ['mtn', 'MTN Money'], ['zamtel', 'Z
 // Resellers and vendors ask to be paid instead of waiting and wondering.
 export default function PayoutRequest({ who = 'reseller' }) {
   const toast = useToast()
+  const { profile } = useAuth()
+  const hold = profile?.partner?.payout_hold_until
+  const held = hold && new Date(hold) > new Date()
   const [open, setOpen] = useState(false)
   const [f, setF] = useState({ amount: '', method: 'airtel', details: '' })
   const [busy, setBusy] = useState(false)
@@ -33,8 +37,14 @@ export default function PayoutRequest({ who = 'reseller' }) {
     <section className="card stack-sm">
       <div className="between">
         <h3>Getting paid</h3>
-        {Number(b.ready) > 0 && <button className="btn buy" onClick={() => { setF({ ...f, amount: String(b.ready) }); setOpen(true) }}>Ask to be paid</button>}
+        {Number(b.ready) > 0 && !held && <button className="btn buy" onClick={() => { setF({ ...f, amount: String(b.ready) }); setOpen(true) }}>Ask to be paid</button>}
       </div>
+      {held && (
+        <p className="small warn-text">
+          Payouts are paused until {new Date(hold).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} because
+          this account was moved to a new login. Your earnings are safe and keep adding up.
+        </p>
+      )}
       <div className="mini-stats">
         <div><b>{money(b.ready)}</b><span>ready to request</span></div>
         <div><b>{money(b.requested)}</b><span>requested, being paid</span></div>

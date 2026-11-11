@@ -44,19 +44,21 @@ const STAFF_NAV = [
   { to: '/admin/earnings', label: 'Earnings' },
   { to: '/admin/money-check', label: 'Check the money' },
   { to: '/admin/finance', label: 'Finance' },
+  { to: '/admin/delivery-fund', label: 'Delivery fund' },
   { to: '/admin/reports', label: 'Reports' },
   { group: 'Setup', founder: true },
   { to: '/admin/team', label: 'Team', founder: true },
   { to: '/admin/settings', label: 'Settings', founder: true },
+  { to: '/admin/recovery', label: 'Account recovery', founder: true },
   { to: '/admin/audit', label: 'Audit log', founder: true, advanced: true },
 ]
 
 const RESELLER_NAV = [
-  { to: '/sell', label: 'My sales', end: true },
-  { to: '/sell/find-customers', label: 'Find customers' },
-  { to: '/sell/training', label: 'Training' },
-  { to: '/sell/products', label: 'Products to sell' },
+  { to: '/sell', label: 'Dashboard', end: true },
+  { to: '/sell/products', label: 'Promote products' },
+  { to: '/sell/find-customers', label: 'Promotion studio' },
   { to: '/sell/earnings', label: 'My earnings' },
+  { to: '/sell/training', label: 'Academy' },
   { to: '/sell/commissions', label: 'Commissions' },
 ]
 
@@ -106,10 +108,10 @@ const MOBILE_TABS = {
     { to: '/admin/earnings', label: 'Earnings', icon: I.coins },
   ],
   reseller: [
-    { to: '/sell', label: 'Sales', icon: I.home, end: true },
-    { to: '/sell/find-customers', label: 'Sell', icon: I.box },
+    { to: '/sell', label: 'Home', icon: I.home, end: true },
     { to: '/sell/products', label: 'Promote', icon: I.cart },
     { to: '/sell/earnings', label: 'Earnings', icon: I.coins },
+    { to: '/sell/training', label: 'Academy', icon: I.box },
   ],
   vendor: [
     { to: '/vendor', label: 'Home', icon: I.home, end: true },
@@ -229,7 +231,7 @@ export default function Shell({ kind }) {
 
       <div className="main">
         <header className="topbar">
-          <div className="workspace-current"><span className="workspace-top-kicker">ZA MARKET / {roleName.toUpperCase()}</span><strong>{navTitle}</strong></div>
+          <div className="workspace-current"><span className="workspace-top-kicker">ZAMARKET / {roleName.toUpperCase()}</span><strong>{navTitle}</strong></div>
           <div className="workspace-top-actions"><Link className="workspace-store-link" to="/"><Icon.house /> <span>View store</span></Link><ActionBell /><AccountMenu kind={kind} profile={profile} roleName={roleName} isFounder={isFounder} signOut={signOut} /></div>
           {kind === 'staff' && !marketer && (
             <div className="mode-switch">

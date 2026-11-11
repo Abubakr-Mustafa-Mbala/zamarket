@@ -9,6 +9,7 @@ import { money } from '../../lib/format'
 import { useSeo } from '../../lib/seo'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
 import Icon from '../../lib/icons'
+import { usablePhone, prettyPhone } from '../../lib/phone'
 
 // A real prize, real product photography, a free entry and a recorded draw.
 // A promotion page must never invent inventory, discounts, ratings or prizes.
@@ -98,6 +99,27 @@ function ProductCard({ p }) {
   </Link>
 }
 
+// The number we would ring, shown back to the entrant with a way to fix it.
+function ContactNumber({ known, editing, setEditing, phone, setPhone, save, busy, winner }) {
+  if (known && !editing) return (
+    <p className="gw-phone-known">
+      {winner ? 'We will ring ' : 'If you win we will ring '}<strong>{prettyPhone(known)}</strong>.{' '}
+      <button type="button" className="gw-link" onClick={() => setEditing(true)}>Change number</button>
+    </p>
+  )
+  return (
+    <div className="gw-phone">
+      <span>{known ? 'New phone number' : winner ? 'We have no phone number for you. Add one so we can ring you.' : 'Add a phone number so we can ring you if you win'}</span>
+      <div className="gw-phone-row">
+        <input type="tel" inputMode="tel" autoComplete="tel" value={phone}
+          onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0977 123 456" />
+        <button type="button" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+      </div>
+      <small>Only ZaMarket staff see it. It is never shown on the wheel.</small>
+    </div>
+  )
+}
+
 export default function GiveawayPage() {
   const { slug } = useParams()
   const { user } = useAuth()
@@ -105,7 +127,18 @@ export default function GiveawayPage() {
   const [now, setNow] = useState(Date.now())
   const [busy, setBusy] = useState(false)
   const [optIn, setOptIn] = useState(false)
+  const [phone, setPhone] = useState('')
+  const [editingPhone, setEditingPhone] = useState(false)
   const { setCampaign } = useCart()
+  // What only this person may know about their entry: the number we would
+  // ring, and after the draw whether they won. Google sign-in gives us an
+  // email address and no phone number, so without asking there is no way to
+  // ring a winner.
+  const { data: mine, reload: reloadMine } = useData(async () => {
+    if (!user) return null
+    const { data: row } = await supabase.rpc('my_giveaway_entry', { p_slug: slug })
+    return row || null
+  }, [slug, user?.id])
   const { data, loading, error, reload } = useData(async () => {
     const { data: row, error: fetchError } = await supabase.rpc('giveaway_public', { p_slug: slug })
     if (fetchError) throw fetchError
@@ -193,18 +226,34 @@ export default function GiveawayPage() {
   const titleLead = titleWords.slice(0, Math.max(1, titleWords.length - 2)).join(' ')
   const titleGold = titleWords.slice(Math.max(1, titleWords.length - 2)).join(' ')
 
+  const knownPhone = mine?.phone || ''
+  const savePhone = async () => {
+    if (!usablePhone(phone)) return toast('Enter a phone number we can ring, like 0977 123 456', true)
+    setBusy(true)
+    const { error: phoneError } = await supabase.rpc('set_giveaway_contact', { p_slug: slug, p_phone: phone })
+    setBusy(false)
+    if (phoneError) return toast(phoneError.message, true)
+    toast('Number saved')
+    setEditingPhone(false); setPhone(''); reloadMine()
+  }
   const enter = async () => {
     if (!user) return toast('Please sign in to enter', true)
+    // Asked before entering, so nobody wins a prize we cannot hand over.
+    if (!knownPhone && !usablePhone(phone)) return toast('Add a phone number so we can ring you if you win', true)
     setBusy(true)
     try {
       const { error: entryError } = await supabase.rpc('enter_giveaway', { p_slug: slug })
       if (entryError) throw entryError
+      if (usablePhone(phone)) {
+        const { error: phoneError } = await supabase.rpc('set_giveaway_contact', { p_slug: slug, p_phone: phone })
+        if (phoneError) toast('You are entered, but your number was not saved. Add it below.', true)
+      }
       if (optIn) {
         const { error: consentError } = await supabase.rpc('set_marketing_consent', { p_granted: true, p_source: `giveaway:${slug}` })
         if (consentError) toast('Entry confirmed; optional marketing preferences could not be saved.', true)
       }
       toast('You are entered. Good luck!')
-      reload()
+      setPhone(''); reload(); reloadMine()
     } catch (e) { toast(e.message || 'Entry could not be completed', true) }
     finally { setBusy(false) }
   }
@@ -362,16 +411,32 @@ export default function GiveawayPage() {
       </div>
       <div className="gw-enter" id="giveaway-entry">
         <span className="gw-eyebrow">Your entry</span>
-        {data.result ? <>
+        {data.result && mine?.won ? <>
+          <h2>You won{mine.prize ? `: ${mine.prize}` : ''}.</h2>
+          <p>Congratulations. ZaMarket will ring you to arrange your prize. We never ask a winner to pay anything.</p>
+          <ContactNumber known={knownPhone} editing={editingPhone} setEditing={setEditingPhone}
+            phone={phone} setPhone={setPhone} save={savePhone} busy={busy} winner />
+        </> : data.result ? <>
           <h2>Winner drawn</h2>
           <p>The draw is complete. You can reveal the recorded result below.</p>
         </> : data.mine ? <>
           <h2>You&rsquo;re entered.</h2>
           <p>Your entry is recorded. Check back after the closing date for the result.</p>
           <div className="gw-enter-done"><Icon.check /> Entry confirmed</div>
+          <ContactNumber known={knownPhone} editing={editingPhone} setEditing={setEditingPhone}
+            phone={phone} setPhone={setPhone} save={savePhone} busy={busy} />
         </> : open ? <>
           <h2>Your chance to win.</h2>
           <p>One free entry per person. No purchase or social sharing is necessary.</p>
+          {user && !knownPhone && (
+            <label className="gw-phone">
+              <span>Phone number, so we can ring you if you win</span>
+              <input type="tel" inputMode="tel" autoComplete="tel" value={phone}
+                onChange={(e) => setPhone(e.target.value)} placeholder="e.g. 0977 123 456" />
+              <small>Only ZaMarket staff see it. It is never shown on the wheel.</small>
+            </label>
+          )}
+          {user && knownPhone && <p className="gw-phone-known">If you win we will ring <strong>{prettyPhone(knownPhone)}</strong>.</p>}
           <label className="gw-consent">
             <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)}/>
             <span>I&rsquo;d also like occasional ZaMarket offers. Optional, and I can unsubscribe.</span>

@@ -233,8 +233,12 @@ const GROUPS = [
   },
   {
     title: 'Delivery',
-    note: 'Many shops build delivery into the price so customers see "Free delivery". If you do that, add the delivery cost per sale when you price a product in "I bought goods".',
+    note: 'Every seller product puts a small amount into the delivery fund, on top of what the seller asked. Bigger items put in more, up to the ceiling, and pay for the trips of small ones. Delivery → Delivery fund shows whether it is covering your trips.',
     fields: [
+      { key: 'delivery_fund_pct', label: 'Delivery fund on each seller sale (%)', type: 'number', help: 'Of what the seller asked. 3 means a K500 item puts K15 aside for delivery. 0 switches the fund off. Changing it reprices seller products the next time each is saved.' },
+      { key: 'delivery_fund_min', label: 'At least this much per item (K)', type: 'number', help: 'So a cheap item still pays something towards its trip.' },
+      { key: 'delivery_fund_max', label: 'No more than this per item (K)', type: 'number', help: 'Keeps expensive items competitive. A K5,000 TV should not pay K150 for a K60 trip. 0 means no ceiling.' },
+      { key: 'delivery_fund_takes_unclaimed', label: 'Unused affiliate share goes to the fund', type: 'switch', words: [['no', 'No, ZaMarket keeps it'], ['yes', 'Yes, into the fund']], help: 'When no affiliate brought the sale, the room kept for their commission goes to delivery instead of profit.' },
       { key: 'delivery_included', label: 'Delivery is included in my prices', type: 'switch', words: [['no', 'No, charge delivery'], ['yes', 'Yes, it is included']], help: 'On: customers are never charged delivery and the shop says Free delivery. Off: Lusaka District pays the fee below.' },
       { key: 'assumed_delivery_cost', label: 'What a delivery really costs you (K)', type: 'number', help: 'Used for profit when nobody records the actual cost. Free delivery for the customer is never free for you — this keeps profit honest.' },
       { key: 'monthly_fixed_costs', label: 'What the month must cover (K)', type: 'number', help: 'Rent, airtime, transport, data, subscriptions. Finance → Profit guard shows whether you have covered it.' },

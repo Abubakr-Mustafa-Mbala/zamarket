@@ -4,6 +4,7 @@ import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { Loading, useToast, Field, Input, Select, Textarea } from '../../components/ui'
 import { money } from '../../lib/format'
+import { prettyPhone, waNumber } from '../../lib/phone'
 
 // Running a giveaway.
 //
@@ -130,6 +131,16 @@ export default function Giveaways() {
 
               {d && <ReferralPanel campaign={c} products={products} />}
 
+              {c.vendor_id && c.status === 'draft' && (
+                <p className="small">
+                  <span className="badge">Proposed by a seller</span>{' '}
+                  {c.proposal_note ? `“${c.proposal_note}”` : 'No note was left.'}{' '}
+                  Check the prize and the closing date, then open it or cancel it. The seller provides the prize.
+                </p>
+              )}
+
+              {d && <WinnerContacts slug={c.slug} title={c.title} />}
+
               {d && (
                 <p className="small">
                   <strong>Winners:</strong>{' '}
@@ -161,6 +172,73 @@ export default function Giveaways() {
             </div>
           )
         })}
+    </div>
+  )
+}
+
+// After the draw: who won, how to reach them, and where things stand.
+// A winner's number comes from what they gave when entering, or from their
+// profile. Somebody with neither still has an email address.
+const CLAIM_STEPS = [
+  ['notified', 'Not contacted yet'],
+  ['contacted', 'Contacted'],
+  ['confirmed', 'Confirmed, arranging prize'],
+  ['delivered', 'Prize handed over'],
+  ['forfeited', 'Could not be reached'],
+]
+
+function WinnerContacts({ slug, title }) {
+  const toast = useToast()
+  const { data: winners, loading, reload } = useData(
+    () => q(supabase.rpc('giveaway_winner_contacts', { p_slug: slug })), [slug])
+  const [notes, setNotes] = useState({})
+  if (loading) return <p className="tiny muted">Loading winner contacts…</p>
+  if (!winners?.length) return null
+
+  const save = async (w, status) => {
+    const { error } = await supabase.rpc('set_giveaway_claim', {
+      p_slug: slug, p_entry: w.entry_id, p_status: status, p_note: notes[w.entry_id] ?? w.note ?? '',
+    })
+    if (error) return toast(error.message, true)
+    toast('Saved'); reload()
+  }
+  const message = (w) => `Hello ${String(w.name || '').split(' ')[0]}, this is ZaMarket. Congratulations, you won ${w.prize || 'the prize'} in "${title}". When is a good time to arrange it? There is nothing to pay.`
+
+  return (
+    <div className="card flat stack-sm winner-contacts">
+      <strong>Contact the winner{winners.length > 1 ? 's' : ''}</strong>
+      {winners.map((w) => (
+        <div key={w.entry_id} className="winner-row stack-sm">
+          <div className="between">
+            <div>
+              <div className="strong">{w.name}</div>
+              <div className="tiny muted">{w.prize || 'Prize'}{w.prize_rank ? ` · prize ${w.prize_rank}` : ''}</div>
+            </div>
+            <span className={`badge ${w.status === 'delivered' ? 'ok' : w.status === 'forfeited' ? 'bad' : ''}`}>
+              {CLAIM_STEPS.find(([k]) => k === w.status)?.[1] || w.status}
+            </span>
+          </div>
+          {w.phone ? (
+            <div className="btn-row">
+              <a className="btn sm primary" href={`tel:${w.phone}`}>Call {prettyPhone(w.phone)}</a>
+              <a className="btn sm buy" target="_blank" rel="noreferrer"
+                href={`https://wa.me/${waNumber(w.phone)}?text=${encodeURIComponent(message(w))}`}>WhatsApp</a>
+            </div>
+          ) : (
+            <p className="small warn-text">This winner left no phone number.</p>
+          )}
+          {w.email && <a className="small" href={`mailto:${w.email}?subject=${encodeURIComponent('You won on ZaMarket')}&body=${encodeURIComponent(message(w))}`}>Email {w.email}</a>}
+          <Field label="Note (who you spoke to, when they collect)">
+            <Input value={notes[w.entry_id] ?? w.note ?? ''} onChange={(v) => setNotes((n) => ({ ...n, [w.entry_id]: v }))} />
+          </Field>
+          <div className="btn-row">
+            {CLAIM_STEPS.filter(([k]) => k !== 'notified' && k !== w.status).map(([k, label]) => (
+              <button key={k} className={`btn sm ${k === 'forfeited' ? 'ghost' : ''}`} onClick={() => save(w, k)}>{label}</button>
+            ))}
+          </div>
+        </div>
+      ))}
+      <p className="tiny muted">Only staff see these details. A winner is never asked to pay to receive a prize.</p>
     </div>
   )
 }

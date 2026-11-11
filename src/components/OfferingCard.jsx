@@ -109,7 +109,7 @@ export default function OfferingCard({ p, deal, inStore }) {
         <span className="oc-body">
           <span className="oc-name">{p.name}</span>
           {specs.length > 0 && <span className="oc-specs">{specs.join(' · ')}</span>}
-          <span className="oc-row"><Price value={p.price} /><Chip icon={<Icon.pin />}>Lusaka</Chip></span>
+          <span className="oc-row"><Price value={p.price} /><Chip icon={<Icon.pin />}>{p.page?.location_text || 'Location on enquiry'}</Chip></span>
           <span className="oc-action">Enquire <Icon.arrow /></span>
         </span>
       </Link>

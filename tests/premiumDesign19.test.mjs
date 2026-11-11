@@ -26,7 +26,7 @@ test('creative editor connects each tile to actual renderer instead of making ni
     assert.match(source, new RegExp(`renderPremiumStudio\\(\\{[^}]*kind: '${kind}'`),
       `the ${kind} tile must dispatch its own layout`)
   }
-  for (const renderer of ['renderArrival', 'renderPromo']) {
+  for (const renderer of ['renderArrival', 'renderProductPoster']) {
     assert.match(source, new RegExp(`await ${renderer}\\(`))
   }
   assert.match(source, /studioExportPlan\(tool, picked, sheet\)/)

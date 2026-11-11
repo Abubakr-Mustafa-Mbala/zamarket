@@ -16,12 +16,12 @@ const money = v => `K${Number(v).toLocaleString('en-ZM', { minimumFractionDigits
 // unknown vendors (and incorrectly tagged noindex).
 const RESERVED = new Set([
   'p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review',
-  'login', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
+  'login', 'reset-password', 'recover', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
   'free', 'invite', 'saved', 'categories', 'about', 'how-it-works', 'protection',
-  'giveaways',
+  'giveaways', 'motors',
   'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml',
 ])
-const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
+const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'reset-password', 'recover', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
 
 async function getOne(path, base, key) {
   try {
@@ -75,6 +75,18 @@ const hoursText = value => (Array.isArray(value) ? value : [])
 
 const paragraph = t => `<p>${esc(clip(t, 4500))}</p>`
 const fallback = (heading, description, link = '') => `<main class="seo-fallback"><h1>${esc(heading)}</h1>${paragraph(description)}${link ? `<p><a href="${esc(link)}">View the full page</a></p>` : ''}</main>`
+
+// schema.org availability from the product's actual state. Returns undefined
+// when it cannot be known, so nothing is claimed rather than guessed.
+export function availabilityOf(p) {
+  if (!p) return undefined
+  if (p.fulfilment === 'service') return undefined
+  if (p.fulfilment === 'made_to_order') return 'https://schema.org/MadeToOrder'
+  if (p.status === 'out_of_stock') return 'https://schema.org/OutOfStock'
+  const stock = Number(p.stock_available)
+  if (Number.isFinite(stock)) return stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
+  return undefined
+}
 
 export default async function handler(request, context) {
   const response = await context.next()
@@ -130,6 +142,25 @@ export default async function handler(request, context) {
         initialContent = fallback(post.title, plainBody || post.excerpt || '', canonical)
       }
     }
+  } else if (parts[0] === 'r' && parts.length === 3 && base && key) {
+    // WhatsApp/Facebook preview robots do not execute React redirects. Give
+    // affiliate URLs the same actual product picture and description as the
+    // public product, while leaving the URL intact so clicks retain credit.
+    const slug = parts[2]
+    const { item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(slug)}&select=name,description,price,images,slug,vendor_name`, base, key)
+    if (p) {
+      title = `${p.name}${Number.isFinite(Number(p.price)) ? ` — ${money(p.price)}` : ''} | ${SHOP}`
+      description = clip(p.description || `View ${p.name} on ZaMarket from ${p.vendor_name || 'a local seller'}.`)
+      const first = (p.images || []).find(x => typeof x === 'string' && /^https:\/\//i.test(x))
+      if (first) image = first
+      canonical = `${SITE}/p/${encodeURIComponent(slug)}`
+      initialContent = fallback(p.name, description, `${SITE}/r/${encodeURIComponent(parts[1])}/${encodeURIComponent(slug)}`)
+    }
+  } else if (parts[0] === 'motors') {
+    title = `Cars and vehicles for sale in Zambia | ZaMarket Motors`
+    description = 'Explore real car listings from sellers across Zambia, compare photographs and specifications, and enquire about a vehicle on ZaMarket Motors.'
+    canonical = `${SITE}/motors`
+    initialContent = fallback('ZaMarket Motors', description, `${SITE}/motors`)
   } else if (parts[0] === 'search') {
     canonical = `${SITE}/search`
   } else if (parts[0] === 'sellers') {
@@ -174,7 +205,7 @@ export default async function handler(request, context) {
       : parts.length === 1 && !RESERVED.has(parts[0]) ? parts[0] : null
 
     if (productSlug) {
-      const { ok, item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(productSlug)}&select=name,description,price,images,category,vendor_name,rating,review_count,fulfilment,offering_type,page,slug,vendor_slug`, base, key)
+      const { ok, item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(productSlug)}&select=name,description,price,images,category,vendor_name,rating,review_count,fulfilment,offering_type,page,slug,vendor_slug,status,stock_available`, base, key)
       // A temporary Supabase failure MUST NOT mark all catalogue pages noindex.
       if (ok && !p) robots = 'noindex,follow'
       if (p) {
@@ -189,7 +220,15 @@ export default async function handler(request, context) {
           category: p.category || undefined,
           brand: p.vendor_name ? { '@type': 'Brand', name: p.vendor_name } : undefined,
           offers: Number.isFinite(Number(p.price)) && Number(p.price) >= 0
-            ? { '@type': 'Offer', url: canonical, price: Number(p.price), priceCurrency: 'ZMW' }
+            ? {
+                '@type': 'Offer', url: canonical, price: Number(p.price), priceCurrency: 'ZMW',
+                // What Google prints beside the price. It is read from the
+                // product's real state, never assumed: claiming "in stock"
+                // for something that is not gets a listing demoted.
+                availability: availabilityOf(p),
+                itemCondition: 'https://schema.org/NewCondition',
+                seller: { '@type': 'Organization', name: p.vendor_name || SHOP },
+              }
             : undefined,
           aggregateRating: Number(p.rating) > 0 && Number(p.review_count) > 0
             ? { '@type': 'AggregateRating', ratingValue: p.rating, reviewCount: p.review_count }
@@ -243,7 +282,7 @@ export default async function handler(request, context) {
     <meta property="og:title" content="${esc(title)}" />
     <meta property="og:description" content="${esc(description)}" />
     <meta property="og:image" content="${esc(image)}" />
-    <meta property="og:url" content="${esc(canonical)}" />
+    <meta property="og:url" content="${esc(parts[0] === 'r' ? `${SITE}${current.pathname}` : canonical)}" />
     <meta property="og:locale" content="en_ZM" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${esc(title)}" />

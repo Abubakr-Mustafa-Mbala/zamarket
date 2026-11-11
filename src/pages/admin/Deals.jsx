@@ -4,6 +4,7 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, date, n, title } from '../../lib/format'
 import { Badge, Loading, Modal, Field, Input, useToast, Empty, Stat } from '../../components/ui'
+import { vehicleDealBreakdown } from '../../lib/vehicleDealMath'
 
 const TABS = [['open', 'Open'], ['agreed', 'Agreed'], ['closed', 'Closed'], ['lost', 'Lost']]
 const STATUS_WORD = { enquiry: 'New enquiry', negotiating: 'Talking', agreed: 'Price agreed', closed: 'Sold', lost: 'Lost' }
@@ -107,7 +108,12 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
   }
 
   const rate = d.commission_type === 'flat' ? money(d.commission_value) : `${n(d.commission_value)}%`
-  const wouldEarn = (price) => (d.commission_type === 'flat' ? n(d.commission_value) : (n(price) * n(d.commission_value)) / 100)
+  const wouldEarn = (price) => (d.commission_type === 'fee_share'
+    ? vehicleDealBreakdown(n(price), n(d.fee_pct), n(d.commission_value), !!d.reseller_id).affiliateEarns
+    : d.commission_type === 'flat' ? n(d.commission_value) : (n(price) * n(d.commission_value)) / 100)
+  const sellerFee = (price) => Math.round(n(price) * n(d.fee_pct)) / 100
+  const isFeeShare = d.commission_type === 'fee_share'
+  const rateWord = isFeeShare ? `${n(d.commission_value)}% of seller's success fee` : rate
 
   return (
     <Modal title={`D${d.deal_number} · ${d.product?.name || 'Deal'}`} onClose={onClose} wide>
@@ -128,9 +134,12 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
           {d.final_price != null && <><dt>{closed ? 'Sold for' : 'Agreed at'}</dt><dd className="strong">{money(d.final_price)}</dd></>}
           {d.message && <><dt>Their message</dt><dd>{d.message}</dd></>}
           {d.vendor && <><dt>Vendor</dt><dd>{d.vendor.business_name}</dd></>}
-          {d.reseller && <><dt>Brought by</dt><dd>{d.reseller.full_name} ({d.reseller.code}) · {rate}</dd></>}
+          {d.reseller && <><dt>Brought by</dt><dd>{d.reseller.full_name} ({d.reseller.code}) · {rateWord}</dd></>}
+          {isFeeShare && <><dt>Seller's agreed success fee</dt><dd>{n(d.fee_pct)}% of completed sale</dd></>}
+          {closed && isFeeShare && <><dt>Seller receives</dt><dd>{money(n(d.final_price) - n(d.marketplace_amount))}</dd></>}
           {closed && d.reseller && <><dt>Affiliate earns</dt><dd className="copper strong">{money(d.reseller_amount)}</dd></>}
-          {closed && <><dt>Our fee</dt><dd className="strong">{money(d.marketplace_amount)} {d.fee_status === 'received' ? <span className="badge ok">Received</span> : <span className="badge warn">To collect</span>}</dd></>}
+          {closed && <><dt>Seller fee to collect (gross)</dt><dd className="strong">{money(d.marketplace_amount)} {d.fee_status === 'received' ? <span className="badge ok">Received</span> : <span className="badge warn">To collect</span>}</dd></>}
+          {closed && isFeeShare && <><dt>ZaMarket retains (before other costs)</dt><dd className="strong">{money(n(d.marketplace_amount) - n(d.reseller_amount))}</dd></>}
           {closed && d.evidence && <><dt>Verified by</dt><dd>{d.evidence}</dd></>}
           {lost && d.lost_reason && <><dt>Lost because</dt><dd>{d.lost_reason}</dd></>}
         </dl>
@@ -156,7 +165,8 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
         {d.status === 'agreed' && isStaff && (
           <div className="card flat stack-sm">
             <h3>Record the sale</h3>
-            <p className="small muted">Do this once the owner confirms the buyer has paid. Your share and any affiliate commission are worked out from the price actually paid, not the asking price.</p>
+            <p className="small muted">Do this only after the owner confirms the buyer has paid and the transaction is verified. The seller's success fee and any affiliate portion are calculated on the actual closing price. Vehicle affiliate rewards stay pending until ZaMarket receives the seller's fee.</p>
+            {isFeeShare && <p className="small">If this closes at {money(amount || d.final_price || d.advertised_price)}, seller owes {money(sellerFee(amount || d.final_price || d.advertised_price))} in success fees. {d.reseller ? `The affiliate would earn ${money(wouldEarn(amount || d.final_price || d.advertised_price))}.` : 'No tracked affiliate: ZaMarket retains the full fee.'}</p>}
             <div className="form-grid">
               <Field label="Final price"><Input money value={amount} onChange={setAmount} placeholder={String(d.final_price ?? d.advertised_price)} /></Field>
               <Field label="Who confirmed it?" hint="e.g. 'Owner Mr Phiri confirmed by phone, 18 Sept' or a receipt number"><Input value={evidence} onChange={setEvidence} /></Field>
@@ -168,7 +178,7 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
 
         {closed && isStaff && d.fee_status !== 'received' && (
           <div className="card flat between">
-            <span className="small">Our fee of {money(d.marketplace_amount)} is still to collect.</span>
+            <span className="small">Seller's gross fee of {money(d.marketplace_amount)} is still to collect.</span>
             <button className="btn sm primary" disabled={busy} onClick={() => act('fee_received', { amount: null })}>Fee received</button>
           </div>
         )}

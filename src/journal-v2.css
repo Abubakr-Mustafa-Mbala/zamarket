@@ -210,7 +210,13 @@
   .journal-print-mode .crumbs,.journal-print-mode .journal-export-toolbar,.journal-print-mode .journal-reading-tools,
   .journal-print-mode .journal-toc,.journal-print-mode .journal-community,.journal-print-mode #journal-share,
   .journal-print-mode .post-foot,.journal-print-mode .post-buy { display:none !important; }
-  .shop .journal-print-mode .journal-feature-hero { display:block !important; background:white !important; color:#222 !important;
+  /* Print the article as it reads on screen. The cream ground is the
+     journal's character, and a download that drops it is not the same
+     document. Browsers strip backgrounds unless told otherwise. */
+  .shop .journal-print-mode, .shop .journal-print-mode .journal-feature-hero,
+  .shop .journal-print-mode .journal-reading-sheet {
+    -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .shop .journal-print-mode .journal-feature-hero { display:block !important; background:#FBF7EC !important; color:#28231e !important;
     border:0 !important; min-height:0 !important; }
   .shop .journal-print-mode .journal-feature-hero .post-head { padding:0 0 15px !important; }
   .shop .journal-print-mode .post-head h1 { color:#1d1712 !important; font-size:31pt !important; }
@@ -219,7 +225,7 @@
   .shop .journal-print-mode .journal-vendor-attribution { border:0 !important; }
   .shop .journal-print-mode .journal-feature-hero .post-cover { width:100% !important; height:auto !important; min-height:0 !important; }
   .shop .journal-print-mode .post-cover img { max-height:87mm !important; object-fit:contain !important; }
-  .shop .journal-print-mode .journal-reading-sheet { border:0 !important; background:#fff !important; color:#29231f !important;
+  .shop .journal-print-mode .journal-reading-sheet { border:0 !important; background:#FBF7EC !important; color:#29231f !important;
     padding:0 !important; box-shadow:none !important; }
   .shop .journal-print-mode .journal-reading-layout { display:block !important; }
   .shop .journal-print-mode .article { color:#27221d !important; font-size:11pt !important; line-height:1.55 !important; }

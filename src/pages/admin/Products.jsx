@@ -9,6 +9,7 @@ import { useDepartments } from '../../lib/departments'
 import VendorMath from '../../components/VendorMath'
 import PriceMaths from '../../components/PriceMaths'
 import PhotoUpload from '../../components/PhotoUpload'
+import NameHelp from '../../components/NameHelp'
 import CreativeStudio from '../shared/CreativeStudio'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
@@ -186,7 +187,10 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           </li>)}</ul>
         </section>}
         <div className="form-grid">
-          <Field label="Name" span><Input value={p.name} onChange={set('name')} required /></Field>
+          <Field label="Name" span hint="Say what it is, then one detail. For example: Chocolate birthday cake, 2 kg">
+            <Input value={p.name} onChange={set('name')} required />
+            <NameHelp name={p.name} category={p.category} description={p.description} onUse={set('name')} />
+          </Field>
           <Field label="Department" hint="Where it appears when people browse ZaMarket">
             <Select value={p.category} onChange={set('category')} options={DEPARTMENTS.map((d) => d.name)} placeholder="Choose" />
           </Field>

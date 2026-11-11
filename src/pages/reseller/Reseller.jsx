@@ -1,20 +1,32 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
-import BigActions from '../../components/BigActions'
 import DashboardTrend from '../../components/DashboardTrend'
+import AffiliateMonthlyGoal from '../../components/AffiliateMonthlyGoal'
 import Icon from '../../lib/icons'
 import { useAuth } from '../../lib/auth'
-import { money, date, n, title } from '../../lib/format'
+import { money, date } from '../../lib/format'
 import { commissionLabel } from '../../lib/economics'
-import { Badge, Table, Loading, Stat, CopyLine, Empty, Field, Input } from '../../components/ui'
+import { Badge, Table, Loading, CopyLine, Empty, Field, Input } from '../../components/ui'
 import PayoutRequest from '../../components/PayoutRequest'
 import PromoKit from '../../components/PromoKit'
 import AffiliatePlan from '../../components/AffiliatePlan'
 import Statement from '../../components/Statement'
 import { ManualSale } from '../admin/Orders'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
+
+// The affiliate's own link, one tap from the top of the dashboard. Academy
+// used to hold this slot while also sitting in the bottom bar, and the link
+// itself was folded away near the foot of the page.
+function CopyMyLink({ link }) {
+  const [done, setDone] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setDone(true); setTimeout(() => setDone(false), 1800) }
+    catch { window.prompt('Copy your link', link) }
+  }
+  return <button type="button" onClick={copy}><Icon.coins /> {done ? 'Copied' : 'Copy my link'}</button>
+}
 
 function useReseller() {
   const { profile } = useAuth()
@@ -23,117 +35,120 @@ function useReseller() {
 
 export function ResellerHome() {
   const r = useReseller()
-  const { data, loading } = useData(async () => r ? {
-    s: await q(supabase.rpc('reseller_summary', { p_reseller: r.id })),
-    recent: await q(supabase.from('orders').select('id,order_number,subtotal,status,created_at').eq('reseller_id', r.id).order('created_at', { ascending: false }).limit(10)),
-  } : null, [r?.id])
-  if (!r) return <Empty title="No reseller profile">Your account isn't linked to an approved reseller application.</Empty>
+  const { data, loading, error } = useData(async () => {
+    if (!r) return null
+    const [s, recent] = await Promise.all([
+      q(supabase.rpc('reseller_summary', { p_reseller: r.id })),
+      q(supabase.from('orders').select('id,order_number,subtotal,status,created_at').eq('reseller_id', r.id).order('created_at', { ascending: false }).limit(6)),
+    ])
+    // A temporary catalogue error should never hide an affiliate's earnings dashboard.
+    const { data: products } = await supabase.from('public_products')
+      .select('id,name,price,images,vendor_name,offering_type')
+      .eq('status', 'published').order('created_at', { ascending: false }).limit(4)
+    return { s: s || {}, recent: recent || [], products: products || [] }
+  }, [r?.id])
+  if (!r) return <Empty title="No affiliate profile">Your account isn't linked to an approved affiliate application.</Empty>
+  if (error) return <div className="card" role="alert">We couldn't load your affiliate dashboard: {error}</div>
   if (loading || !data) return <Loading />
-  const { s } = data
-  const target = n(r.monthly_target)
-  const progress = target ? Math.min(100, (n(s.revenue_month) / target) * 100) : 0
+  const { s, recent, products } = data
   const link = `${window.location.origin}/r/${r.code}`
-  return (
-    <div className="stack">
-      <div className="page-head workspace-page-head"><div><span className="eyebrow"><span className="status-dot" /> YOUR AFFILIATE WORKSPACE</span><h1>Find it. Share it. Earn from it.</h1><p>Welcome, {r.full_name.split(' ')[0]}. Your referral code is <span className="strong">{r.code}</span>.</p></div><div className="btn-row"><Link className="btn" to="/sell/find-customers">Selling guide</Link><Link className="btn primary" to="/sell/products">Find products <Icon.arrow /></Link></div></div>
-
-      <BigActions items={[
-        {
-          to: '/sell/earnings', icon: <Icon.tag />, tone: n(s.approved) + n(s.pending) > 0 ? 'money' : '',
-          label: 'Money coming to you',
-          note: n(s.approved) > 0 ? 'Approved and on its way' : 'Earned once an order is delivered',
-          value: n(s.approved) + n(s.pending) > 0 ? money(n(s.approved) + n(s.pending)) : null,
-        },
-        {
-          to: '/sell/products', icon: <Icon.search />,
-          label: 'Find something to sell', note: 'See what pays most right now',
-        },
-        {
-          to: '/sell/products', icon: <Icon.camera />,
-          label: 'Make a promotion', note: 'A ready picture for WhatsApp or Instagram',
-        },
-        {
-          to: '/sell/find-customers', icon: <Icon.user />,
-          label: 'Find customers', note: 'Where to look, and what to say',
-        },
-      ]} />
-
-      <div className="grid-4">
-        <Stat hero label="Paid to you" value={money(s.paid)} />
-        <Stat label="Approved, being paid" value={money(s.approved)} tone="copper" />
-        <Stat label="Pending" value={money(s.pending)} sub="waiting for delivery + 24h check" />
-        <Stat label="Sales this month" value={s.sales_month} sub={`${s.sales_today} today · ${money(s.revenue_month)}`} />
-      </div>
-      <DashboardTrend scope="reseller" id={r.id} href="/sell/earnings" />
-      {target > 0 && (
-        <div className="card stack-sm">
-          <div className="between"><h3>Monthly target</h3><span className="small">{money(s.revenue_month)} of {money(target)}</span></div>
-          <div className="progress"><div style={{ width: `${progress}%` }} /></div>
-        </div>
-      )}
-      <Link to="/sell/training" className="card between" style={{ color: 'inherit', borderColor: 'var(--charcoal)' }}><span><span className="strong">Start the training</span><br /><span className="small muted">Nine short lessons on finding customers and selling honestly</span></span><span aria-hidden>›</span></Link>
-      <Link to="/sell/earnings" className="card between" style={{ color: 'inherit' }}><span><span className="strong">See your earnings chart</span><br /><span className="small muted">Day by day, pick any dates, all your records</span></span><span aria-hidden>›</span></Link>
-      <div className="card stack-sm">
-        <h3>Your link</h3>
-        <p className="small muted">Anyone who orders through this link is credited to you.</p>
-        <CopyLine text={link} />
-      </div>
-      <div className="card">
-        <h3 className="mb">Recent sales</h3>
-        <Table rows={data.recent} empty="No sales yet — share your link to get started" cols={[
-          { key: 'order_number', label: '#', render: (o) => `#${o.order_number}` },
-          { key: 'created_at', label: 'Date', render: (o) => date(o.created_at) },
-          { key: 'status', label: 'Status', render: (o) => <Badge status={o.status} /> },
-          { key: 'subtotal', label: 'Value', num: true, render: (o) => money(o.subtotal) },
-        ]} />
-      </div>
-      <p className="tiny muted">Commissions are only earned on completed orders that aren't cancelled, refunded or returned. Any projected earnings are estimates, not guaranteed income.</p>
+  return <main className="aff-dash">
+    <div className="aff-dash-welcome">
+      <span className="aff-home-eyebrow">ZAMARKET · AFFILIATE HUB</span>
+      <h1>Welcome back, {r.full_name?.split(' ')[0] || 'affiliate'}.</h1>
+      <p>Find your next customer. Promote products you believe in. Track every earned commission.</p>
     </div>
-  )
+
+    <div className="aff-dash-numbers" aria-label="Affiliate performance">
+      <div className="aff-dash-number is-primary"><span>Paid to you</span><strong>{money(s.paid)}</strong><small>Received commission</small></div>
+      <div className="aff-dash-number"><span>Approved</span><strong>{money(s.approved)}</strong><small>Awaiting payout</small></div>
+      <div className="aff-dash-number"><span>Pending</span><strong>{money(s.pending)}</strong><small>Subject to checks</small></div>
+      <div className="aff-dash-number"><span>Orders this month</span><strong>{s.sales_month ?? 0}</strong><small>Placed, not necessarily paid</small></div>
+    </div>
+
+    <div className="aff-dash-action-block">
+      <Link className="aff-dash-main-action" to="/sell/products"><Icon.camera /> <span>Promote a product</span><Icon.arrow /></Link>
+      <div className="aff-dash-shortcuts">
+        <Link to="/sell/find-customers"><Icon.sparkles /> Create a promotion</Link>
+        <Link to="/sell/earnings"><Icon.coins /> My earnings</Link>
+        <CopyMyLink link={link} />
+      </div>
+    </div>
+
+    <AffiliateMonthlyGoal resellerId={r.id} />
+
+    <section className="aff-dash-products">
+      <div className="aff-dash-section-head"><div><span className="aff-home-eyebrow">YOUR NEXT OPPORTUNITY</span><h2>Find something worth sharing</h2></div><Link to="/sell/products">View all <Icon.arrow /></Link></div>
+      {products.length > 0 ? <div className="aff-dash-product-grid">{products.map(p =>
+        <Link to={`/sell/products?product=${encodeURIComponent(p.id)}`} key={p.id} className="aff-dash-product">
+          {p.images?.[0] ? <img src={p.images[0]} alt={p.name} loading="lazy" /> : <div className="aff-dash-no-photo"><Icon.camera /><span>Photo coming soon</span></div>}
+          <div><strong>{p.name}</strong><small>{p.vendor_name || 'ZaMarket seller'}</small><div className="aff-dash-product-bottom"><b>{money(p.price)}</b><span aria-hidden="true"><Icon.arrow /></span></div></div>
+        </Link>
+      )}</div> : <div className="aff-dash-empty">Published products will appear here when available. <Link to="/sell/products">Browse products</Link></div>}
+    </section>
+
+    <details className="aff-dash-secondary"><summary><Icon.coins /> My referral link <span>Copy or share</span></summary><div className="aff-dash-secondary-body"><p className="small muted">Use a product-specific link when possible. Shares from the marketplace should credit your approved affiliate account.</p><CopyLine text={link} /></div></details>
+
+    <DashboardTrend scope="reseller" id={r.id} href="/sell/earnings" />
+    <details className="aff-dash-secondary"><summary><Icon.clock /> Recent orders <span>{recent.length} shown</span></summary><div className="aff-dash-secondary-body"><Table rows={recent} empty="No orders yet. Explore products and start sharing." cols={[
+      { key: 'order_number', label: 'Order', render: o => `#${o.order_number}` },
+      { key: 'created_at', label: 'Date', render: o => date(o.created_at) },
+      { key: 'status', label: 'Status', render: o => <Badge status={o.status} /> },
+      { key: 'subtotal', label: 'Order value', num: true, render: o => money(o.subtotal) },
+    ]} /></div></details>
+    <p className="aff-dash-disclaimer">Commissions depend on completed, valid transactions and may be reversed for refunds or fraud. Earnings targets are personal estimates, not guaranteed payments.</p>
+  </main>
 }
 
 export function ResellerProducts() {
   const r = useReseller()
   const { settings } = useAuth()
   const [kit, setKit] = useState(null)
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const chosenProduct = searchParams.get('product')
   const { data, loading } = useData(async () => ({
     products: await q(supabase.from('public_products').select('id,slug,name,description,benefits,faqs,images,price,normal_price,commission_type,commission_value,stock_available,owner_type,vendor_slug,offering_type,sales_model,page,package_count,fulfilment,category,featured_for_resellers,created_at,rating,review_count,vendor_name,boost_pct,boost_until').eq('status', 'published').order('name')),
     offers: await q(supabase.from('public_offers').select('*')),
+    vehicleRewards: (await supabase.rpc('affiliate_vehicle_reward_estimates')).data || [],
   }), [])
   if (loading || !data) return <Loading />
+  const selected = kit || data.products.find(p => p.id === chosenProduct) || null
+  const vehicleReward = (p) => Number(data.vehicleRewards.find(x => x.product_id === p.id)?.estimated_reward || 0)
+  const earned = (p) => p.offering_type === 'vehicle' ? vehicleReward(p) : commissionLabel(p, settings).perUnit
   return (
     <div className="stack">
       <div className="page-head"><div><h1>Products to sell</h1><p>Sorted by what you earn. Tap one for ready-made messages, photos and your link.</p></div></div>
       {data.products.length === 0 ? <Empty title="No products yet">Check back soon.</Empty> : (
         <div className="product-grid">
-          {[...data.products].sort((a, b) => commissionLabel(b, settings).perUnit - commissionLabel(a, settings).perUnit).map((p) => {
+          {[...data.products].sort((a, b) => earned(b) - earned(a)).map((p) => {
             const c = commissionLabel(p, settings)
             const boosted = p.boost_pct && new Date(p.boost_until) > new Date()
             return (
               <div key={p.id} className={`pcard ${boosted ? 'boosted' : ''}`} style={{ cursor: 'pointer' }} onClick={() => setKit(p)}>
                 {boosted && <span className="boost-flag">Paying extra until {date(p.boost_until)}</span>}
-                <div className="pimg">{p.images?.[0] ? <img src={p.images[0]} alt={p.name} /> : 'No photo'}</div>
+                <div className="pimg">{p.images?.[0] ? <img src={p.images[0]} alt={p.name} loading="lazy" /> : 'No photo'}</div>
                 <div className="pbody">
                   <div className="strong truncate">{p.name}</div>
                   <div className="price">{money(p.price)}</div>
-                  <div className="small">Commission {c.text}</div>
-                  <div className="save">You earn {money(c.perUnit)} per sale</div>
+                  {p.offering_type === 'vehicle' ? <div className="small">Seller-funded vehicle success fee</div> : <div className="small">Commission {c.text}</div>}
+                  <div className="save">{p.offering_type === 'vehicle' ? (vehicleReward(p) > 0 ? `Estimated reward ${money(vehicleReward(p))} if sale closes at asking price` : 'Reward not yet confirmed') : `You earn ${money(c.perUnit)} per sale`}</div>
                 </div>
               </div>
             )
           })}
         </div>
       )}
-      {kit && <SellingKit p={kit} r={r} offers={data.offers.filter((o) => o.product_id === kit.id)} onClose={() => setKit(null)} />}
+      {selected && <SellingKit p={selected} r={r} offers={data.offers.filter((o) => o.product_id === selected.id)} vehicleReward={vehicleReward(selected)} onClose={() => { setKit(null); if (chosenProduct) navigate('/sell/products', { replace: true }) }} />}
     </div>
   )
 }
 
-function SellingKit({ p, r, offers, onClose }) {
+function SellingKit({ p, r, offers, vehicleReward = 0, onClose }) {
   const { settings } = useAuth()
   const deal = offers.find((o) => DEAL_TYPES.includes(o.type))
   const offerInfo = deal ? { copy: `${offerCopy(deal, p.name).get} for ${money(deal.deal_price)}`, end: deal.end_at } : null
-  return <PromoKit product={p} offer={offerInfo} code={r?.code} settings={settings} onClose={onClose} />
+  return <PromoKit product={p} offer={offerInfo} code={r?.code} settings={settings} vehicleReward={vehicleReward} onClose={onClose} />
 }
 
 export function ResellerNewSale() {

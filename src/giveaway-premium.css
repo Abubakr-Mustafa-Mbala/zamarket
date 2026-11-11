@@ -425,3 +425,15 @@
   grid-auto-rows: 22px; align-content: start; }
 .gw-entries-grid li { font-size: .78rem; line-height: 22px; color: #d7cde6; text-align: left;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The number we would ring a winner on. */
+.gw-phone { display: grid; gap: 6px; margin: 12px 0; font-size: .86rem; color: #e9e2f5; }
+.gw-phone input { width: 100%; min-width: 0; padding: 13px 14px; border-radius: 12px; font: inherit; font-size: 1rem;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.18); color: #fff; }
+.gw-phone input:focus { outline: 2px solid var(--gw-accent); outline-offset: 1px; }
+.gw-phone small { color: #b9aed0; font-size: .74rem; }
+.gw-phone-row { display: flex; gap: 8px; }
+.gw-phone-row button { flex: none; padding: 0 18px; border-radius: 12px; border: 0; font: inherit; font-weight: 700;
+  background: var(--gw-accent); color: #14101c; cursor: pointer; }
+.gw-phone-known { margin: 12px 0; font-size: .86rem; color: #d7cde6; }
+.gw-link { background: none; border: 0; padding: 0; font: inherit; color: var(--gw-accent); text-decoration: underline; cursor: pointer; }

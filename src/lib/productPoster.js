@@ -31,28 +31,28 @@ import { money } from './format'
 
 export const PRODUCT_FORMATS = FORMATS
 
+// The two designs ZaMarket offers. Both are photograph-led, because a poster
+// without a real product photograph does not sell anything. The other
+// layouts in this file are kept only as fallbacks below -- they are never
+// offered as a choice.
 export const PRODUCT_DESIGNS = {
   hero: {
     key: 'hero', label: 'Full-bleed hero',
-    note: 'The photograph fills the poster, the name and price sit over it. The strongest one when the picture is good.',
-  },
-  editorial: {
-    key: 'editorial', label: 'Premium editorial',
-    note: 'Photograph above, a typeset block below. Reads like a catalogue page.',
-  },
-  detail: {
-    key: 'detail', label: 'What you get',
-    note: 'The photograph beside your own benefit lines. Best when you have written what makes it good.',
+    note: 'A real photograph fills the poster. Best for one strong product photograph.',
   },
   gallery: {
     key: 'gallery', label: 'Several angles',
-    note: 'One large photograph and the others beside it. Needs more than one picture of the same item.',
+    note: 'One main product photo and smaller supporting photos, only when at least two exist.',
   },
-  statement: {
-    key: 'statement', label: 'Quiet and expensive',
-    note: 'Space around the product, small type, nothing shouting. Suits higher prices.',
+  sheet: {
+    key: 'sheet', label: 'Emporium sheet',
+    note: 'Light ground, the product shown whole, benefits beside it, the seller’s mark at the top.',
   },
 }
+
+// Drawn only when a product has no usable photograph, so the poster is not an
+// empty frame. Not offered in any picker.
+export const FALLBACK_DESIGN = 'editorial'
 
 // --- what the poster is allowed to say -----------------------------------
 
@@ -71,6 +71,7 @@ export function savingOf(product) {
 // branch here is a fact from the row; none of them promise a date.
 export function fulfilmentOf(product) {
   const days = n(product?.lead_time_days)
+  if (product?.offering_type === 'vehicle') return 'View vehicle · enquire for details'
   if (product?.fulfilment === 'service') return 'A service · booked online, confirmed by phone'
   if (product?.fulfilment === 'made_to_order') {
     return days > 0 ? `Made to order · about ${days} day${days === 1 ? '' : 's'} to prepare` : 'Made to order'
@@ -168,13 +169,11 @@ export function directionForProduct(product, store) {
 // studio, never forced: the seller always picks.
 export function recommendedDesign(product, store) {
   const shots = shotsOf(product, 4)
-  const points = sellingPoints(product, 4)
-  const dir = directionForProduct(product, store)
-  if (shots.length >= 3) return 'gallery'
-  if (n(product?.price) >= 2000 && shots.length) return 'statement'
-  if (points.length >= 3) return 'detail'
-  if (shots.length && (dir.key === 'food' || dir.key === 'beauty' || dir.key === 'fashion')) return 'hero'
-  return shots.length ? 'hero' : 'editorial'
+  // Two photographs or more and the supporting shots earn their place;
+  // otherwise one photograph filling the poster is the stronger advert.
+  if (shots.length >= 2) return 'gallery'
+  if (shots.length) return 'hero'
+  return FALLBACK_DESIGN
 }
 
 // --- the poster ----------------------------------------------------------
@@ -205,7 +204,7 @@ export async function renderProductPoster({
   const place = String(store?.town || store?.location || '').split(',')[0].trim()
 
   // Delivery is only ever stated from the marketplace setting, never guessed.
-  const deliveryLine = String(settings?.delivery_included) === 'true'
+  const deliveryLine = product?.offering_type !== 'vehicle' && String(settings?.delivery_included) === 'true'
     ? 'Delivery included'
     : ''
 
@@ -232,12 +231,15 @@ export async function renderProductPoster({
   // than drawing an empty frame.
   let chosen = design
   if ((chosen === 'gallery' && shots.length < 2) || (chosen === 'detail' && !points.length)) {
-    chosen = hero ? 'hero' : 'editorial'
+    chosen = hero ? 'hero' : FALLBACK_DESIGN
   }
-  if (!hero && chosen !== 'editorial') chosen = 'editorial'
+  // Every offered design is photograph-led, so without a photograph there is
+  // nothing to lead with and the fallback layout draws instead.
+  if (!hero) chosen = FALLBACK_DESIGN
 
   const draw = {
     hero: drawHero,
+    sheet: drawSheet,
     editorial: drawEditorial,
     detail: drawDetail,
     gallery: drawGallery,
@@ -361,11 +363,13 @@ function nameBlock(ctx, dir, x, topY, maxW, text, size, maxLines = 2, align = 'l
   return Math.round(lines.length * lh)
 }
 
-// The seller's signature. Small on purpose: the product is the hero here, and
-// the shop is who it comes from.
+// The seller's signature. The product is still the hero, but a mark small
+// enough to miss does the seller no good: a buyer should be able to tell at a
+// glance whose shop this is, so the mark is set at a size that reads on a
+// phone screen rather than a decorative dot.
 function sellerLine(ctx, dir, x, y, logo, shopName, place, maxW) {
   if (!shopName) return 0
-  const r = Math.round(dir._s * 21)
+  const r = Math.round(dir._s * 42)
   let cx = x
   ctx.save()
   ctx.textBaseline = 'middle'
@@ -458,7 +462,7 @@ function buyFooter(ctx, dir, x, y, width, height, qr, link) {
 
   ctx.fillStyle = 'rgba(255,255,255,0.80)'
   ctx.font = `500 ${Math.round(dir._s * 18)}px ${dir.body}`
-  ctx.fillText('Order online · we call to confirm before any money moves', lx, cy + mark * 0.62)
+  ctx.fillText('View details and next steps at zamarket.shop', lx, cy + mark * 0.62)
 
   if (qr) {
     // Never smaller than the size a phone can actually read. On a short
@@ -476,7 +480,7 @@ function buyFooter(ctx, dir, x, y, width, height, qr, link) {
     ctx.fillStyle = 'rgba(255,255,255,0.82)'
     ctx.font = `600 ${Math.round(dir._s * 15)}px ${dir.body}`
     ctx.textAlign = 'right'
-    ctx.fillText('Scan to order', qx - Math.round(dir._s * 22), cy)
+    ctx.fillText('Scan for details', qx - Math.round(dir._s * 22), cy)
   } else if (link) {
     ctx.textAlign = 'right'
     ctx.fillStyle = 'rgba(255,255,255,0.9)'
@@ -583,6 +587,24 @@ function drawHero({ ctx, w, h, pad, dir, name, price, saving, hero, logo, qr,
   buyFooter(ctx, dir, 0, imgH, w, footerH, qr, link)
 }
 
+// Light editorial layouts are deliberate alternatives to the full-bleed dark
+// hero. Content panels use a high-contrast ivory/soft-lilac palette instead of
+// an oversized empty brown/black rectangle beneath the product photo. The
+// seller's actual photos and words remain the source of all product claims.
+function editorialPalette(dir) {
+  const food = dir.key === 'food'
+  const beauty = dir.key === 'beauty'
+  return {
+    ...dir,
+    ground: food ? '#FBF5EB' : beauty ? '#FFF5FA' : '#F8F6FC',
+    panel: '#FFFFFF',
+    ink: '#241B30',
+    ink2: '#635D6C',
+    accent: food ? '#94502B' : beauty ? '#954673' : '#6440B4',
+    accentSoft: food ? '#F6E7D3' : beauty ? '#F7E3EF' : '#ECE5FA',
+  }
+}
+
 // 2. Editorial. Photograph above, typeset block below. The one design that
 //    still works with no photograph at all, so it is the fallback.
 function drawEditorial({ ctx, w, h, pad, dir, name, price, saving, points, hero,
@@ -591,6 +613,10 @@ function drawEditorial({ ctx, w, h, pad, dir, name, price, saving, points, hero,
   const body = h - footerH
   const maxW = w - pad * 2
   const imgH = Math.round((body - pad) * (wide ? 0.5 : 0.46))
+  const footerDirection = dir
+  dir = editorialPalette(dir)
+  ctx.fillStyle = dir.ground
+  ctx.fillRect(0, 0, w, body)
 
   if (hero) coverRounded(ctx, hero, pad, pad, maxW, imgH, Math.round(dir._s * 20), 0.42)
   else placeholder(ctx, dir, pad, pad, maxW, imgH, name)
@@ -624,7 +650,7 @@ function drawEditorial({ ctx, w, h, pad, dir, name, price, saving, points, hero,
   }
 
   sellerLine(ctx, dir, pad, body - Math.round(dir._s * 34), logo, shopName, place, maxW)
-  buyFooter(ctx, dir, 0, body, w, footerH, qr, link)
+  buyFooter(ctx, footerDirection, 0, body, w, footerH, qr, link)
 }
 
 // 3. What you get. The photograph with the seller's own benefit lines given
@@ -633,6 +659,10 @@ function drawDetail({ ctx, w, h, pad, dir, name, price, saving, points, hero,
   logo, qr, link, shopName, place, fulfilment, deliveryLine, category, wide }) {
   const footerH = Math.round(h * (wide ? 0.2 : 0.125))
   const body = h - footerH
+  const footerDirection = dir
+  dir = editorialPalette(dir)
+  ctx.fillStyle = dir.ground
+  ctx.fillRect(0, 0, w, body)
 
   if (wide) {
     const colW = Math.round(w * 0.44)
@@ -662,12 +692,41 @@ function drawDetail({ ctx, w, h, pad, dir, name, price, saving, points, hero,
 
     if (facts.length) factRow(ctx, dir, x, body - band + Math.round(dir._s * 14), maxW, facts)
     sellerLine(ctx, dir, x, body - Math.round(dir._s * 36), logo, shopName, place, maxW)
-    buyFooter(ctx, dir, 0, body, w, footerH, qr, link)
+    buyFooter(ctx, footerDirection, 0, body, w, footerH, qr, link)
     return
   }
 
   const maxW = w - pad * 2
-  const imgH = Math.round(body * 0.36)
+  const bottomStuff = Math.round(dir._s * 120)
+  const shown = points.slice(0, 4)
+  // The panel is sized to the benefits it holds, not to the room below the
+  // price. It used to take everything left over, so a product with one or
+  // two benefits printed a tall empty band above the footer.
+  const panelH = shown.length ? Math.round(dir._s * (88 + shown.length * 57)) : 0
+
+  // Measure the words on a scratch canvas first, then give the photograph
+  // whatever they do not need. Fixing the photograph at a share of the
+  // poster was what left that band empty; the picture earns the space.
+  let textH = Math.round(dir._s * 10)
+  try {
+    const scratch = document.createElement('canvas')
+    scratch.width = w
+    scratch.height = Math.max(1, body)
+    const m = scratch.getContext('2d')
+    textH += eyebrow(m, dir, pad, textH, category)
+    textH += Math.round(dir._s * 6)
+    textH += nameBlock(m, dir, pad, textH, maxW, name, Math.round(dir._s * 48), 2)
+    textH += Math.round(dir._s * 20)
+    textH += priceBlock(m, dir, pad, textH, saving, price, maxW)
+    textH += Math.round(dir._s * 30)
+  } catch {
+    // Without a second canvas, fall back to the old fixed share.
+    textH = body - bottomStuff - panelH - Math.round(body * 0.36)
+  }
+
+  const slack = body - bottomStuff - panelH - textH
+  const imgH = Math.max(Math.round(body * 0.36), Math.min(Math.round(body * 0.60), slack))
+
   if (hero) cover(ctx, hero, 0, 0, w, imgH, 0.38)
   else placeholder(ctx, dir, 0, 0, w, imgH, name)
   scrim(ctx, 0, imgH - Math.round(dir._s * 190), w, Math.round(dir._s * 190), 'rgba(0,0,0,0)', dir.ground)
@@ -680,11 +739,8 @@ function drawDetail({ ctx, w, h, pad, dir, name, price, saving, points, hero,
   y += priceBlock(ctx, dir, pad, y, saving, price, maxW)
   y += Math.round(dir._s * 30)
 
-  // The panel takes whatever is left between the price and the footer.
-  const bottomStuff = Math.round(dir._s * 120)
   const panelTop = y
-  const panelH = body - bottomStuff - panelTop
-  if (panelH > dir._s * 120) {
+  if (shown.length && body - bottomStuff - panelTop >= panelH) {
     ctx.save()
     ctx.fillStyle = dir.panel
     rounded(ctx, pad, panelTop, maxW, panelH, Math.round(dir._s * 18)); ctx.fill()
@@ -694,13 +750,257 @@ function drawDetail({ ctx, w, h, pad, dir, name, price, saving, points, hero,
     let py = panelTop + inset
     py += eyebrow(ctx, dir, pad + inset, py, 'What you get')
     py += Math.round(dir._s * 10)
-    pointList(ctx, dir, pad + inset, py, maxW - inset * 2, points.slice(0, 4), Math.round(dir._s * 14))
+    pointList(ctx, dir, pad + inset, py, maxW - inset * 2, shown, Math.round(dir._s * 14))
   }
 
   const facts = [fulfilment, deliveryLine].filter(Boolean)
   if (facts.length) factRow(ctx, dir, pad, body - Math.round(dir._s * 110), maxW, facts)
   sellerLine(ctx, dir, pad, body - Math.round(dir._s * 32), logo, shopName, place, maxW)
-  buyFooter(ctx, dir, 0, body, w, footerH, qr, link)
+  buyFooter(ctx, footerDirection, 0, body, w, footerH, qr, link)
+}
+
+
+// --- the emporium sheet --------------------------------------------------
+// Drawn after the reference adverts Abubakr approved: a light ground, the
+// product photographed whole rather than cropped into a band, a serif
+// headline, the saving as a badge instead of a strikethrough, benefits in a
+// column with gold markers, and the seller's details along the foot.
+
+const SHEET = {
+  ground: '#FBF7EC', ink: '#5E1620', ink2: '#2E2A26',
+  gold: '#B08A3E', rule: '#D8C9A6', foot: '#2B2724',
+}
+
+// A thin gold rule with a small diamond at its centre, as the references use
+// between the headline and the body.
+function ornamentRule(ctx, x, y, width, colour = SHEET.rule) {
+  const mid = x + width / 2
+  const gap = Math.max(10, width * 0.035)
+  ctx.save()
+  ctx.strokeStyle = colour
+  ctx.lineWidth = Math.max(1, width * 0.0015)
+  ctx.beginPath()
+  ctx.moveTo(x, y); ctx.lineTo(mid - gap, y)
+  ctx.moveTo(mid + gap, y); ctx.lineTo(x + width, y)
+  ctx.stroke()
+  const d = gap * 0.32
+  ctx.fillStyle = colour
+  ctx.beginPath()
+  ctx.moveTo(mid, y - d); ctx.lineTo(mid + d, y); ctx.lineTo(mid, y + d); ctx.lineTo(mid - d, y)
+  ctx.closePath(); ctx.fill()
+  ctx.restore()
+}
+
+// A hairline box with a centred cap-height header sitting on its top edge,
+// like "DOSAGE & DIRECTIONS" in the reference.
+function captionedBox(ctx, x, y, width, height, header, s) {
+  ctx.save()
+  ctx.strokeStyle = SHEET.rule
+  ctx.lineWidth = Math.max(1, s * 1.5)
+  rounded(ctx, x, y, width, height, Math.round(s * 10))
+  ctx.stroke()
+  if (header) {
+    const size = Math.round(s * 19)
+    ctx.font = `700 ${size}px Instrument Sans, system-ui, sans-serif`
+    ctx.textAlign = 'center'
+    const label = header.toUpperCase()
+    const pad = Math.round(s * 12)
+    const tw = ctx.measureText(label).width + pad * 2
+    ctx.fillStyle = SHEET.ground
+    ctx.fillRect(x + width / 2 - tw / 2, y - size * 0.55, tw, size * 1.1)
+    ctx.fillStyle = SHEET.ink
+    ctx.textBaseline = 'middle'
+    ctx.fillText(label, x + width / 2, y)
+  }
+  ctx.restore()
+  ctx.textAlign = 'left'
+  ctx.textBaseline = 'alphabetic'
+}
+
+// The saving, as the reference draws it: a filled pill, not a crossed-out
+// number. Only ever drawn from a saving the product really has.
+function saveBadge(ctx, x, y, text, sub, s) {
+  const size = Math.round(s * 30)
+  const subSize = Math.round(s * 19)
+  ctx.font = `800 ${size}px Instrument Sans, system-ui, sans-serif`
+  const w1 = ctx.measureText(text).width
+  ctx.font = `600 ${subSize}px Instrument Sans, system-ui, sans-serif`
+  const w2 = sub ? ctx.measureText(sub).width : 0
+  const padX = Math.round(s * 26)
+  const width = Math.max(w1, w2) + padX * 2
+  const height = Math.round(s * (sub ? 92 : 62))
+  ctx.save()
+  ctx.fillStyle = SHEET.ink
+  rounded(ctx, x - width, y, width, height, Math.round(s * 14)); ctx.fill()
+  ctx.strokeStyle = SHEET.gold
+  ctx.lineWidth = Math.max(1, s * 2)
+  rounded(ctx, x - width + s * 5, y + s * 5, width - s * 10, height - s * 10, Math.round(s * 10))
+  ctx.stroke()
+  ctx.textAlign = 'center'
+  const cx = x - width / 2
+  ctx.fillStyle = '#FFFFFF'
+  ctx.font = `800 ${size}px Instrument Sans, system-ui, sans-serif`
+  ctx.fillText(text, cx, y + (sub ? s * 46 : s * 42))
+  if (sub) {
+    ctx.fillStyle = 'rgba(255,255,255,0.86)'
+    ctx.font = `600 ${subSize}px Instrument Sans, system-ui, sans-serif`
+    ctx.fillText(sub, cx, y + s * 74)
+  }
+  ctx.restore()
+  ctx.textAlign = 'left'
+  return height
+}
+
+
+function drawSheet({ ctx, w, h, pad, dir, name, price, saving, points, hero, shots,
+  logo, qr, link, shopName, place, fulfilment, deliveryLine, category, wide }) {
+  const s = dir._s
+  ctx.fillStyle = SHEET.ground
+  ctx.fillRect(0, 0, w, h)
+
+  const footH = Math.round(h * (wide ? 0.17 : 0.125))
+  const body = h - footH
+  const maxW = w - pad * 2
+  let y = Math.round(pad * 0.9)
+
+  // The seller's mark, centred and large. It was small enough to miss before.
+  if (logo) {
+    const lw = Math.min(Math.round(w * 0.30), Math.round(s * 300))
+    const lh = Math.round(lw * (logo.height / logo.width || 1))
+    const capped = Math.min(lh, Math.round(h * 0.13))
+    const drawW = capped === lh ? lw : Math.round(capped * (logo.width / logo.height || 1))
+    ctx.drawImage(logo, Math.round(w / 2 - drawW / 2), y, drawW, capped)
+    y += capped + Math.round(s * 18)
+  } else if (shopName) {
+    ctx.textAlign = 'center'
+    ctx.fillStyle = SHEET.ink
+    ctx.font = `800 ${Math.round(s * 30)}px Instrument Sans, system-ui, sans-serif`
+    ctx.fillText(shopName.toUpperCase(), w / 2, y + s * 30)
+    y += Math.round(s * 54)
+    ctx.textAlign = 'left'
+  }
+
+  // The saving, as a badge in the top corner. Only ever drawn from a saving
+  // the product really has: savingOf returns null unless the normal price is
+  // genuinely higher than the current one. The headline starts below it, so
+  // the two can never overlap however long the name is.
+  if (saving?.off > 0) {
+    const badgeH = saveBadge(ctx, w - pad, Math.round(pad * 0.9),
+      `Save ${money(saving.off)}`, `was ${money(saving.was)}`, s)
+    y = Math.max(y, Math.round(pad * 0.9) + badgeH + Math.round(s * 16))
+  }
+
+  // Headline, in a serif, centred.
+  ctx.textAlign = 'center'
+  ctx.fillStyle = SHEET.ink
+  const titleSize = Math.round(s * (name.length > 40 ? 52 : 64))
+  ctx.font = `700 ${titleSize}px Playfair Display, Georgia, serif`
+  const rows = wrap(ctx, name, maxW, 2)
+  for (const row of rows) { y += titleSize; ctx.fillText(row, w / 2, y); y += Math.round(titleSize * 0.16) }
+
+  if (category) {
+    y += Math.round(s * 10)
+    ctx.fillStyle = SHEET.ink2
+    ctx.font = `italic 400 ${Math.round(s * 30)}px Playfair Display, Georgia, serif`
+    ctx.fillText(category, w / 2, y + s * 24)
+    y += Math.round(s * 42)
+  }
+  y += Math.round(s * 20)
+  ornamentRule(ctx, pad, y, maxW)
+  y += Math.round(s * 34)
+  ctx.textAlign = 'left'
+
+  // The product whole, beside its benefits. The photograph takes every bit of
+  // room the words do not need, so the sheet never ends on an empty band.
+  const colGap = Math.round(s * 30)
+  const hasPoints = points.length > 0
+  const picW = hasPoints ? Math.round(maxW * 0.54) : maxW
+  const factsForBox = [fulfilment, deliveryLine].filter(Boolean)
+  const priceBoxH = Math.round(s * (factsForBox.length ? 150 : 110))
+  const picH = Math.round(body - y - priceBoxH - Math.round(s * 50))
+  if (picH > s * 120) {
+    const picX = hasPoints ? pad : Math.round(w / 2 - picW / 2)
+    if (hero) containRounded(ctx, hero, picX, y, picW, picH, Math.round(s * 14), SHEET.ground)
+    else placeholder(ctx, dir, picX, y, picW, picH, name)
+
+    if (hasPoints) {
+      const bx = pad + picW + colGap
+      const bw = maxW - picW - colGap
+      let by = y + Math.round(s * 10)
+      const size = Math.round(s * 26)
+      ctx.font = `700 ${size}px Instrument Sans, system-ui, sans-serif`
+      for (const point of points.slice(0, 6)) {
+        const lines = wrap(ctx, point, bw - s * 34, 2)
+        const d = Math.round(s * 7)
+        ctx.fillStyle = SHEET.gold
+        ctx.beginPath()
+        ctx.moveTo(pad + picW + colGap + d, by + size * 0.35 - d)
+        ctx.lineTo(pad + picW + colGap + d * 2, by + size * 0.35)
+        ctx.lineTo(pad + picW + colGap + d, by + size * 0.35 + d)
+        ctx.lineTo(pad + picW + colGap, by + size * 0.35)
+        ctx.closePath(); ctx.fill()
+        ctx.fillStyle = SHEET.ink
+        for (const line of lines) { ctx.fillText(line, bx + s * 30, by + size * 0.8); by += Math.round(size * 1.22) }
+        by += Math.round(s * 12)
+      }
+    }
+    y += picH + Math.round(s * 30)
+  }
+
+  // Price and the practical facts, in a hairline box, sitting on the foot.
+  const facts = factsForBox
+  const boxH = priceBoxH
+  y = Math.max(y, body - boxH - Math.round(s * 20))
+  if (body - y >= boxH) {
+    captionedBox(ctx, pad, y, maxW, boxH, 'Price', s)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = SHEET.ink
+    ctx.font = `800 ${Math.round(s * 56)}px Instrument Sans, system-ui, sans-serif`
+    ctx.fillText(money(price), w / 2, y + s * 76)
+    if (facts.length) {
+      ctx.fillStyle = SHEET.ink2
+      ctx.font = `600 ${Math.round(s * 24)}px Instrument Sans, system-ui, sans-serif`
+      ctx.fillText(facts.join('   •   '), w / 2, y + s * 120)
+    }
+    ctx.textAlign = 'left'
+    y += boxH + Math.round(s * 20)
+  }
+
+  // Where to find the seller, along the foot.
+  ctx.fillStyle = SHEET.foot
+  ctx.fillRect(0, body, w, footH)
+  const line = [shopName, place].filter(Boolean).join(' · ')
+  ctx.fillStyle = '#F3EEE2'
+  ctx.font = `700 ${Math.round(s * 26)}px Instrument Sans, system-ui, sans-serif`
+  ctx.fillText(line || 'Available on ZaMarket', pad, body + Math.round(footH * 0.42))
+  ctx.fillStyle = 'rgba(243,238,226,0.75)'
+  ctx.font = `500 ${Math.round(s * 22)}px Instrument Sans, system-ui, sans-serif`
+  ctx.fillText(String(link || 'zamarket.shop').replace(/^https?:\/\//, ''), pad, body + Math.round(footH * 0.70))
+  if (qr) {
+    const qs = Math.round(footH * 0.72)
+    const qx = w - pad - qs
+    const qy = body + Math.round((footH - qs) / 2)
+    ctx.fillStyle = '#FFFFFF'
+    rounded(ctx, qx - s * 8, qy - s * 8, qs + s * 16, qs + s * 16, Math.round(s * 8)); ctx.fill()
+    ctx.drawImage(qr, qx, qy, qs, qs)
+  }
+}
+
+// Smaller angle shots should show the whole photograph, not crop off an end
+// of the actual vehicle, appliance or boxed product. Keep a calm background
+// inside the rounded tile where photograph aspect ratios do not match.
+function containRounded(ctx, img, x, y, width, height, radius, ground) {
+  if (!img) return
+  ctx.save()
+  rounded(ctx, x, y, width, height, radius)
+  ctx.clip()
+  ctx.fillStyle = ground
+  ctx.fillRect(x, y, width, height)
+  const scale = Math.min(width / img.width, height / img.height)
+  const iw = img.width * scale
+  const ih = img.height * scale
+  ctx.drawImage(img, x + (width - iw) / 2, y + (height - ih) / 2, iw, ih)
+  ctx.restore()
 }
 
 // 4. Several angles. One large photograph of the item and the rest beside it.
@@ -723,7 +1023,7 @@ function drawGallery({ ctx, w, h, pad, dir, name, price, saving, shots, logo, qr
     coverRounded(ctx, shots[0], pad, pad, bigW, gridH, r, 0.42)
     const cellH = Math.round((gridH - gap * (extras.length - 1)) / extras.length)
     extras.forEach((img, i) => {
-      coverRounded(ctx, img, pad + bigW + gap, pad + i * (cellH + gap), sideW, cellH, r, 0.42)
+      containRounded(ctx, img, pad + bigW + gap, pad + i * (cellH + gap), sideW, cellH, r, dir.panel)
     })
   } else {
     coverRounded(ctx, shots[0], pad, pad, maxW, gridH, r, 0.42)
@@ -804,7 +1104,7 @@ function drawStatement({ ctx, w, h, pad, dir, name, price, saving, hero, logo, q
     ctx.save()
     ctx.font = `600 ${Math.round(dir._s * 20)}px ${dir.body}`
     const label = place ? `${shopName} · ${place}` : shopName
-    const lw = ctx.measureText(label).width + (logo ? dir._s * 56 : 0)
+    const lw = ctx.measureText(label).width + (logo ? dir._s * 70 : 0)
     ctx.restore()
     sellerLine(ctx, dir, Math.max(margin, cx - lw / 2), body - Math.round(dir._s * 44), logo, shopName, place, imgW)
   }
@@ -838,19 +1138,19 @@ export function productCaption({ product, store = null, settings = {}, link }) {
     for (const p of points) out.push(`• ${/[.!?]$/.test(p) ? p : `${p}.`}`)
   }
 
-  const facts = [fulfilmentOf(product)]
-  if (String(settings?.delivery_included) === 'true') facts.push('Delivery included')
+  const facts = product?.offering_type === 'vehicle' ? [] : [fulfilmentOf(product)]
+  if (product?.offering_type !== 'vehicle' && String(settings?.delivery_included) === 'true') facts.push('Delivery included')
   if (shop) facts.push(place ? `From ${shop}, ${place}` : `From ${shop}`)
   out.push('')
   out.push(`${facts.join(' · ')}.`)
-  out.push('We call to confirm before any money moves.')
+  out.push('ZaMarket confirms the next steps before payment.')
 
   // The link goes last and always, on its own line, with a plain instruction
   // in front of it. Most people here will never scan the QR code on the
   // poster — they tap a link. A caption without one wastes the post.
   if (link) {
     out.push('')
-    out.push(`Order here: ${link}`)
+    out.push(`${product?.offering_type === 'vehicle' ? 'View vehicle and enquire' : 'Order here'}: ${link}`)
   }
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }

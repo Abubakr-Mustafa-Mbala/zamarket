@@ -1,4 +1,5 @@
 import { OfferingPage } from './Offering'
+import VendorStorefront, { anchorFor } from '../../components/storefront/VendorStorefront'
 import { Fragment, Suspense, useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -15,7 +16,6 @@ import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
 import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
-import { themeOf, themeVars } from '../../lib/storeTheme'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
 import TrustPanel from '../../components/TrustPanel'
@@ -28,6 +28,7 @@ import { useSeo, productSeo } from '../../lib/seo'
 import ShareProduct from '../../components/ShareProduct'
 import ShareStore from '../../components/ShareStore'
 import { productRelevance } from '../../lib/productDiscovery'
+import { productShareUrl } from '../../lib/affiliateLinks'
 import { fetchCataloguePages } from '../../lib/paginatedCatalogue'
 
 // ---------- shared catalogue loader ----------
@@ -404,7 +405,7 @@ function fallbackSections(products) {
       ids: pick((p) => p.fulfilment === 'service' && !['course', 'class'].includes(p.offering_type)) },
     { key: 'courses', title: 'Learn something new', sub: 'Courses and training', link: '/search?type=course',
       ids: pick((p) => ['course', 'class'].includes(p.offering_type)) },
-    { key: 'vehicles', title: 'Vehicles for sale', sub: 'Enquire and agree the price directly', link: '/search?type=vehicle',
+    { key: 'vehicles', title: 'Vehicles for sale', sub: 'Enquire and agree the price directly', link: '/motors',
       ids: pick((p) => p.offering_type === 'vehicle') },
     { key: 'made_to_order', title: 'Made to order', sub: 'Order a few days ahead', link: '/search',
       ids: pick((p) => p.fulfilment === 'made_to_order') },
@@ -463,6 +464,7 @@ function ShopFooter({ user, home, giveaway }) {
           <Link to="/search?deals=1">Today's deals</Link>
           {giveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(giveaway)}`}><Icon.gift /> Live giveaway</Link>}
           <Link to="/sellers">Sellers</Link>
+          <Link to="/motors">ZaMarket Motors</Link>
           <Link to="/blog">The ZaMarket Journal</Link>
           <Link to="/review">Rate an order</Link>
         </FooterGroup>
@@ -606,6 +608,7 @@ export function PublicShell() {
         </div>
         <nav className="dept-strip" aria-label="Shopping departments">
           <Link to="/search?deals=1">Today's deals</Link>
+          <Link to="/motors">Motors</Link>
           <Link to="/blog" className={`journal-nav${pathname.startsWith('/blog') ? ' active' : ''}`}>Journal</Link>
           {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Stores</Link>
@@ -613,7 +616,11 @@ export function PublicShell() {
         </nav>
       </header>
 
-      {pathname !== '/affiliates' && <CategoryRail />}
+      {/* The category rail is shop-window furniture. On a product page it
+          pushed the price and the buy button off the first screen of a phone,
+          so someone who tapped a product saw a photo and had to hunt for how
+          to buy it. */}
+      {pathname !== '/affiliates' && !pathname.startsWith('/apply/') && !pathname.startsWith('/p/') && <CategoryRail />}
       <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
         {/* The boundary matters most here: without it a single failed page
@@ -751,7 +758,6 @@ export function Storefront() {
                 </div>
                 <div className="home-product-grid">{s.items.map(card)}</div>
               </section>
-              {index === 0 && <JournalHighlights />}
             </Fragment>
           )) : (
             <>
@@ -778,6 +784,10 @@ export function Storefront() {
           <div className="home-featured-lower"><FounderHero /></div>
           <Merchandised products={products} vendors={vendors} offersBy={offersBy}
             excludeIds={shownIds} />
+          {/* The journal sits under the products, not between the first two
+              shelves. Someone arriving at a shop is here to look at what is
+              for sale; the reading is there for them once they have. */}
+          <JournalHighlights />
         </>
       )}
       {/* "Grow with ZaMarket" used to sit here as well as in the footer. A
@@ -968,6 +978,7 @@ export function SearchPage() {
       if (type === 'in_stock' && p.fulfilment !== 'in_stock') return false
       if (type === 'made_to_order' && p.fulfilment !== 'made_to_order') return false
       if (type === 'service' && p.fulfilment !== 'service') return false
+      if (type === 'vehicle' && p.offering_type !== 'vehicle') return false
       if (type === 'scheduled' && p.fulfilment === 'in_stock') return false
       if (deals && !(dealFor(data.offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))) return false
       if (minR && !(p.rating >= 4)) return false
@@ -1079,7 +1090,7 @@ function AffiliateBar({ p }) {
   const toast = useToast()
   const code = profile?.partner?.code
   if (role !== 'reseller' || !code || !p?.slug) return null
-  const link = `${window.location.origin}/r/${code}/${p.slug}`
+  const link = productShareUrl(window.location.origin, p, role, code)
   const earn = commissionLabel(p, settings)
   const copy = async () => { try { await navigator.clipboard.writeText(link); toast('Your link is copied') } catch { toast('Could not copy', true) } }
   return (
@@ -1101,6 +1112,7 @@ function AffiliateBar({ p }) {
 export function ProductPage() {
   const DEPARTMENTS = useDepartments()
   const shop = useShopInfo()
+  const { role: sharingRole, profile: sharingProfile } = useAuth()
   const { id: idParam, store: storeParam, product: productParam } = useParams()
   const id = productParam || idParam
   const { setStoreRef } = useCart()
@@ -1192,8 +1204,8 @@ export function ProductPage() {
           category: p.vendor_category,
         } : null}
         settings={shop.settings || {}}
-        link={window.location.href.split('?')[0]}
-        className="btn block" label="Share this" />
+        link={productShareUrl(window.location.origin, p, sharingRole, sharingProfile?.partner?.code)}
+        className="btn block" label={sharingRole === 'reseller' ? 'Share with your affiliate link' : 'Share this'} />
       {p.vendor_slug && <TrustPanel slug={p.vendor_slug} compact />}
       <div className="bb-meta">
         <div><span>Payment</span><span>After we confirm by phone</span></div>
@@ -1397,115 +1409,32 @@ export function StorePage() {
     const ib = sections.findIndex((x) => x.name === b)
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib)
   })
-  const kinds = new Set(products.map((p) => p.fulfilment))
   // what the vendor chose to put first; if they chose none, the best reviewed
   const picked = products.filter((p) => p.featured_in_store)
   const featured = picked.length
     ? picked.slice(0, 6)
     : [...products].sort((a, b) => (b.rating || 0) - (a.rating || 0) || (b.review_count || 0) - (a.review_count || 0)).slice(0, products.length > 6 ? 4 : 0)
-  const note = kinds.has('service') && kinds.size === 1 ? 'Book online. We confirm your booking by phone.' : kinds.has('made_to_order') ? 'Freshly made to order. Order and pay through ZaMarket and we deliver it to you.' : 'Order through ZaMarket and we deliver it to you.'
-  const theme = themeOf(store)
+  const verified = settings?.verification_on === 'on' && store.trust_level === 'verified'
   return (
-    <div className={`stack store-themed style-${theme.style.key}`} style={themeVars(store)}>
-      <div className="crumbs"><Link to="/">Home</Link><Link to="/sellers">Sellers</Link><span>{store.business_name}</span></div>
-
-      <header className="store-top">
-        <div className="store-cover" style={store.cover_url
-          ? { backgroundImage: `url(${store.cover_url})` }
-          : { background: `linear-gradient(120deg, var(--brand-deep), var(--brand))` }} aria-hidden />
-        <div className="store-id">
-          {store.logo_url
-            ? <img className="store-logo" src={store.logo_url} alt="" />
-            : <span className="store-logo letter" aria-hidden>{store.business_name.slice(0, 1)}</span>}
-          <div className="store-name">
-            <h1>{store.business_name}</h1>
-            <p className="store-tag">{store.tagline || [store.category, store.town].filter(Boolean).join(' · ')}</p>
-            <div className="store-facts">
-              {settings?.verification_on === 'on' && store.trust_level === 'verified' && (
-                <span className="verified-badge" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified seller</span>
-              )}
-              {store.rating ? <span><Stars n={store.rating} /> {store.rating} ({store.review_count})</span> : <span className="muted">New seller</span>}
-              <span>{products.length} {products.length === 1 ? 'item' : 'items'}</span>
-              {store.town && <span>{store.town}</span>}
-            </div>
-          </div>
-          <div className="store-cta">
-            <a className="btn primary" href="#shop">Shop this store</a>
-            <ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />
-            <span className="tiny muted">{note}</span>
-          </div>
-        </div>
-      </header>
-
-      <nav className="store-tabs" aria-label="This store">
-        <a href="#shop" className="on">Products</a>
-        {store.about && <a href="#about">About</a>}
-        <a href="#reviews">Reviews</a>
-        <Link to="/search">Explore ZaMarket</Link>
-      </nav>
-
-      {(store.highlights?.length > 0 || store.opening_hours?.length > 0 || store.about) && (
-        <div className="store-strip">
-          {(store.highlights || []).slice(0, 4).map((h, i) => <span key={i} className="store-point">{h}</span>)}
-          {(store.opening_hours || []).slice(0, 3).map((o, i) => <span key={`h${i}`} className="store-point">{o.label}: {o.hours}</span>)}
-        </div>
-      )}
-
-      {groupOrder.length > 1 && (
-        <section className="store-cats" aria-label="Sections in this store">
-          <h2>Browse this shop</h2>
-          <div className="store-cat-row">
-            {groupOrder.map((cat) => [cat, groups[cat]]).map(([cat, list]) => (
-              <a key={cat} href={`#cat-${encodeURIComponent(cat)}`} className="store-cat">
-                <span className="store-cat-img">{list[0]?.images?.[0] ? <img src={list[0].images[0]} alt="" loading="lazy" /> : <Icon.box />}</span>
-                <span>{cat}</span>
-                <em>{list.length}</em>
-              </a>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {featured.length > 0 && (
-        <section className="shelf" id="shop">
-          <div className="shelf-head"><h2>Featured from {store.business_name}</h2></div>
-          <div className="grid-products">{featured.map((p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />)}</div>
-        </section>
-      )}
-
-      {special.map(([kind, title]) => (
-        <section key={kind} className="stack-sm" id={kind === special[0][0] ? 'shop' : undefined}>
-          <h2>{title}</h2>
-          <div className={kind === 'vehicle' ? 'grid-listings' : 'grid-products'}>
+    <VendorStorefront
+      store={store}
+      products={products}
+      featured={featured}
+      groups={groups}
+      groupOrder={groupOrder}
+      verified={verified}
+      share={<ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />}
+      renderProduct={(p) => <OfferingCard p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />}
+      special={special.map(([kind, title]) => (
+        <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
+          <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>
+          <div className={kind === 'vehicle' ? 'grid-listings' : 'zsv-grid'}>
             {byKind[kind].map((p) => (kind === 'vehicle'
               ? <ListingCard key={p.id} p={p} store={store.slug} />
               : <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
           </div>
         </section>
       ))}
-
-      {products.length === 0 ? <div className="empty-shop"><h2>No products yet</h2><p>Check back soon.</p></div> : groupOrder.map((cat) => [cat, groups[cat]]).map(([cat, list]) => (
-        <section key={cat} className="stack-sm" id={`cat-${encodeURIComponent(cat)}`}>
-          <h2>{cat}</h2>
-          <div className="grid-products">{list.map((p) => <OfferingCard key={p.id} p={p} inStore deal={dealFor(offersBy, p.id)} />)}</div>
-        </section>
-      ))}
-
-      <section className="store-back">
-        <div>
-          <strong>{store.business_name} sells on ZaMarket</strong>
-          <span className="small muted">Your order is taken, confirmed and delivered by ZaMarket, so you are covered either way.</span>
-        </div>
-        <Link to="/" className="btn">Explore more on ZaMarket <Icon.arrow /></Link>
-      </section>
-
-      {(store.about || store.description) && (
-        <section className="card store-about" id="about">
-          <h2>About {store.business_name}</h2>
-          <p>{store.about || store.description}</p>
-          <p className="small muted">Everything here is ordered and paid through ZaMarket. We confirm every order by phone and deliver it to you.</p>
-        </section>
-      )}
-    </div>
+    />
   )
 }

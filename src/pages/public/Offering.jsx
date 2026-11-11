@@ -7,6 +7,9 @@ import { Modal, Stars, useToast } from '../../components/ui'
 import { iconFor } from '../../lib/categories'
 import { useDepartments } from '../../lib/departments'
 import ProductGallery from '../../components/ProductGallery'
+import ShareProduct from '../../components/ShareProduct'
+import { useAuth } from '../../lib/auth'
+import { productShareUrl } from '../../lib/affiliateLinks'
 
 // Icons a seller can pick for "What you get" blocks (original line drawings)
 const G = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round' }
@@ -27,6 +30,41 @@ const ICON_ORDER = ['check', 'certificate', 'shield', 'clock', 'star', 'people',
 const TYPE_WORD = { product: 'Product', service: 'Service', course: 'Course', class: 'Class', vehicle: 'Vehicle', event: 'Event', deal: 'Opportunity', other: 'Offering' }
 export const defaultCta = (model, type) => ({ buy: 'Buy now', book: type === 'course' || type === 'class' ? 'Enrol now' : 'Book now', enquire: 'Enquire', negotiate: type === 'vehicle' ? 'Make an offer' : 'Enquire' }[model] || 'Get started')
 
+// Vehicle-specific showroom. Keep the existing enquiry/negotiation modal,
+// seller records and backend deal workflow; only the public reading experience
+// changes. Never invent mileage, condition or a verification badge.
+function VehicleShowroom({ p, pg, onPrimary, onSecondary, preview }) {
+  const { role, profile, settings } = useAuth()
+  const model = p.sales_model || 'negotiate'
+  const cta = pg.cta_primary || (model === 'negotiate' ? 'Make an offer' : 'Enquire about this vehicle')
+  const specs = (pg.specs || []).filter(s => s?.label && s?.value)
+  const link = productShareUrl(window.location.origin, p, role, profile?.partner?.code)
+  return <div className={`motors-detail ${preview ? 'is-preview' : ''}`}>
+    <div className="motors-detail-top"><span className="eyebrow">ZAMARKET MOTORS</span><span>{pg.location_text || 'Seller location available on enquiry'}</span></div>
+    <div className="motors-detail-columns">
+      <section className="motors-gallery-card">
+        <ProductGallery images={p.images || []} name={p.name} fallback={<span className="motors-missing">Seller photos will appear here when uploaded</span>} />
+        <p className="tiny muted">Inspect all available photos; ask for additional images or an independent vehicle inspection before paying.</p>
+      </section>
+      <section className="motors-deal-card stack-sm">
+        <span className="eyebrow">VEHICLE FOR SALE</span>
+        <h1>{p.name}</h1>
+        <div className="motors-price">{money(p.price)} <small>Seller's asking price</small></div>
+        <div className="motors-spec-chips">{specs.slice(0, 5).map(s => <div key={`${s.label}-${s.value}`}><span>{s.label}</span><strong>{s.value}</strong></div>)}</div>
+        <p className="small muted">{p.description?.split('\n')[0] || 'Review the seller-supplied vehicle details and request more information.'}</p>
+        <div className="btn-row"><button className="btn primary" type="button" onClick={onPrimary}>{cta}</button><button className="btn" type="button" onClick={onSecondary}>Request viewing / ask a question</button></div>
+        {!preview && <ShareProduct product={p} store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null} settings={settings} link={link} className="btn" label={role === 'reseller' && profile?.partner?.code ? 'Share with your affiliate link' : 'Share vehicle'} />}
+        <div className="motors-seller"><strong>Listed by {p.vendor_name || 'ZaMarket'}</strong><span className="small muted">Ask for supporting documentation, ownership authority and viewing availability.</span>{p.vendor_slug && !preview && <Link className="btn sm" to={`/${p.vendor_slug}`}>View seller shop</Link>}</div>
+      </section>
+    </div>
+    <div className="motors-detail-lower">
+      <section className="card stack-sm"><h2>Specifications</h2>{specs.length ? <dl className="motors-spec-list">{specs.map(s=><div key={`${s.label}-${s.value}`}><dt>{s.label}</dt><dd>{s.value}</dd></div>)}</dl>:<p className="small muted">Detailed specifications have not been supplied. Ask the seller before arranging a viewing.</p>}</section>
+      <section className="card stack-sm"><h2>Description &amp; condition</h2><p className="motors-description">{p.description || 'Please request more information about this vehicle.'}</p>{(pg.sections || []).filter(s=>s?.title && s.items?.some(Boolean)).map((section,i)=><div key={i}><h3>{section.title}</h3><ul>{section.items.filter(Boolean).map((item,j)=><li key={j}>{item}</li>)}</ul></div>)}<p className="small muted">Information is supplied by the seller unless explicitly stated otherwise. Confirm vehicle ownership, taxes, documents and condition independently.</p></section>
+    </div>
+    <div className="motors-detail-end"><div><strong>Interested in this vehicle?</strong><p className="small muted">Send an enquiry or request a viewing. No fee is added to the displayed asking price by this enquiry page.</p></div><button className="btn buy" type="button" onClick={onPrimary}>{cta}</button></div>
+  </div>
+}
+
 // Pure renderer — used by the live page and by the builder preview.
 export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSecondary, onPackage, preview = false }) {
   const DEPARTMENTS = useDepartments()
@@ -40,6 +78,8 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
   const listPrice = packages.length ? Math.min(...packages.map((x) => Number(x.price))) : Number(p.price)
   const specs = (pg.specs || []).filter((s) => s?.label && s?.value)
   const priceWord = model === 'negotiate' ? 'Asking price' : packages.length > 1 ? 'From' : 'Price'
+
+  if (p.offering_type === 'vehicle') return <VehicleShowroom p={p} pg={pg} onPrimary={onPrimary} onSecondary={onSecondary || onPrimary} preview={preview} />
 
   return (
     <div className={`offering ${preview ? 'is-preview' : ''}`}>
@@ -122,7 +162,7 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
       {/* SPECS (vehicles and anything with specifications) */}
       {specs.length > 0 && (
         <section className="of-block">
-          <h2>Specifications</h2>
+          <h2>{p.offering_type === 'vehicle' ? 'Vehicle details' : 'Specifications'}</h2>
           <dl className="of-specs wide">{specs.map((s, i) => <div key={i}><dt>{s.label}</dt><dd>{s.value}</dd></div>)}</dl>
         </section>
       )}
@@ -245,6 +285,7 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
 
 // Live page: loads packages, handles booking / buying / enquiries.
 export function OfferingPage({ p, reviews }) {
+  const { role, profile, settings } = useAuth()
   const nav = useNavigate()
   const { add, attribution } = useCart()
   const toast = useToast()
@@ -270,6 +311,10 @@ export function OfferingPage({ p, reviews }) {
   return (
     <>
       <OfferingView p={p} packages={packages} reviews={reviews} onPrimary={primary} onSecondary={() => setEnquire({ package: null, question: true })} onPackage={takePackage} />
+      {p.offering_type !== 'vehicle' && <div className="offering-share-controls">
+        <ShareProduct product={p} store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null} settings={settings}
+          link={productShareUrl(window.location.origin, p, role, profile?.partner?.code)} className="btn" label={role === 'reseller' ? 'Share with your affiliate link' : 'Share this offering'} />
+      </div>}
       {enquire && <EnquiryModal p={p} pkg={enquire.package} question={enquire.question} attribution={attribution} onClose={() => setEnquire(null)} toast={toast} />}
     </>
   )

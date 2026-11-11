@@ -97,3 +97,22 @@ test('every static page in the sitemap is a route the app really serves', () => 
     assert.ok(matches(p), `sitemap advertises ${p} but the router has no such route`)
   }
 })
+
+test('search results show availability only from the real state of the product', async () => {
+  const { availabilityOf } = await import('../netlify/edge-functions/seo.js')
+  const S = 'https://schema.org/'
+  assert.equal(availabilityOf({ fulfilment: 'in_stock', status: 'published', stock_available: 4 }), S + 'InStock')
+  assert.equal(availabilityOf({ fulfilment: 'in_stock', status: 'published', stock_available: 0 }), S + 'OutOfStock')
+  assert.equal(availabilityOf({ fulfilment: 'in_stock', status: 'out_of_stock', stock_available: 9 }), S + 'OutOfStock')
+  assert.equal(availabilityOf({ fulfilment: 'made_to_order', stock_available: 0 }), S + 'MadeToOrder')
+  // A service has no stock, and an unknown state claims nothing at all.
+  assert.equal(availabilityOf({ fulfilment: 'service' }), undefined)
+  assert.equal(availabilityOf({ fulfilment: 'in_stock' }), undefined)
+  assert.equal(availabilityOf(null), undefined)
+})
+
+test('the product lookup fetches what availability needs', () => {
+  const src = read('netlify/edge-functions/seo.js')
+  assert.match(src, /vendor_slug,status,stock_available`/)
+  assert.match(src, /availability: availabilityOf\(p\)/)
+})

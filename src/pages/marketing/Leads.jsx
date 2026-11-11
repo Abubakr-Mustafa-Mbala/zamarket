@@ -4,6 +4,8 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, title } from '../../lib/format'
 import { Loading, Modal, Field, Input, Select, Textarea, useToast, Empty } from '../../components/ui'
+import { askAssist } from '../../lib/aiAssist'
+import { waNumber } from '../../lib/phone'
 
 export const CHANNELS = {
   warm: { label: 'Warm outreach', hint: 'People who already know us' },
@@ -203,6 +205,8 @@ export function LeadDrawer({ lead: initial, onClose, onChanged }) {
           ) : (l.owner?.full_name || 'Unassigned')}</dd>
         </dl>
 
+        {!closed && <LeadDraft lead={l} activity={data?.activity || []} />}
+
         {closed ? (
           <div className="card flat between">
             <span className="small">{l.stage === 'won' ? 'This lead became a customer.' : 'This lead is closed.'}</span>
@@ -251,6 +255,61 @@ export function LeadDrawer({ lead: initial, onClose, onChanged }) {
         </div>
       </div>
     </Modal>
+  )
+}
+
+// Writes a first message or a follow-up for this lead, for you to read,
+// change and send yourself. It never sends anything. Only the person's first
+// name and what they asked about go to the AI: never their phone number.
+const DRAFT_KINDS = [['first', 'First message'], ['follow_up', 'Follow-up'], ['seller', 'Invite a seller']]
+
+function LeadDraft({ lead, activity }) {
+  const toast = useToast()
+  const { profile } = useAuth()
+  const [kind, setKind] = useState(activity.some((a) => a.kind !== 'system') ? 'follow_up' : 'first')
+  const [text, setText] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const draft = async () => {
+    setBusy(true)
+    try {
+      const history = activity.filter((a) => a.note).slice(0, 3).map((a) => a.note).join(' | ')
+      const answer = await askAssist({
+        task: 'lead', kind,
+        first_name: String(lead.name || '').trim().split(/\s+/)[0], interest: lead.interest || lead.product?.name || '',
+        history, from_name: String(profile?.full_name || '').trim().split(/\s+/)[0],
+        product_ids: kind !== 'seller' && lead.product_id ? [lead.product_id] : [],
+      })
+      if (answer.message) setText(answer.message)
+      else toast(answer.note || 'No draft this time. Try again.', true)
+    } catch (e) { toast(e.message, true) }
+    finally { setBusy(false) }
+  }
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); toast('Copied') }
+    catch { toast('Could not copy. Select the text and copy it by hand.', true) }
+  }
+
+  return (
+    <div className="ai-draft">
+      <div className="between">
+        <strong className="small">Write a message for me</strong>
+        <span className="tiny muted">You send it, not the computer</span>
+      </div>
+      <div className="chips wrap">
+        {DRAFT_KINDS.map(([k, lab]) => <button type="button" key={k} className={`chip ${kind === k ? 'on' : ''}`} onClick={() => setKind(k)}>{lab}</button>)}
+      </div>
+      {text && <Textarea value={text} onChange={setText} rows={8} aria-label="Draft message" />}
+      <div className="btn-row">
+        <button type="button" className="btn sm" onClick={draft} disabled={busy}>{busy ? 'Writing…' : text ? 'Write another' : 'Write a draft'}</button>
+        {text && lead.phone && (
+          <a className="btn sm buy" target="_blank" rel="noreferrer"
+            href={`https://wa.me/${waNumber(lead.phone)}?text=${encodeURIComponent(text)}`}>Open in WhatsApp</a>
+        )}
+        {text && <button type="button" className="btn sm ghost" onClick={copy}>Copy</button>}
+      </div>
+      {text && <p className="tiny muted">Read it before you send it. After sending, record it below so the follow-up date is set.</p>}
+    </div>
   )
 }
 
