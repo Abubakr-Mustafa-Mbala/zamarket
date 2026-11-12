@@ -23,15 +23,17 @@ test('the store page keeps its data loading and hands it to the new layout', () 
 test('the storefront claims nothing the data does not say', () => {
   const sf = read('src/components/storefront/VendorStorefront.jsx')
   // Verified only when the store page says so, which checks the real setting.
-  assert.match(sf, /\{verified && \(/)
+  assert.match(sf, /\{verified && <span className="zsv-verified"/)
   assert.match(read('src/pages/public/Marketplace.jsx'), /const verified = settings\?\.verification_on === 'on' && store\.trust_level === 'verified'/)
   for (const claim of [/best seller/i, /easy returns/i, /trusted seller/i, /we deliver it to you/i, /quality products/i, /great value/i]) {
     assert.doesNotMatch(sf, claim)
   }
   // Rating appears only when there is one.
   assert.match(sf, /Number\(store\.rating\) > 0 &&/)
-  // Collections only when there are at least two to choose between.
-  assert.match(sf, /if \(filled\.length < 2\) return null/)
+  // A single category system replaces duplicate chip + collection navigation.
+  assert.match(sf, /function ShopCategories\(/)
+  assert.doesNotMatch(sf, /Shop by collection/)
+  assert.doesNotMatch(sf, /zsv-chips/)
 })
 
 test('a seller who chose their own colours keeps them', async () => {
@@ -82,4 +84,108 @@ test('the fund has its settings, its page and an honest price preview', () => {
   assert.match(page, /rpc\('delivery_fund_summary'/)
   // A missing trip cost is counted, never ignored.
   assert.match(page, /unrecorded_estimate/)
+})
+
+// ---------------------------------------------------------------- storefront refinement
+test('the hero is one banner: identity, real product photos and the buttons together', () => {
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  const hero = sf.slice(sf.indexOf('function Hero('), sf.indexOf('function About('))
+  for (const part of ['zsv-hero-id', 'zsv-hero-art', 'zsv-hero-copy', 'Shop this store']) assert.ok(hero.includes(part), part)
+  // The seller's cover is the banner; without one, their real product photos are.
+  assert.match(hero, /products\.map\(firstImage\)/)
+  assert.match(hero, /const art = cover \? \[\] : photos/)
+  assert.match(hero, /<img className="zsv-hero-cover" src=\{cover\}/)
+  // Product photos are shown whole.
+  assert.match(read('src/components/storefront/VendorStorefront.css'), /\.zsv-shot img \{[^}]*object-fit: contain/)
+})
+
+test('without a logo the shop gets initials in a ring, not a fake logo', async () => {
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  assert.match(sf, /<span className="zsv-monogram" aria-hidden>\{initialsOf\(store\.business_name\)\}<\/span>/)
+  // Same rule as the component, checked here without importing JSX.
+  const body = sf.slice(sf.indexOf('export function initialsOf'), sf.indexOf('function Hero('))
+  const initialsOf = new Function(`${body.replace('export function', 'function')}; return initialsOf`)()
+  assert.equal(initialsOf('God is Faithful Enterprises'), 'GF')
+  assert.equal(initialsOf('Sweet Things'), 'ST')
+  assert.equal(initialsOf('Zambezi'), 'ZA')
+  assert.equal(initialsOf(''), 'S')
+})
+
+test('one usable category selector filters one product grid', () => {
+  const page = read('src/pages/public/Marketplace.jsx')
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  assert.doesNotMatch(page, /'More from this shop'/)
+  assert.match(page, /sectionName\(p\) \|\| p\.category \|\|/)
+  assert.match(sf, /Shop by category/)
+  assert.doesNotMatch(sf, /Shop by collection/)
+  assert.doesNotMatch(sf, /zsv-chips/)
+  assert.match(sf, /const shown = selectedCategory/)
+  assert.match(sf, /allProducts = \[\.\.\.productList\]\.sort/)
+  assert.match(sf, /renderProduct\(p\)/)
+  const css = read('src/components/storefront/VendorStorefront.css')
+  assert.match(css, /\.zsv-category-grid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); gap: 9px; \}/)
+})
+
+test('seller can edit optional store delivery wording without changing checkout', () => {
+  const vendor = read('src/pages/vendor/Vendor.jsx')
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  const migration = read('supabase/migrations/20261112_storefront_delivery_message_REVIEW.sql')
+  assert.match(vendor, /label="Store delivery message"/)
+  assert.match(vendor, /store_delivery_message: f\.store_delivery_message\.trim\(\) \|\| null/)
+  assert.match(sf, /text\(store\.store_delivery_message\) &&/)
+  assert.doesNotMatch(sf, /Member since|member since/)
+  assert.match(migration, /add column if not exists store_delivery_message text/)
+  assert.match(migration, /alter view public\.public_vendors set \(security_invoker = on\)/)
+  assert.doesNotMatch(migration, /update (public\.)?(orders|products|settlements)/)
+})
+
+test('the site header folds while scrolling a store on a phone, and only there', () => {
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  assert.match(sf, /document\.body\.classList\.add\('zsv-compact'\)/)
+  assert.match(sf, /return \(\) => \{ window\.removeEventListener\('scroll', onScroll\); document\.body\.classList\.remove\('zsv-compact'\) \}/)
+  const css = read('src/components/storefront/VendorStorefront.css')
+  const mobile = css.slice(css.indexOf('@media (max-width: 600px)'))
+  assert.match(mobile, /body\.zsv-compact \.shop-header \.dept-strip/)
+  // The search box and the cart stay.
+  assert.doesNotMatch(mobile, /body\.zsv-compact \.shop-header \.(shop-search|header-cart)[^{]*\{[^}]*display: none/)
+})
+
+test('V45 phone storefront uses one photo-led category selector and a unified banner', () => {
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  const css = read('src/components/storefront/VendorStorefront.css')
+  assert.match(sf, /const art = cover \? \[\] : photos/)
+  assert.match(sf, /<img className="zsv-hero-cover" src=\{cover\}/)
+  assert.match(sf, /Shop by category/)
+  assert.match(sf, /zsv-view-all/)
+  assert.doesNotMatch(sf, /Member since|Shop by collection/)
+  assert.match(css, /V45: approved phone storefront treatment/)
+  assert.match(css, /\.zsv-shot \{ background: transparent; box-shadow:none/)
+  assert.match(css, /@media \(max-width:600px\)/)
+})
+
+
+// ---------------------------------------------------------------- V46
+test('the seller\'s own colours reach every part of the storefront', () => {
+  const css = read('src/components/storefront/VendorStorefront.css')
+  const v46 = css.slice(css.indexOf('V46: the seller'))
+  assert.ok(v46.length > 100, 'no V46 block')
+  // In the final block every colour is a variable, so a theme can change it.
+  // (#fff behind product photos is deliberate: photos usually have white backgrounds.)
+  const literals = (v46.replace(/\/\*[\s\S]*?\*\//g, '').match(/#[0-9a-fA-F]{3,8}\b/g) || []).filter((c) => !/^#fff(fff)?$/i.test(c))
+  assert.deepEqual(literals, [])
+  for (const sel of ['.zsv-hero {', '.zsv-actions .zsv-btn.primary', '.zsv-grid .oc-action-btn', '.zsv-category-tile.active', '.zsv-about {', '.zsv-verified']) {
+    assert.ok(v46.includes(sel), `V46 does not restyle ${sel}`)
+  }
+  const sf = read('src/components/storefront/VendorStorefront.jsx')
+  // Bold and tinted shops colour the page, as before the redesign.
+  assert.match(sf, /store\.theme\.style !== 'clean' \? \{ '--zsv-page': v\['--store-bg'\] \}/)
+})
+
+test('the cover photo is the banner, and categories are a slim row', () => {
+  const css = read('src/components/storefront/VendorStorefront.css')
+  const v46 = css.slice(css.indexOf('V46: the seller'))
+  assert.match(v46, /\.zsv-hero-cover \{ position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover/)
+  assert.match(v46, /height: 54px/)
+  const phone = v46.slice(v46.indexOf('@media (max-width: 600px)'))
+  assert.match(phone, /\.zsv-category-grid \{ flex-wrap: nowrap; overflow-x: auto/)
 })

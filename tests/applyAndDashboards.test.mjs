@@ -71,8 +71,8 @@ test('the application page keeps its honest statements', () => {
   assert.doesNotMatch(apply, /within \d+ (hours|days)|same day|instantly approved/i)
 })
 
-test('the shopping rail stays out of the way of an application', () => {
-  assert.match(read('src/pages/public/Marketplace.jsx'), /!pathname\.startsWith\('\/apply\/'\) && !pathname\.startsWith\('\/p\/'\) && <CategoryRail \/>/)
+test('the category rail stays only on the homepage', () => {
+  assert.match(read('src/pages/public/Marketplace.jsx'), /pathname === '\/' && <CategoryRail \/>/)
 })
 
 test('a new seller with no figures yet still gets a dashboard', () => {

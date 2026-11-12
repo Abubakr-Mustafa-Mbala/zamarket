@@ -464,6 +464,7 @@ alter table vendors add column if not exists tagline text;
 alter table vendors add column if not exists about text;
 alter table vendors add column if not exists opening_hours jsonb not null default '[]';
 alter table vendors add column if not exists highlights text[] default '{}';
+alter table vendors add column if not exists store_delivery_message text check (char_length(store_delivery_message) <= 140);
 -- A vendor's own colours, so their shop feels like theirs.
 alter table vendors add column if not exists theme jsonb not null default '{}';
 alter table orders add column if not exists review_code text;
@@ -2416,7 +2417,8 @@ select v.id, v.business_name, v.category, v.description, split_part(coalesce(v.l
        v.slug, v.logo_url, v.cover_url, v.tagline, v.about, v.opening_hours, v.highlights, v.trust_level, v.theme,
        (select round(avg(r.vendor_rating), 1) from reviews r where r.vendor_id = v.id and r.approved) as rating,
        (select count(*) from reviews r where r.vendor_id = v.id and r.approved) as review_count,
-       (select count(*) from products p where p.vendor_id = v.id and p.status = 'published') as product_count
+       (select count(*) from products p where p.vendor_id = v.id and p.status = 'published') as product_count,
+       v.store_delivery_message
 from vendors v where v.status = 'approved';
 
 create or replace function vendor_summary() returns jsonb
@@ -4456,7 +4458,7 @@ begin
                 order_days, owner_type, page, price, promo_blocked, sales_model, service_location, slot_capacity,
                 section_id, slug, status, stock_available, time_slots, vendor_id) on products to anon;
   grant select (about, business_name, category, cover_url, description, highlights, id, location, logo_url,
-                opening_hours, slug, status, tagline, theme, trust_level) on vendors to anon;
+                opening_hours, slug, status, tagline, theme, trust_level, store_delivery_message) on vendors to anon;
   grant select (category, config, end_at, id, inventory_limit, name, product_id, start_at, status, terms, type,
                 units_used) on offers to anon;
   grant select (audience, bullets, cta_text, delivery_type, description, format, headline, id, name, product_id,

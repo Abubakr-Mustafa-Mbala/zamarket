@@ -6,11 +6,12 @@ import { useSeo } from '../../lib/seo'
 import { Loading } from '../../components/ui'
 
 const readSpec = (p, term) => {
-  const row = (p.page?.specs || []).find(s => new RegExp(term, 'i').test(s.label || ''))
+  const specs = p?.page?.specs
+  const row = (Array.isArray(specs) ? specs : []).find(s => new RegExp(term, 'i').test(s?.label || ''))
   return row?.value || ''
 }
-const locationOf = p => p.page?.location_text || readSpec(p, 'location|town') || 'Ask for location'
-const photoOf = p => (Array.isArray(p.images) ? p.images : []).find(s => typeof s === 'string' && /^https:\/\//i.test(s))
+const locationOf = p => p?.page?.location_text || readSpec(p, 'location|town') || 'Ask for location'
+const photoOf = p => (Array.isArray(p?.images) ? p.images : []).find(s => typeof s === 'string' && /^https:\/\//i.test(s))
 
 export default function Motors() {
   useSeo({ title: 'Vehicles for sale in Zambia | ZaMarket Motors', description: 'Browse available cars, SUVs and pickups on ZaMarket. Compare real vehicle photos and specifications and send an enquiry to sellers in Zambia.' })

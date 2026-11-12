@@ -30,9 +30,9 @@ test('the page leaves room so the last content is not hidden under two bars', ()
   assert.match(css, /\.pdp \{ padding-bottom: 150px; \}/)
 })
 
-test('a product page does not spend its first screen on the category rail', () => {
+test('only the homepage displays the category rail', () => {
   // It pushed the price off the first screen of a phone.
-  assert.match(page, /!pathname\.startsWith\('\/p\/'\) && <CategoryRail \/>/)
+  assert.match(page, /pathname === '\/' && <CategoryRail \/>/)
 })
 
 test('the product photograph is shown at its own shape on a phone', () => {

@@ -613,6 +613,7 @@ export function VendorStore() {
   const [f, setF] = useState(() => ({
     tagline: v?.tagline || '', about: v?.about || v?.description || '',
     logo_url: v?.logo_url || '', cover_url: v?.cover_url || '',
+    store_delivery_message: v?.store_delivery_message || '',
     highlights_text: (v?.highlights || []).join('\n'),
     hours_text: (v?.opening_hours || []).map((h) => `${h.label}: ${h.hours}`).join('\n'),
     colour: v?.theme?.colour || 'pine',
@@ -627,6 +628,7 @@ export function VendorStore() {
       about: f.about.trim() || null,
       logo_url: f.logo_url || null,
       cover_url: f.cover_url || null,
+      store_delivery_message: f.store_delivery_message.trim() || null,
       theme: { colour: f.colour, style: f.style },
       highlights: f.highlights_text.split('\n').map((x) => x.trim()).filter(Boolean).slice(0, 6),
       opening_hours: f.hours_text.split('\n').filter((l) => l.includes(':')).map((l) => {
@@ -669,6 +671,10 @@ export function VendorStore() {
         </Field>
         <Field label="One line about your shop" hint="e.g. Home-baked cakes for birthdays and weddings" span>
           <Input value={f.tagline} onChange={set('tagline')} maxLength={90} />
+        </Field>
+        <Field label="Store delivery message" hint="Optional. Appears under the product count in your shop banner. For example: Delivery in Zambia, or Free delivery in Lusaka. Only promise what ZaMarket can fulfil; this does not change checkout delivery fees." span>
+          <Input value={f.store_delivery_message} onChange={set('store_delivery_message')} maxLength={140} placeholder="E.g. Delivery available in Lusaka" />
+          {f.store_delivery_message.trim() && <p className="tiny muted">Your banner will say: {f.store_delivery_message.trim()}</p>}
         </Field>
         <Field label="What makes you good" hint="One per line, up to six. Shown as tags." span>
           <Textarea value={f.highlights_text} onChange={set('highlights_text')} rows={3} placeholder={'Baked fresh to order\nDelivery in Lusaka\nCustom designs welcome'} />

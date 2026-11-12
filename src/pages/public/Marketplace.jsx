@@ -610,7 +610,6 @@ export function PublicShell() {
           <Link to="/search?deals=1">Today's deals</Link>
           <Link to="/motors">Motors</Link>
           <Link to="/blog" className={`journal-nav${pathname.startsWith('/blog') ? ' active' : ''}`}>Journal</Link>
-          {stocked.map((d) => <Link key={d.name} to={`/search?cat=${encodeURIComponent(d.name)}`}>{d.name}</Link>)}
           <Link to="/sellers">Stores</Link>
           {activeGiveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(activeGiveaway)}`}><Icon.gift /> Live giveaway</Link>}
         </nav>
@@ -620,7 +619,7 @@ export function PublicShell() {
           pushed the price and the buy button off the first screen of a phone,
           so someone who tapped a product saw a photo and had to hunt for how
           to buy it. */}
-      {pathname !== '/affiliates' && !pathname.startsWith('/apply/') && !pathname.startsWith('/p/') && <CategoryRail />}
+      {pathname === '/' && <CategoryRail />}
       <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
         {/* The boundary matters most here: without it a single failed page
@@ -1399,7 +1398,7 @@ export function StorePage() {
   const plain = [...(byKind.product || []), ...(byKind.other || [])]
   const sectionName = (p) => sections.find((x) => x.id === p.section_id)?.name
   const groups = plain.reduce((m, p) => {
-    const k = sectionName(p) || (sections.length ? 'More from this shop' : (p.category || 'Products'))
+    const k = sectionName(p) || p.category || (sections.length ? 'Other products' : 'Products')
     ;(m[k] = m[k] || []).push(p)
     return m
   }, {})

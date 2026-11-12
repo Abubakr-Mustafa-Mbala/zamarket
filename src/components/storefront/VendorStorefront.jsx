@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { THEMES, themeVars } from '../../lib/storeTheme'
 import './VendorStorefront.css'
@@ -36,57 +36,76 @@ export function storefrontVars(store) {
     '--zsv-hero-a': v['--brand-soft'],
     '--zsv-hero-b': v['--store-raised'],
     '--zsv-hero-c': v['--store-card'],
+    '--zsv-on-hero': v['--store-ink'],
+    // "Bold" and "Tinted" shops colour the whole page, as they always have.
+    ...(store.theme?.style && store.theme.style !== 'clean' ? { '--zsv-page': v['--store-bg'] } : {}),
   }
+}
+
+// Two initials from the shop's name. A stand-in only, styled so it is never
+// mistaken for the seller's own logo.
+export function initialsOf(name) {
+  const all = String(name || '').replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(Boolean)
+  if (!all.length) return 'S'
+  // "God is Faithful Enterprises" is GF, not GI.
+  const small = new Set(['is', 'of', 'and', 'the', 'a', 'an', 'to', 'for', 'by', 'in', 'on', 'at'])
+  const words = all.filter((w, i) => i === 0 || !small.has(w.toLowerCase()))
+  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase()
 }
 
 function Hero({ store, products, verified, share }) {
   const [open, setOpen] = useState(false)
-  const photos = useMemo(() => products.map(firstImage).filter(Boolean).slice(0, 3), [products])
+  const photos = useMemo(() => [...new Set(products.map(firstImage).filter(Boolean))].slice(0, 3), [products])
   const line = text(store.tagline) || text(store.description) || [store.category, store.town].filter(Boolean).join(' · ')
   const count = products.length
+  // Real catalogue photos compose the hero. A vendor cover is a subtle background
+  // rather than an extra fake 'product' tile. Missing photos stay missing.
+  // The seller's own cover photo is their banner, shown properly. Without one,
+  // their real product photos are layered on the right instead.
+  const cover = text(store.cover_url)
+  const art = cover ? [] : photos
   return (
-    <section className={`zsv-hero ${store.cover_url || photos.length ? '' : 'no-art'}`} aria-labelledby="zsv-store-name">
-      <div className="zsv-hero-content">
-        <div className="zsv-brand">
-          {store.logo_url
-            ? <img className="zsv-logo" src={store.logo_url} alt={`${store.business_name} logo`} />
-            : <span className="zsv-logo zsv-logo-letter" aria-hidden>{text(store.business_name).charAt(0).toUpperCase() || 'S'}</span>}
-          <div className="zsv-brand-text">
-            <h1 id="zsv-store-name">{store.business_name}</h1>
-            {verified && (
-              <span className="zsv-verified" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified seller</span>
-            )}
+    <section className={`zsv-hero ${art.length ? '' : 'no-art'} ${cover ? 'has-cover' : ''}`} aria-labelledby="zsv-store-name">
+      {cover && <img className="zsv-hero-cover" src={cover} alt="" aria-hidden />}
+      <div className="zsv-hero-glow" aria-hidden />
+      <div className="zsv-hero-id">
+        {store.logo_url
+          ? <img className="zsv-logo" src={store.logo_url} alt={`${store.business_name} logo`} />
+          : <span className="zsv-monogram" aria-hidden>{initialsOf(store.business_name)}</span>}
+        <div className="zsv-brand-text">
+          <h1 id="zsv-store-name">{store.business_name}</h1>
+          <div className="zsv-facts">
+            {verified && <span className="zsv-verified" title="Someone from ZaMarket has met this seller and seen their ID or PACRA registration">✓ Verified</span>}
+            {store.town && <span><PinIcon /> {store.town}</span>}
+            <span><BoxIcon /> {count} {count === 1 ? 'item' : 'items'}</span>
+            {Number(store.rating) > 0 && <span>★ {store.rating} ({store.review_count || 0})</span>}
           </div>
+          {text(store.store_delivery_message) && <p className="zsv-delivery"><DeliveryIcon /> {text(store.store_delivery_message)}</p>}
         </div>
+      </div>
+      {art.length > 0 && (
+        <div className={`zsv-hero-art n${art.length}`} aria-hidden>
+          {art.map((src, i) => (
+            <span key={`${src}-${i}`} className={`zsv-shot s${i + 1}`}>
+              <img src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} />
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="zsv-hero-copy">
         {line && (
           <>
             <p className={`zsv-line ${open ? 'open' : ''}`}>{line}</p>
-            {line.length > 140 && (
+            {line.length > 110 && (
               <button type="button" className="zsv-link-button" onClick={() => setOpen((x) => !x)}>{open ? 'Read less' : 'Read more'}</button>
             )}
           </>
         )}
-        <div className="zsv-facts">
-          {store.town && <span><PinIcon /> {store.town}</span>}
-          <span><BoxIcon /> {count} {count === 1 ? 'item' : 'items'}</span>
-          {Number(store.rating) > 0 && <span>★ {store.rating} ({store.review_count || 0})</span>}
-        </div>
         <div className="zsv-actions">
           <a className="zsv-btn primary" href="#shop"><CartIcon /> Shop this store</a>
           <div className="zsv-share">{share}</div>
         </div>
       </div>
-      {(store.cover_url || photos.length > 0) && (
-        <div className={`zsv-hero-art ${store.cover_url ? 'has-cover' : ''}`}>
-          {store.cover_url
-            ? <img className="zsv-cover" src={store.cover_url} alt="" />
-            : (
-              <div className={`zsv-collage n${photos.length}`}>
-                {photos.map((src, i) => <span key={`${src}-${i}`}><img src={src} alt="" loading={i === 0 ? 'eager' : 'lazy'} /></span>)}
-              </div>
-            )}
-        </div>
-      )}
     </section>
   )
 }
@@ -115,26 +134,29 @@ function About({ store }) {
   )
 }
 
-function Collections({ groups, order }) {
+function ShopCategories({ groups, order, selected, onChoose, total }) {
   const filled = order.filter((name) => groups[name]?.length)
-  if (filled.length < 2) return null
+  if (!filled.length) return null
   return (
-    <section className="zsv-section" aria-labelledby="zsv-coll-title">
-      <div className="zsv-title"><h2 id="zsv-coll-title">Shop by collection</h2></div>
-      <div className="zsv-collections">
+    <section className="zsv-section zsv-category-section" aria-labelledby="zsv-categories-title">
+      <div className="zsv-title"><h2 id="zsv-categories-title">Shop by category</h2><button type="button" className="zsv-view-all" onClick={() => onChoose(null)}>View all <span aria-hidden>→</span></button></div>
+      <div className="zsv-category-grid" role="group" aria-label="Choose a category">
+        <button type="button" className={`zsv-category-tile zsv-category-all ${selected === null ? 'active' : ''}`}
+          aria-pressed={selected === null} onClick={() => onChoose(null)}>
+          <span className="zsv-category-all-symbol" aria-hidden>▦</span>
+          <strong>All products</strong><small>{total} {total === 1 ? 'item' : 'items'}</small>
+        </button>
         {filled.map((name) => {
-          const list = groups[name]
-          const img = list.map(firstImage).find(Boolean)
+          const items = groups[name]
+          const image = items.map(firstImage).find(Boolean)
           return (
-            <a key={name} href={`#${anchorFor(name)}`} className={`zsv-collection ${img ? '' : 'no-photo'}`}>
-              {img && <img src={img} alt="" loading="lazy" />}
-              <span className="zsv-collection-shade" />
-              <span className="zsv-collection-copy">
-                <strong>{name}</strong>
-                <small>{list.length} {list.length === 1 ? 'item' : 'items'}</small>
-                <span className="zsv-collection-go" aria-hidden>→</span>
+            <button type="button" key={name} className={`zsv-category-tile ${selected === name ? 'active' : ''}`}
+              aria-pressed={selected === name} onClick={() => onChoose(name)}>
+              <span className="zsv-category-photo">
+                {image ? <img src={image} alt="" loading="lazy" /> : <span className="zsv-category-no-image" aria-hidden>▧</span>}
               </span>
-            </a>
+              <strong>{name}</strong><small>{items.length} {items.length === 1 ? 'item' : 'items'}</small>
+            </button>
           )
         })}
       </div>
@@ -146,8 +168,19 @@ export default function VendorStorefront({
   store, products = [], featured = [], groups = {}, groupOrder = [], verified = false,
   share, renderProduct, special = null,
 }) {
-  if (!store || typeof renderProduct !== 'function') return null
+  useCompactHeader()
+  const [selectedCategory, setSelectedCategory] = useState(null)
   const filled = groupOrder.filter((name) => groups[name]?.length)
+  const productList = filled.flatMap((name) => groups[name])
+  const priority = new Set(featured.map((p) => p.id))
+  const allProducts = [...productList].sort((a, b) => Number(priority.has(b.id)) - Number(priority.has(a.id)))
+  const shown = selectedCategory && groups[selectedCategory]?.length ? groups[selectedCategory] : allProducts
+  const categoryName = selectedCategory && groups[selectedCategory]?.length ? selectedCategory : null
+  const chooseCategory = (name) => {
+    setSelectedCategory(name)
+    requestAnimationFrame(() => document.getElementById('shop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+  if (!store || typeof renderProduct !== 'function') return null
   return (
     <div className="zsv" style={storefrontVars(store)} data-testid="vendor-storefront">
       <nav className="zsv-crumbs" aria-label="Breadcrumb">
@@ -157,39 +190,23 @@ export default function VendorStorefront({
 
       <Hero store={store} products={products} verified={verified} share={share} />
 
-      {filled.length > 1 && (
-        <nav className="zsv-chips" aria-label="In this store">
-          <a className="on" href="#shop">All products</a>
-          {filled.map((name) => <a key={name} href={`#${anchorFor(name)}`}>{name}</a>)}
-        </nav>
-      )}
+      <ShopCategories groups={groups} order={groupOrder} total={productList.length}
+        selected={categoryName} onChoose={chooseCategory} />
 
       <About store={store} />
-      <Collections groups={groups} order={groupOrder} />
 
       <div id="shop" className="zsv-anchor" />
-      {featured.length > 0 && (
-        <section className="zsv-section" aria-labelledby="zsv-featured-title">
+      {productList.length > 0 && (
+        <section className="zsv-section zsv-products-section" aria-labelledby="zsv-products-title">
           <div className="zsv-title">
-            <h2 id="zsv-featured-title">Featured products</h2>
-            {products.length > featured.length && <a href="#zsv-all">View all ({products.length}) →</a>}
+            <h2 id="zsv-products-title">{categoryName || 'Featured products'}</h2>
+            <span className="zsv-count">View {shown.length} {shown.length === 1 ? 'item' : 'items'}</span>
           </div>
-          <div className="zsv-grid">{featured.map((p) => <Fragment key={p.id}>{renderProduct(p)}</Fragment>)}</div>
+          <div className="zsv-grid">{shown.map((p) => <Fragment key={p.id}>{renderProduct(p)}</Fragment>)}</div>
         </section>
       )}
 
       {special}
-
-      <div id="zsv-all" className="zsv-anchor" />
-      {filled.map((name) => (
-        <section key={name} className="zsv-section" id={anchorFor(name)} aria-label={name}>
-          <div className="zsv-title">
-            <h2>{name}</h2>
-            <span className="zsv-count">{groups[name].length} {groups[name].length === 1 ? 'item' : 'items'}</span>
-          </div>
-          <div className="zsv-grid">{groups[name].map((p) => <Fragment key={p.id}>{renderProduct(p)}</Fragment>)}</div>
-        </section>
-      ))}
 
       {products.length === 0 && (
         <div className="zsv-empty">
@@ -207,6 +224,27 @@ export default function VendorStorefront({
   )
 }
 
+// On a phone the site header is three rows tall. While a shopper scrolls down
+// a store it folds to the search box and cart, and comes back when they
+// scroll up. Store pages only; it is undone when they leave.
+function useCompactHeader() {
+  useEffect(() => {
+    let last = window.scrollY
+    let ticking = false
+    const update = () => {
+      ticking = false
+      const y = window.scrollY
+      if (y < 140) document.body.classList.remove('zsv-compact')
+      else if (y > last + 6) document.body.classList.add('zsv-compact')
+      else if (y < last - 6) document.body.classList.remove('zsv-compact')
+      last = y
+    }
+    const onScroll = () => { if (!ticking) { ticking = true; window.requestAnimationFrame(update) } }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => { window.removeEventListener('scroll', onScroll); document.body.classList.remove('zsv-compact') }
+  }, [])
+}
+
 function PinIcon() {
   return <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>
 }
@@ -215,4 +253,8 @@ function BoxIcon() {
 }
 function CartIcon() {
   return <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 4h2l2.4 11h11L21 7H6.2" /><circle cx="9" cy="19.5" r="1.5" /><circle cx="17" cy="19.5" r="1.5" /></svg>
+}
+
+function DeliveryIcon() {
+  return <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h11v11H3zM14 10h4l3 4v3h-7" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></svg>
 }
