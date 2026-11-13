@@ -10,7 +10,12 @@ const KEY = 'zm-cart'
 // Prices here are for display; the database recalculates everything when the order is placed.
 function load() {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '[]').map((i) => ({ units: 1, ...i, key: i.key || i.id }))
+    const saved = JSON.parse(localStorage.getItem(KEY) || '[]')
+    // A damaged or old saved cart must never show "NaN" or crash the page:
+    // drop lines with no product, and give every line a whole quantity.
+    return (Array.isArray(saved) ? saved : [])
+      .filter((i) => i && typeof i === 'object' && (i.id || i.key))
+      .map((i) => ({ units: 1, ...i, key: i.key || i.id, qty: Math.max(1, Math.round(Number(i.qty)) || 1) }))
   } catch { return [] }
 }
 

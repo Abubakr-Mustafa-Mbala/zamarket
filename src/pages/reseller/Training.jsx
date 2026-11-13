@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useAuth } from '../../lib/auth'
 
 // Training is NOT in ZaMarket.
@@ -13,7 +14,8 @@ import { useAuth } from '../../lib/auth'
 // affiliates). If it is empty, nothing is linked — an affiliate is told the
 // team will send details rather than being dropped on a dead page.
 export default function Training() {
-  const { settings } = useAuth()
+  const { settings, profile } = useAuth()
+  const code = String(profile?.partner?.academy_code || '').trim()
   const raw = String(settings?.training_url || '').trim()
 
   // Only an external https address is ever linked from here. Anything else is
@@ -34,13 +36,25 @@ export default function Training() {
       </div>
 
       <div className="card stack-sm">
-        <h2>Training happens in the Academy</h2>
+        <h2>Your training is in Al-Halaqa</h2>
         <p>
-          The lessons are not here. Affiliate training runs in our academy, as a
-          proper course with an instructor, rather than as pages inside the
-          marketplace. You keep using ZaMarket for the selling itself: your link,
-          the products, your earnings.
+          Al-Halaqa is our academy, where the affiliate course runs. Keep using
+          ZaMarket for the selling itself: your link, the products and your earnings.
         </p>
+        <ol className="academy-steps small">
+          <li>Open the Academy{href ? ' with the button below' : ''}.</li>
+          <li>It asks for a code from your teacher. Enter your code{code ? ' shown here' : ''}.</li>
+          <li>Start with the first lesson and work through in order.</li>
+        </ol>
+        {code
+          ? <AcademyCode code={code} />
+          : (
+            <p className="small muted">
+              Your academy code is not ready yet. The team creates your Academy account after
+              approval and your code appears here. If you have been approved and see no code, ask
+              on the support number in the footer.
+            </p>
+          )}
         {href
           ? (
             <>
@@ -48,16 +62,14 @@ export default function Training() {
                 <a className="btn primary" href={href} target="_blank" rel="noopener noreferrer">Open the Academy</a>
               </div>
               <p className="small muted">
-                Opens in a new tab. You sign in there separately — your ZaMarket
-                password is not used, and it is not shared with the academy.
+                Opens in a new tab. The Academy uses your code, not your ZaMarket
+                password, and your ZaMarket password is never shared with it.
               </p>
             </>
           )
           : (
             <p className="small muted">
-              The team will send you the academy details after your application is
-              approved. If you have been approved and have not received them, ask
-              on the support number in the footer.
+              The Academy link has not been added yet. The team will send it to you.
             </p>
           )}
       </div>
@@ -67,6 +79,22 @@ export default function Training() {
         <p>Choose a product that fits the people you want to reach. Read its real description, check its listed price and seller, and create a clear, honest promotion that sends interested buyers to the product page.</p>
         <p className="small muted">Your earning opportunities depend on eligible completed sales and the published commission terms. Training does not guarantee an income.</p>
       </div>
+    </div>
+  )
+}
+
+// The code, large enough to read off a phone and type into the Academy, with
+// a copy button.
+function AcademyCode({ code }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 1800) } catch { setCopied(false) }
+  }
+  return (
+    <div className="academy-code">
+      <span className="tiny muted">Your academy code</span>
+      <strong>{code}</strong>
+      <button type="button" className="btn sm" onClick={copy}>{copied ? 'Copied' : 'Copy code'}</button>
     </div>
   )
 }

@@ -36,12 +36,12 @@ test('new-arrival design rejects old listings rather than claiming they are new'
   assert.throws(() => studioExportPlan('arrival', [old]), /last 21 days/)
   assert.doesNotThrow(() => studioExportPlan('arrival', [recent]))
 })
-test('the studio offers only the two approved designs', () => {
+test('the studio offers four approved photograph-led designs', () => {
   // The owner approved Full-bleed hero and Several angles. The earlier
   // studio-only layouts put the photograph in a small floating square on a
   // heavy coloured field; they were removed rather than kept as options.
-  for (const kept of ['hero', 'gallery', 'sheet']) assert.ok(STUDIO_TOOLS[kept], `${kept} should be offered`)
-  for (const retired of ['offer', 'price', 'dark', 'editorial', 'detail']) {
+  for (const kept of ['hero', 'gallery', 'catalogue', 'split']) assert.ok(STUDIO_TOOLS[kept], `${kept} should be offered`)
+  for (const retired of ['sheet', 'offer', 'price', 'dark', 'editorial', 'detail']) {
     assert.ok(!STUDIO_TOOLS[retired], `${retired} should no longer be offered`)
     assert.throws(() => studioExportPlan(retired, [recent]), /Unknown/)
   }
@@ -49,7 +49,8 @@ test('the studio offers only the two approved designs', () => {
 test('a photograph-led design refuses a product with no photograph', () => {
   assert.throws(() => studioExportPlan('hero', [old]), /photograph/)
   assert.throws(() => studioExportPlan('gallery', [old]), /photograph/)
-  assert.throws(() => studioExportPlan('sheet', [old]), /photograph/)
+  assert.throws(() => studioExportPlan('catalogue', [old]), /photograph/)
+  assert.throws(() => studioExportPlan('split', [old]), /photograph/)
 })
 test('unknown template and empty selection give actionable errors', () => {
   assert.throws(() => studioExportPlan('nope', [recent]), /Unknown/)

@@ -186,5 +186,7 @@ test('the one deploy file numbers its sections in order and carries the new ones
   for (const f of ['20261111_winners_recovery_proposals_REVIEW.sql', '20261111_delivery_fund_REVIEW.sql']) {
     assert.ok(all.includes(read(`supabase/migrations/${f}`)), `${f} differs from its copy in the deploy file`)
   }
-  assert.ok(all.endsWith(read('supabase/migrations/20261111_delivery_fund_REVIEW.sql')))
+  // Newer migrations may be appended after the delivery fund; the earlier
+  // sections must remain intact and in order, but need not be the last one.
+  assert.ok(all.includes(read('supabase/migrations/20261111_delivery_fund_REVIEW.sql')))
 })

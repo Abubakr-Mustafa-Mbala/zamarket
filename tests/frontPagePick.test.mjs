@@ -60,7 +60,7 @@ test('the homepage puts the pick above everything else', () => {
   assert.match(page, /const picked = pickedForFront\(products\)/)
   assert.match(page, /aria-label="Picked for the front page"/)
   // and holds it out of the automatic rows below
-  assert.match(page, /departmentShelves\(products, \{ excludeIds: pickedIds \}\)/)
+  assert.match(page, /departmentShelves\(products, \{ excludeIds: pickedIds, perShelf: hasPicks \? 6 : 12 \}\)/)
   assert.match(page, /frontPageOrder\(products\.filter\(\(p\) => !pickedIds\.has\(p\.id\)\)\)/)
 })
 

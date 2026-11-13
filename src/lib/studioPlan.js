@@ -12,7 +12,8 @@ export const STUDIO_TOOLS = {
   // were dropped rather than kept as alternatives.
   hero: { name: 'Full-bleed hero', description: 'The photograph fills the poster', multi: false },
   gallery: { name: 'Several angles', description: 'A main photograph with smaller supporting shots', multi: false },
-  sheet: { name: 'Emporium sheet', description: 'Light ground, product shown whole, benefits beside it', multi: false },
+  catalogue: { name: 'Clean Catalogue', description: 'Real product photograph, calm layout, clear price', multi: false },
+  split: { name: 'Editorial Split', description: 'Photograph alongside concise verified details', multi: false },
 }
 
 export function isRecentProduct(product, now = Date.now()) {
@@ -38,7 +39,7 @@ export function studioExportPlan(tool, products, sheet = 'post', now = Date.now(
   // Both offered designs are photograph-led, so a product without one cannot
   // produce an advert worth sharing. Saying so here is kinder than rendering
   // a poster with a placeholder where the product should be.
-  if ((tool === 'hero' || tool === 'gallery' || tool === 'sheet') && !first.images?.[0]) {
+  if ((['hero', 'gallery', 'catalogue', 'split'].includes(tool)) && !first.images?.[0]) {
     throw new Error('Choose a product with a photograph')
   }
   if (tool === 'gallery' && (first.images || []).length < 2) {

@@ -142,10 +142,12 @@ test('seller can edit optional store delivery wording without changing checkout'
 test('the site header folds while scrolling a store on a phone, and only there', () => {
   const sf = read('src/components/storefront/VendorStorefront.jsx')
   assert.match(sf, /document\.body\.classList\.add\('zsv-compact'\)/)
-  assert.match(sf, /return \(\) => \{ window\.removeEventListener\('scroll', onScroll\); document\.body\.classList\.remove\('zsv-compact'\) \}/)
+  // Undone on leaving, and it slides the header rather than removing rows,
+  // because removing rows moved the page and made the header flicker.
+  assert.match(sf, /document\.body\.classList\.remove\('zsv-compact'\)\n      document\.body\.style\.removeProperty\('--zsv-fold'\)/)
+  assert.match(read('src/components/storefront/VendorStorefront.css'), /body\.zsv-compact \.shop-header \{ transform: translateY\(calc\(-1 \* var\(--zsv-fold, 0px\)\)\); \}/)
   const css = read('src/components/storefront/VendorStorefront.css')
   const mobile = css.slice(css.indexOf('@media (max-width: 600px)'))
-  assert.match(mobile, /body\.zsv-compact \.shop-header \.dept-strip/)
   // The search box and the cart stay.
   assert.doesNotMatch(mobile, /body\.zsv-compact \.shop-header \.(shop-search|header-cart)[^{]*\{[^}]*display: none/)
 })
@@ -188,4 +190,36 @@ test('the cover photo is the banner, and categories are a slim row', () => {
   assert.match(v46, /height: 54px/)
   const phone = v46.slice(v46.indexOf('@media (max-width: 600px)'))
   assert.match(phone, /\.zsv-category-grid \{ flex-wrap: nowrap; overflow-x: auto/)
+})
+
+// ---------------------------------------------------------------- update 44
+test('affiliates see their Al-Halaqa code; only staff can set it', () => {
+  const sql = read('supabase/migrations/20261112_academy_code_REVIEW.sql')
+  assert.match(sql, /add column if not exists academy_code text/)
+  assert.match(sql, /if not is_staff\(\) then/)
+  assert.match(sql, /new\.academy_code := null/)
+  const page = read('src/pages/reseller/Training.jsx')
+  assert.match(page, /profile\?\.partner\?\.academy_code/)
+  assert.match(page, /Your academy code/)
+  assert.match(read('src/pages/admin/Partners.jsx'), /update\(\{ academy_code: code \|\| null \}\)/)
+})
+
+test('a damaged saved cart cannot show NaN', () => {
+  const cart = read('src/lib/cart.jsx')
+  assert.match(cart, /qty: Math\.max\(1, Math\.round\(Number\(i\.qty\)\) \|\| 1\)/)
+})
+
+test('product grids are two across on a phone', () => {
+  assert.match(read('src/refinements.css'), /@media \(max-width: 560px\) \{\n  \.grid-products \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
+})
+
+test('the two newer poster designs give the photo the space the words leave', () => {
+  const pp = read('src/lib/productPoster.js')
+  const cat = pp.slice(pp.indexOf('function drawCatalogue('), pp.indexOf('function drawSplit('))
+  assert.match(cat, /photoPanel\(ctx, dir, hero, pad, photoY, w - pad \* 2, priceY - gap - photoY\)/)
+  const split = pp.slice(pp.indexOf('function drawSplit('), pp.indexOf('// --- the emporium sheet'))
+  // The price never sits under the QR card on a square or wide poster.
+  assert.match(split, /const copyBottom = Math\.min\(bottom, qrTopOf\(dir, w, bodyH, footerH\)\)/)
+  // Photos are contained, never cropped.
+  assert.match(pp, /function photoPanel[\s\S]*?Math\.min\(\(width - inset \* 2\) \/ hero\.width, \(height - inset \* 2\) \/ hero\.height\)/)
 })

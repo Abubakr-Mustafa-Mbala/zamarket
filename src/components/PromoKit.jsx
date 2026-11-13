@@ -4,6 +4,7 @@ import { money } from '../lib/format'
 import { commissionLabel } from '../lib/economics'
 import { buildKit, CHANNELS } from '../lib/promoKit'
 import { sharePicture } from '../lib/shareCard'
+import ProductPhotoPicker from './ProductPhotoPicker'
 import { renderProductPoster, PRODUCT_FORMATS, PRODUCT_DESIGNS, recommendedDesign, shotsOf, sellingPoints } from '../lib/productPoster'
 import { approvedFacts, buildHooks, FAMILIES } from '../lib/hooks'
 import { checkCreative } from '../lib/creativeCheck'
@@ -19,6 +20,7 @@ export default function PromoKit({ product, offer, code, settings, vehicleReward
   const [format, setFormat] = useState('portrait')
   const [hookIndex, setHookIndex] = useState(0)
   const [look, setLook] = useState(0)
+  const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [edited, setEdited] = useState(null)
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
@@ -55,7 +57,7 @@ export default function PromoKit({ product, offer, code, settings, vehicleReward
   useEffect(() => {
     let dead = false
     setBusy(true)
-    renderProductPoster({ product, store, settings, link, format, design: composition?.key })
+    renderProductPoster({ product, store, settings, link, format, design: composition?.key, selectedPhoto })
       .then((b) => {
         if (dead || !b) return
         setBlob(b)
@@ -68,7 +70,7 @@ export default function PromoKit({ product, offer, code, settings, vehicleReward
       .catch(() => toast('Could not make the picture', true))
       .finally(() => !dead && setBusy(false))
     return () => { dead = true }
-  }, [product, store, settings, link, format, composition?.key])
+  }, [product, store, settings, link, format, composition?.key, selectedPhoto])
 
   const check = useMemo(() => checkCreative({ product, offer, hook: hook?.text, caption: text, link, settings }),
     [product, offer, hook?.text, text, link, settings])
@@ -154,6 +156,7 @@ export default function PromoKit({ product, offer, code, settings, vehicleReward
             <p className="tiny muted">{isVehicle ? 'Vehicle payout is an estimate at the advertised price. It depends on the final sale price, the agreed seller success fee being received by ZaMarket, and verification of your referral.' : 'Paid after the order is delivered and checked. Prices and offers come from the marketplace — if they change, your link always shows the current price.'}</p>
           </div>
 
+          <ProductPhotoPicker images={product?.images} selected={selectedPhoto} onSelect={setSelectedPhoto} />
           <Segmented options={Object.values(PRODUCT_FORMATS).map((f) => [f.key, f.label])} value={format} onChange={setFormat} />
           <div className="chips wrap">
             {looks.map((c, i) => (

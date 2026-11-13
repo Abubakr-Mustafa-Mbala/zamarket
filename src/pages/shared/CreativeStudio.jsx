@@ -9,6 +9,7 @@ import { renderPremiumStudio } from '../../lib/premiumStudio'
 import { STUDIO_PALETTES, DEFAULT_STUDIO_PALETTE, studioPalette, premiumPagesFor } from '../../lib/studioThemes'
 import { renderArrival } from '../../lib/promoArt'
 import { renderProductPoster, PRODUCT_DESIGNS } from '../../lib/productPoster'
+import ProductPhotoPicker from '../../components/ProductPhotoPicker'
 import { approvedFacts, buildHooks } from '../../lib/hooks'
 import { sharePicture } from '../../lib/shareCard'
 import Icon from '../../lib/icons'
@@ -61,7 +62,7 @@ function Gallery({ products, vendor, onPick }) {
             out.arrival = previewUrl(await renderArrival({ product: arrivalItem, settings: {}, link: `${window.location.origin}/p/${arrivalItem.slug}`, resolution: 1 }))
           } catch { /* ignore */ }
         }
-        for (const design of ['sheet', 'hero', 'gallery']) {
+        for (const design of ['hero', 'gallery', 'catalogue', 'split']) {
           try {
             out[design] = previewUrl(await renderProductPoster({
               product: hero, store: vendor || null, settings: {},
@@ -82,7 +83,10 @@ function Gallery({ products, vendor, onPick }) {
     { key: 'collection', title: 'Collection', note: 'Several products in one picture', action: 'Make a collection' },
     { key: 'spotlight', title: 'Business spotlight', note: 'Your shop, not one item', action: 'Make a spotlight' },
     { key: 'arrival', title: 'New arrival', note: 'For a recently added product', action: 'Announce it' },
-    { key: 'hero', title: 'Product advert', note: 'One product, made to stop the scroll', action: 'Make an advert' },
+    { key: 'hero', title: 'Full-bleed Hero', note: 'A product photo fills the poster', action: 'Make a poster' },
+    { key: 'gallery', title: 'Several Angles', note: 'Multiple authentic product photographs', action: 'Make a poster' },
+    { key: 'catalogue', title: 'Clean Catalogue', note: 'Clean product photography, honest price', action: 'Make a poster' },
+    { key: 'split', title: 'Editorial Split', note: 'Clear product details beside the photo', action: 'Make a poster' },
     { key: 'editorial', title: 'Editorial', note: 'For the things worth looking at twice', action: 'Make an advert' },
     { key: 'offer', title: 'Offer card', note: 'When there is a real saving to shout about', action: 'Make an advert' },
     { key: 'price', title: 'Price first', note: 'When the price is the reason to buy', action: 'Make an advert' },
@@ -122,6 +126,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
   const [palette, setPalette] = useState(DEFAULT_STUDIO_PALETTE)
   const [colorOverrides, setColorOverrides] = useState({})
   const [sheet, setSheet] = useState('post')
+  const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [title, setTitle] = useState('Price list')
   const [note, setNote] = useState('')
   const [search, setSearch] = useState('')
@@ -178,7 +183,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
     setBlob(null)
     setImg(null)
     setBusy(false)
-  }, [data, vendor, tool, palette, colorOverrides, sheet, title, note, chosen])
+  }, [data, vendor, tool, palette, colorOverrides, sheet, title, note, chosen, selectedPhoto])
 
   if (error) return <Problem error={error} what="your products" onRetry={reload} />
   if (loading) return <Loading shape="rows" />
@@ -227,7 +232,7 @@ export default function CreativeStudio({ vendorId, vendor }) {
         const design = PRODUCT_DESIGNS[tool] ? tool : 'hero'
         blobs = [await renderProductPoster({
           product, store: activeVendor || null, settings: settings || {},
-          link: productLink, format: plan.format, design,
+          link: productLink, format: plan.format, design, selectedPhoto,
         })]
       }
       if (currentGeneration !== generationId.current) return
@@ -330,6 +335,9 @@ export default function CreativeStudio({ vendorId, vendor }) {
               )
             })}
           </div>
+          {['hero', 'gallery', 'catalogue', 'split'].includes(tool) && picked.length > 0 && (
+            <ProductPhotoPicker key={picked[0]?.id} images={picked[0]?.images} selected={selectedPhoto} onSelect={setSelectedPhoto} />
+          )}
           {isCatalogue && premiumPagesFor(picked, sheet).length > 1 && (
             <p className="tiny muted">{picked.length} products will be laid out as <strong>{premiumPagesFor(picked, sheet).length} pages</strong>, with comfortable spacing. Squeezing them onto one sheet would make it unreadable.</p>
           )}

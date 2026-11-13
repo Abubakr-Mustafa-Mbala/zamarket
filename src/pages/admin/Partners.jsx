@@ -294,6 +294,14 @@ export function Resellers() {
     if (error) return toast(error.message, true)
     toast(`Reseller ${status}`); setOpen(null); reload()
   }
+  // The code Al-Halaqa asks for. Created in Al-Halaqa first, then saved here
+  // so the affiliate sees it on their Academy page.
+  const saveAcademyCode = async (r) => {
+    const code = String(r.academy_code || '').trim()
+    const { error } = await supabase.from('resellers').update({ academy_code: code || null }).eq('id', r.id)
+    if (error) return toast(error.message, true)
+    toast(code ? 'Academy code saved. The affiliate now sees it on their Academy page.' : 'Academy code removed'); reload()
+  }
   const saveTarget = async (r) => {
     const { error } = await supabase.from('resellers').update({ monthly_target: n(r.monthly_target) }).eq('id', r.id)
     if (error) return toast(error.message, true)
@@ -311,7 +319,7 @@ export function Resellers() {
       <Tabs tabs={[['approved', 'Active'], ['pending', `Applications${pending ? ` (${pending})` : ''}`], ['other', 'Inactive']]} value={tab} onChange={setTab} />
       {loading ? <Loading /> : (
         <Table rows={rows} onRow={setOpen} empty={tab === 'pending' ? 'No applications waiting' : 'No resellers here'} cols={[
-          { key: 'full_name', label: 'Reseller', render: (r) => <div><div className="strong">{r.full_name}</div><div className="tiny muted">{r.code ? `Code ${r.code}` : r.location}</div></div> },
+          { key: 'full_name', label: 'Reseller', render: (r) => <div><div className="strong">{r.full_name}</div><div className="tiny muted">{r.code ? `Code ${r.code}` : r.location}{r.status === 'approved' && !r.academy_code ? ' · no academy code yet' : ''}</div></div> },
           { key: 'status', label: 'Status', render: (r) => <span className="row"><Badge status={r.status} />{r.flagged > 0 && <span className="badge bad">{r.flagged} flagged</span>}</span> },
           { key: 'sales', label: 'Sales', num: true },
           { key: 'revenue', label: 'Revenue', num: true, render: (r) => money(r.revenue) },
@@ -326,6 +334,14 @@ export function Resellers() {
             <Breakdown items={[['Phone', open.phone], ['Email', open.email || '—'], ['Location', open.location || '—'], ['Wants to sell', open.categories || '—'], ['Agreed to terms', open.agreed_terms ? 'Yes' : 'No'], ['Applied', date(open.created_at)]]} />
             {open.experience && <div className="small"><span className="strong">Experience:</span> {open.experience}</div>}
             {open.code && <div><div className="tiny muted mb">Referral link</div><CopyLine text={`${window.location.origin}/r/${open.code}`} /></div>}
+            {open.status === 'approved' && (
+              <div className="card flat stack-sm">
+                <Field label="Academy code (from Al-Halaqa)" hint="Create their account in Al-Halaqa first, then paste the code here. Only this affiliate and staff can see it.">
+                  <Input value={open.academy_code || ''} onChange={(v) => setOpen({ ...open, academy_code: v })} placeholder="e.g. ZM-4821" maxLength={60} />
+                </Field>
+                <div><button className="btn primary sm" onClick={() => saveAcademyCode(open)}>Save academy code</button></div>
+              </div>
+            )}
             {open.status === 'approved' && (
               <div className="card flat row">
                 <Field label="Monthly sales target (K)"><Input money value={open.monthly_target} onChange={(v) => setOpen({ ...open, monthly_target: v })} /></Field>

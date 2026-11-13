@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Modal, useToast } from './ui'
 import { sharePicture } from '../lib/shareCard'
+import ProductPhotoPicker from './ProductPhotoPicker'
 import { tagLink } from '../lib/channel'
 import {
   renderProductPoster, productCaption, recommendedDesign,
@@ -39,6 +40,7 @@ export default function ShareProduct({
   const [design, setDesign] = useState(null)
   const [format, setFormat] = useState('portrait')
   const [postTo, setPostTo] = useState('status')
+  const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -47,7 +49,7 @@ export default function ShareProduct({
   const recommended = recommendedDesign(product, store)
   const chosen = PRODUCT_DESIGNS[design || recommended] ? (design || recommended) : 'hero'
 
-  const shots = shotsOf(product, 4)
+  const shots = shotsOf(product, 40)
   const points = sellingPoints(product, 4)
   const saving = savingOf(product)
   // Everything the viewer receives — the QR on the poster, the link in the
@@ -64,7 +66,7 @@ export default function ShareProduct({
     if (!open) return
     let alive = true
     setBusy(true)
-    renderProductPoster({ ...inputs.current, design: chosen, format })
+    renderProductPoster({ ...inputs.current, design: chosen, format, selectedPhoto })
       .then((b) => {
         if (!alive) return
         if (url.current) URL.revokeObjectURL(url.current)
@@ -74,7 +76,7 @@ export default function ShareProduct({
       .catch(() => { if (alive) toast('Could not make the poster', true) })
       .finally(() => { if (alive) setBusy(false) })
     return () => { alive = false }
-  }, [open, chosen, format, postTo, toast])
+  }, [open, chosen, format, postTo, selectedPhoto, product?.id, toast])
 
   useEffect(() => () => { if (url.current) URL.revokeObjectURL(url.current) }, [])
 
@@ -140,6 +142,8 @@ export default function ShareProduct({
                 ? <div className="ss-wait"><span /><p className="small muted">Designing the poster…</p></div>
                 : <img src={img} alt={`Poster for ${product?.name || 'this product'}`} />}
             </div>
+
+            <ProductPhotoPicker images={product?.images} selected={selectedPhoto} onSelect={setSelectedPhoto} />
 
             <div className="ss-row">
               <span className="ss-label">Design</span>

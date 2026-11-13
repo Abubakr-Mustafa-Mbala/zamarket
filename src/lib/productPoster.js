@@ -44,9 +44,13 @@ export const PRODUCT_DESIGNS = {
     key: 'gallery', label: 'Several angles',
     note: 'One main product photo and smaller supporting photos, only when at least two exist.',
   },
-  sheet: {
-    key: 'sheet', label: 'Emporium sheet',
-    note: 'Light ground, the product shown whole, benefits beside it, the seller’s mark at the top.',
+  catalogue: {
+    key: 'catalogue', label: 'Clean Catalogue',
+    note: 'Clean, spacious product photography and clear factual price.',
+  },
+  split: {
+    key: 'split', label: 'Editorial Split',
+    note: 'Product photo beside concise, seller-verified information.',
   },
 }
 
@@ -180,7 +184,7 @@ export function recommendedDesign(product, store) {
 
 export async function renderProductPoster({
   product, store = null, settings = {}, link,
-  design = 'hero', format = 'portrait',
+  design = 'hero', format = 'portrait', selectedPhoto = null,
 }) {
   const fmt = PRODUCT_FORMATS[format] || PRODUCT_FORMATS.portrait
   const dir = directionForProduct(product, store)
@@ -199,7 +203,11 @@ export async function renderProductPoster({
   // 64 characters is what fits a poster line at this size. Anything longer
   // is skipped rather than cut; the caption carries the full text.
   const points = sellingPoints(product, wide ? 3 : 4, 64)
-  const picks = shotsOf(product, wide ? 3 : 4)
+  // An affiliate can choose any uploaded image as the lead, without
+  // changing the seller's gallery order or losing other angles.
+  const allPicks = shotsOf(product, 40)
+  const lead = allPicks.includes(selectedPhoto) ? selectedPhoto : allPicks[0]
+  const picks = [lead, ...allPicks.filter((photo) => photo !== lead)].filter(Boolean).slice(0, wide ? 3 : 4)
   const shopName = store?.business_name || ''
   const place = String(store?.town || store?.location || '').split(',')[0].trim()
 
@@ -243,6 +251,8 @@ export async function renderProductPoster({
     editorial: drawEditorial,
     detail: drawDetail,
     gallery: drawGallery,
+    catalogue: drawCatalogue,
+    split: drawSplit,
     statement: drawStatement,
   }[chosen] || drawHero
 
@@ -759,6 +769,134 @@ function drawDetail({ ctx, w, h, pad, dir, name, price, saving, points, hero,
   buyFooter(ctx, footerDirection, 0, body, w, footerH, qr, link)
 }
 
+
+// --- Approved clean promotional layouts ----------------------------------
+// Modern editorial layouts, not the retired Emporium sheet. No invented
+// claims, no fake discounts, no artificial inventory or delivery promises.
+// Responsive at portrait, square and story export sizes.
+// Height a block of text will take, worked out on a scratch canvas so the
+// photograph can be given every pixel the words do not need.
+function measureWith(w, h, draw) {
+  const scratch = document.createElement('canvas')
+  scratch.width = Math.max(1, w); scratch.height = Math.max(1, h)
+  return draw(scratch.getContext('2d')) || 0
+}
+
+// Where the QR card's top edge lands, using the same sums as buyFooter. On a
+// short poster the card rides up out of the footer, and nothing may sit
+// under it.
+function qrTopOf(dir, w, bodyH, footerH) {
+  const q = Math.max(Math.round(footerH * 0.66), qrMinSize(w))
+  const bleed = Math.round(q * 0.07) + 4
+  const qy = Math.min(bodyH + footerH / 2 - q / 2, bodyH + footerH - q - bleed)
+  return qy - dir._s * 14
+}
+
+// Draws the product photo whole, as large as fits, on a white panel.
+function photoPanel(ctx, dir, hero, x, y, width, height) {
+  if (height <= 0 || width <= 0) return
+  ctx.save()
+  ctx.fillStyle = '#FFFFFF'
+  rounded(ctx, x, y, width, height, dir._s * 22); ctx.fill()
+  if (hero) {
+    ctx.beginPath(); rounded(ctx, x, y, width, height, dir._s * 22); ctx.clip()
+    // Contain, never crop: the whole product, including what is on its box.
+    const inset = dir._s * 18
+    const scale = Math.min((width - inset * 2) / hero.width, (height - inset * 2) / hero.height)
+    const dw = hero.width * scale, dh = hero.height * scale
+    ctx.drawImage(hero, x + (width - dw) / 2, y + (height - dh) / 2, dw, dh)
+  }
+  ctx.restore()
+}
+
+// Clean Catalogue: shop name, product name, then the photograph as large as
+// the page allows, then the price and one fact. No empty band anywhere: the
+// photo takes whatever the words leave.
+function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, link, shopName, fulfilment, wide }) {
+  const footerH = Math.round(h * (wide ? .19 : .13))
+  const bodyH = h - footerH
+  const s = dir._s
+  const ink = { ...dir, ink: '#25202E' }
+  const priceDir = { ...dir, accent: '#43216B', ink2: '#7D7485' }
+  ctx.fillStyle = '#FBF9F4'; ctx.fillRect(0, 0, w, bodyH)
+
+  const top = pad * .7
+  const eyeH = eyebrow(ctx, { ...dir, accent: '#7050A8' }, pad, top, shopName || 'AVAILABLE ON ZAMARKET')
+  // A story is tall and read on a phone held upright: the name is set larger.
+  const tall = h / w > 1.6 ? 1.3 : 1
+  const nameSize = Math.round(s * (wide ? 42 : 55) * tall)
+  const nameY = top + eyeH + s * 10
+  const nameH = nameBlock(ctx, ink, pad, nameY, w - pad * 2, name, nameSize, wide ? 2 : 3)
+
+  const { h: priceH } = priceHeight(ctx, priceDir, saving, price, w - pad * 2)
+  const facts = [fulfilment].filter(Boolean)
+  const factsH = facts.length ? measureWith(w, 200, (m) => factRow(m, { ...dir, ink: '#38313E', accentSoft: '#EEE7F3' }, pad, 0, w - pad * 2, facts)) : 0
+  const gap = s * 24
+  const bottom = bodyH - pad * .7
+  const priceY = bottom - factsH - (factsH ? s * 14 : 0) - priceH
+  const photoY = nameY + nameH + gap
+  photoPanel(ctx, dir, hero, pad, photoY, w - pad * 2, priceY - gap - photoY)
+  priceBlock(ctx, priceDir, pad, priceY, saving, price, w - pad * 2)
+  if (factsH) factRow(ctx, { ...dir, ink: '#38313E', accentSoft: '#EEE7F3' }, pad, bottom - factsH, w - pad * 2, facts)
+  buyFooter(ctx, dir, 0, bodyH, w, footerH, qr, link)
+}
+
+// Editorial Split: on a tall poster the name, the photograph, up to two of the
+// seller's own selling points and the price, with the photograph taking the
+// space left over. On a wide or square poster, photo on the left and the words
+// on the right, both running the full height.
+function drawSplit({ ctx, w, h, pad, dir, name, price, saving, hero, points, qr, link, shopName, fulfilment, wide }) {
+  const footerH = Math.round(h * (wide ? .2 : .13))
+  const bodyH = h - footerH
+  const s = dir._s
+  const ink = { ...dir, ink: '#28202E' }
+  const priceDir = { ...dir, accent: '#532280' }
+  const pointDir = { ...dir, ink2: '#393044' }
+  ctx.fillStyle = '#F6F2EA'; ctx.fillRect(0, 0, w, bodyH)
+  const isWide = wide || w / h >= .9
+  const top = pad * .8
+  const eyeH = eyebrow(ctx, { ...dir, accent: '#6944A8' }, pad, top, shopName || 'ZAMARKET')
+  const bottom = bodyH - pad * .7
+
+  if (isWide) {
+    const imgX = pad, imgY = top + eyeH + s * 14
+    const imgW = Math.round(w * .48)
+    photoPanel(ctx, dir, hero, imgX, imgY, imgW, bottom - imgY)
+    const copyX = imgX + imgW + s * 28
+    const copyW = w - pad - copyX
+    const nameH = nameBlock(ctx, ink, copyX, imgY, copyW, name, Math.round(s * 40), 3)
+    const { h: priceH } = priceHeight(ctx, priceDir, saving, price, copyW)
+    // The right-hand column sits above the QR card, which can rise out of
+    // the footer on a square poster.
+    const copyBottom = Math.min(bottom, qrTopOf(dir, w, bodyH, footerH))
+    const room = copyBottom - priceH - s * 20 - (imgY + nameH + s * 22)
+    const list = (points || []).slice(0, 2)
+    if (list.length && room > s * 60) pointList(ctx, pointDir, copyX, imgY + nameH + s * 22, copyW, list, s * 16)
+    priceBlock(ctx, priceDir, copyX, copyBottom - priceH, saving, price, copyW)
+  } else {
+    const nameY = top + eyeH + s * 10
+    const tall = h / w > 1.6 ? 1.3 : 1
+    const nameH = nameBlock(ctx, ink, pad, nameY, w - pad * 2, name, Math.round(s * 51 * tall), 2)
+    const list = (points || []).slice(0, 2)
+    const pointsH = list.length ? measureWith(w, 600, (m) => pointList(m, pointDir, pad, 0, w - pad * 2, list, s * 12)) : 0
+    const { h: priceH } = priceHeight(ctx, priceDir, saving, price, w - pad * 2)
+    const fulH = fulfilment ? s * 30 : 0
+    const gap = s * 22
+    const priceY = bottom - fulH - priceH
+    const pointsY = priceY - gap - pointsH
+    const photoY = nameY + nameH + gap
+    photoPanel(ctx, dir, hero, pad, photoY, w - pad * 2, (pointsH ? pointsY : priceY) - gap - photoY)
+    if (pointsH) pointList(ctx, pointDir, pad, pointsY, w - pad * 2, list, s * 12)
+    priceBlock(ctx, priceDir, pad, priceY, saving, price, w - pad * 2)
+  }
+  // "In stock" and the like, on tall posters only: on a wide one the
+  // corner it would use belongs to the QR card.
+  if (fulfilment && !isWide) {
+    ctx.font = `600 ${Math.round(s * 17)}px ${dir.body}`; ctx.fillStyle = '#67586C'
+    ctx.fillText(fulfilment, pad, bottom)
+  }
+  buyFooter(ctx, dir, 0, bodyH, w, footerH, qr, link)
+}
 
 // --- the emporium sheet --------------------------------------------------
 // Drawn after the reference adverts Abubakr approved: a light ground, the

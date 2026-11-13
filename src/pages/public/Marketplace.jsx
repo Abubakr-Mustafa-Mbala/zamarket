@@ -281,7 +281,7 @@ function FounderHero() {
     return () => clearInterval(t)
   }, [slots, i])
   if (slots === null) return null
-  if (!slots.length) return <VendorHero />
+  if (!slots.length) return null
   const f = slots[i % slots.length]
   const v = f.vendor || {}
   return (
@@ -708,11 +708,15 @@ export function Storefront() {
   // held out of everything below so nothing appears twice.
   const picked = pickedForFront(products)
   const pickedIds = new Set(picked.map((p) => p.id))
-  const shelves = departmentShelves(products, { excludeIds: pickedIds })
-  const useShelves = shelves.length >= 2
+  // When you have picked products for the front page, they lead and
+  // everything else waits below, grouped by department in short shelves, so
+  // no single shop (a bakery, say) fills the first screens unasked.
+  const hasPicks = picked.length > 0
+  const shelves = departmentShelves(products, { excludeIds: pickedIds, perShelf: hasPicks ? 6 : 12 })
+  const useShelves = shelves.length >= 2 || (hasPicks && shelves.length >= 1)
   const frontRow = useShelves ? [] : frontPageOrder(products.filter((p) => !pickedIds.has(p.id))).slice(0, 8)
   const shownIds = [...pickedIds, ...(useShelves ? shelves.flatMap((s) => s.items.map((p) => p.id)) : frontRow.map((p) => p.id))]
-  const fresh = justAdded(products, 8).filter((p) => !frontRow.some((f) => f.id === p.id))
+  const fresh = justAdded(products, 8).filter((p) => !pickedIds.has(p.id) && !frontRow.some((f) => f.id === p.id))
   const deals = products.filter((p) => dealFor(offersBy, p.id) || (p.normal_price && Number(p.normal_price) > Number(p.price)))
   const scheduled = products.filter((p) => p.fulfilment !== 'in_stock')
   const rated = products.filter((p) => p.rating).sort((a, b) => b.rating - a.rating || b.review_count - a.review_count)
@@ -722,7 +726,6 @@ export function Storefront() {
   const vehicles = products.filter((p) => p.offering_type === 'vehicle')
   const events = products.filter((p) => p.offering_type === 'event')
   const goods = products.filter((p) => !['course', 'class', 'vehicle', 'event'].includes(p.offering_type) && p.fulfilment !== 'service')
-  const featured = deals.length ? deals : products
   const card = (p) => <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} />
 
   return (
@@ -1127,6 +1130,12 @@ export function ProductPage() {
   const [notify, setNotify] = useState(false)
   const [choices, setChoices] = useState({})
   const [note, setNote] = useState('')
+
+  // Product navigation always begins at the product photograph, not the Q&A
+  // position carried over from the previous page on mobile browsers.
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+  }, [id, storeParam])
 
   useEffect(() => {
     setP(null); setImg(0); setQty(1); setChoices({}); setNote('')

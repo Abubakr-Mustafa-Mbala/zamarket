@@ -229,19 +229,38 @@ export default function VendorStorefront({
 // scroll up. Store pages only; it is undone when they leave.
 function useCompactHeader() {
   useEffect(() => {
+    // How far the header slides: just its top row (logo, account, cart), so
+    // the search box stays in view. Measured, because the header differs by
+    // screen width and sign-in state.
+    const measure = () => {
+      const header = document.querySelector('.shop-header')
+      const search = header && header.querySelector('.shop-search')
+      const fold = header && search ? Math.max(0, Math.round(search.getBoundingClientRect().top - header.getBoundingClientRect().top - 6)) : 0
+      document.body.style.setProperty('--zsv-fold', `${fold}px`)
+    }
+    measure()
     let last = window.scrollY
     let ticking = false
     const update = () => {
       ticking = false
       const y = window.scrollY
-      if (y < 140) document.body.classList.remove('zsv-compact')
-      else if (y > last + 6) document.body.classList.add('zsv-compact')
-      else if (y < last - 6) document.body.classList.remove('zsv-compact')
-      last = y
+      const folded = document.body.classList.contains('zsv-compact')
+      // Fold after a real scroll down, unfold after a real scroll up. Small
+      // movements are ignored so the header never twitches.
+      if (y < 120) { if (folded) document.body.classList.remove('zsv-compact') }
+      else if (!folded && y > last + 12) document.body.classList.add('zsv-compact')
+      else if (folded && y < last - 24) document.body.classList.remove('zsv-compact')
+      if (Math.abs(y - last) > 12 || y < 120) last = y
     }
     const onScroll = () => { if (!ticking) { ticking = true; window.requestAnimationFrame(update) } }
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => { window.removeEventListener('scroll', onScroll); document.body.classList.remove('zsv-compact') }
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', measure)
+      document.body.classList.remove('zsv-compact')
+      document.body.style.removeProperty('--zsv-fold')
+    }
   }, [])
 }
 

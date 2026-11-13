@@ -227,12 +227,13 @@ body:has(.zsv) .cat-rail { display: none; }
   .zsv .oc-action-btn { min-height: 42px; font-size: .8rem; border-radius: 10px; }
   .zsv-footer { flex-direction: column; align-items: stretch; text-align: center; padding: 16px; }
 
-  /* Folded site header while scrolling down a store (see useCompactHeader). */
-  body.zsv-compact .shop-header .dept-strip,
-  body.zsv-compact .shop-header .wordmark,
-  body.zsv-compact .shop-header .header-link { display: none; }
-  body.zsv-compact .shop-header .shop-bar { flex-wrap: nowrap; padding-top: 8px; padding-bottom: 8px; }
-  body.zsv-compact .shop-header .shop-search { order: 0; flex: 1 1 auto; width: auto; min-width: 0; margin: 0; }
+  /* Folded site header while scrolling down a store (see useCompactHeader).
+     The header slides its top row out of sight instead of removing rows.
+     Removing rows changed the page height, which moved the scroll position,
+     which unfolded the header again: the flicker. Sliding changes nothing
+     underneath, so it cannot loop. */
+  body:has(.zsv) .shop-header { transition: transform .22s ease; will-change: transform; }
+  body.zsv-compact .shop-header { transform: translateY(calc(-1 * var(--zsv-fold, 0px))); }
 }
 
 /* The narrowest phones: keep both buttons on one line. */
