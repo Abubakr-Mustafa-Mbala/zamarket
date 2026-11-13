@@ -46,11 +46,11 @@ export const PRODUCT_DESIGNS = {
   },
   catalogue: {
     key: 'catalogue', label: 'Clean Catalogue',
-    note: 'Clean, spacious product photography and clear factual price.',
+    note: 'The photo fills the poster, with the name on top and the price at the bottom.',
   },
   split: {
     key: 'split', label: 'Editorial Split',
-    note: 'Product photo beside concise, seller-verified information.',
+    note: 'The photo fills the poster, with the name, selling points and price on a shadow beside it.',
   },
 }
 
@@ -782,131 +782,137 @@ function measureWith(w, h, draw) {
   return draw(scratch.getContext('2d')) || 0
 }
 
-// Where the QR card's top edge lands, using the same sums as buyFooter. On a
-// short poster the card rides up out of the footer, and nothing may sit
-// under it.
-function qrTopOf(dir, w, bodyH, footerH) {
-  const q = Math.max(Math.round(footerH * 0.66), qrMinSize(w))
-  const bleed = Math.round(q * 0.07) + 4
-  const qy = Math.min(bodyH + footerH / 2 - q / 2, bodyH + footerH - q - bleed)
-  return qy - dir._s * 14
-}
-
-// Draws the product photo whole, as large as fits, on a white panel.
-function photoPanel(ctx, dir, hero, x, y, width, height) {
-  if (height <= 0 || width <= 0) return
-  ctx.save()
-  ctx.fillStyle = '#FFFFFF'
-  rounded(ctx, x, y, width, height, dir._s * 22); ctx.fill()
-  if (hero) {
-    ctx.beginPath(); rounded(ctx, x, y, width, height, dir._s * 22); ctx.clip()
-    // Contain, never crop: the whole product, including what is on its box.
-    const inset = dir._s * 18
-    const scale = Math.min((width - inset * 2) / hero.width, (height - inset * 2) / hero.height)
-    const dw = hero.width * scale, dh = hero.height * scale
-    ctx.drawImage(hero, x + (width - dw) / 2, y + (height - dh) / 2, dw, dh)
-  }
-  ctx.restore()
-}
-
-// Clean Catalogue: shop name, product name, then the photograph as large as
-// the page allows, then the price and one fact. No empty band anywhere: the
-// photo takes whatever the words leave.
+// Clean Catalogue, full bleed: the photograph fills the whole poster. A soft
+// shadow at the top carries the shop and product name, a deeper one at the
+// bottom carries the price, and the product stays clear in the middle.
 function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, link, shopName, fulfilment, wide }) {
   const footerH = Math.round(h * (wide ? .19 : .13))
   const bodyH = h - footerH
   const s = dir._s
-  const ink = { ...dir, ink: '#25202E' }
-  const priceDir = { ...dir, accent: '#43216B', ink2: '#7D7485' }
-  ctx.fillStyle = '#FBF9F4'; ctx.fillRect(0, 0, w, bodyH)
+  const maxW = w - pad * 2
+  const over = { ...dir, ink: '#FFFFFF', ink2: 'rgba(255,255,255,0.80)', accent: '#FFFFFF' }
 
-  const top = pad * .7
-  const eyeH = eyebrow(ctx, { ...dir, accent: '#7050A8' }, pad, top, shopName || 'AVAILABLE ON ZAMARKET')
-  // A story is tall and read on a phone held upright: the name is set larger.
+  cover(ctx, hero, 0, 0, w, bodyH, 0.42)
+  vignette(ctx, w, bodyH, Math.min(0.35, dir.vignette || 0.3))
+
+  // Top: shop name and product name.
   const tall = h / w > 1.6 ? 1.3 : 1
-  const nameSize = Math.round(s * (wide ? 42 : 55) * tall)
-  const nameY = top + eyeH + s * 10
-  const nameH = nameBlock(ctx, ink, pad, nameY, w - pad * 2, name, nameSize, wide ? 2 : 3)
+  const nameSize = Math.round(s * (wide ? 42 : 54) * tall)
+  const top = pad * .8
+  const nameLines = wide ? 2 : 3
+  const headH = measureWith(w, bodyH, (m) => {
+    const e = eyebrow(m, over, pad, 0, shopName || 'AVAILABLE ON ZAMARKET')
+    return e + s * 10 + nameBlock(m, over, pad, 0, maxW, name, nameSize, nameLines)
+  })
+  shade(ctx, 0, 0, w, Math.min(bodyH * .55, top + headH + s * 140), 'down', [[0, .82], [.6, .55], [1, 0]])
+  const eyeH = eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, pad, top, shopName || 'AVAILABLE ON ZAMARKET')
+  nameBlock(ctx, over, pad, top + eyeH + s * 10, maxW, name, nameSize, nameLines)
 
-  const { h: priceH } = priceHeight(ctx, priceDir, saving, price, w - pad * 2)
+  // Bottom: price, and one fact such as "In stock".
   const facts = [fulfilment].filter(Boolean)
-  const factsH = facts.length ? measureWith(w, 200, (m) => factRow(m, { ...dir, ink: '#38313E', accentSoft: '#EEE7F3' }, pad, 0, w - pad * 2, facts)) : 0
-  const gap = s * 24
-  const bottom = bodyH - pad * .7
-  const priceY = bottom - factsH - (factsH ? s * 14 : 0) - priceH
-  const photoY = nameY + nameH + gap
-  photoPanel(ctx, dir, hero, pad, photoY, w - pad * 2, priceY - gap - photoY)
-  priceBlock(ctx, priceDir, pad, priceY, saving, price, w - pad * 2)
-  if (factsH) factRow(ctx, { ...dir, ink: '#38313E', accentSoft: '#EEE7F3' }, pad, bottom - factsH, w - pad * 2, facts)
+  const { h: priceH } = priceHeight(ctx, over, saving, price, maxW)
+  const factH = facts.length ? s * 44 : 0
+  const footH = priceH + (factH ? factH + s * 16 : 0)
+  shade(ctx, 0, bodyH - footH - pad - s * 170, w, footH + pad + s * 170, 'down', [[0, 0], [.4, .62], [1, .9]])
+  let y = bodyH - pad * .8 - footH
+  priceBlock(ctx, over, pad, y, saving, price, maxW)
+  y += priceH + s * 16
+  if (factH) glassChips(ctx, dir, pad, y, maxW, facts)
   buyFooter(ctx, dir, 0, bodyH, w, footerH, qr, link)
 }
 
-// Editorial Split: on a tall poster the name, the photograph, up to two of the
-// seller's own selling points and the price, with the photograph taking the
-// space left over. On a wide or square poster, photo on the left and the words
-// on the right, both running the full height.
+// Editorial Split, full bleed: the photograph fills the whole poster and a
+// shadow runs in from the left. The name, up to two of the seller's own
+// selling points and the price sit on that shadow, the product shows on the
+// right. On a tall poster the shadow rises from the bottom instead.
 function drawSplit({ ctx, w, h, pad, dir, name, price, saving, hero, points, qr, link, shopName, fulfilment, wide }) {
   const footerH = Math.round(h * (wide ? .2 : .13))
   const bodyH = h - footerH
   const s = dir._s
-  const ink = { ...dir, ink: '#28202E' }
-  const priceDir = { ...dir, accent: '#532280' }
-  const pointDir = { ...dir, ink2: '#393044' }
-  ctx.fillStyle = '#F6F2EA'; ctx.fillRect(0, 0, w, bodyH)
+  const over = { ...dir, ink: '#FFFFFF', ink2: 'rgba(255,255,255,0.86)', accent: '#FFFFFF' }
   const isWide = wide || w / h >= .9
-  const top = pad * .8
-  const eyeH = eyebrow(ctx, { ...dir, accent: '#6944A8' }, pad, top, shopName || 'ZAMARKET')
-  const bottom = bodyH - pad * .7
+  const list = (points || []).slice(0, 2)
+  const label = shopName || 'ZAMARKET'
 
   if (isWide) {
-    const imgX = pad, imgY = top + eyeH + s * 14
-    const imgW = Math.round(w * .48)
-    photoPanel(ctx, dir, hero, imgX, imgY, imgW, bottom - imgY)
-    const copyX = imgX + imgW + s * 28
-    const copyW = w - pad - copyX
-    const nameH = nameBlock(ctx, ink, copyX, imgY, copyW, name, Math.round(s * 40), 3)
-    const { h: priceH } = priceHeight(ctx, priceDir, saving, price, copyW)
-    // The right-hand column sits above the QR card, which can rise out of
-    // the footer on a square poster.
-    const copyBottom = Math.min(bottom, qrTopOf(dir, w, bodyH, footerH))
-    const room = copyBottom - priceH - s * 20 - (imgY + nameH + s * 22)
-    const list = (points || []).slice(0, 2)
-    if (list.length && room > s * 60) pointList(ctx, pointDir, copyX, imgY + nameH + s * 22, copyW, list, s * 16)
-    priceBlock(ctx, priceDir, copyX, copyBottom - priceH, saving, price, copyW)
+    // Photo biased to the right so the product is not under the words.
+    const r = Math.max(w / hero.width, bodyH / hero.height)
+    const dw = hero.width * r, dh = hero.height * r
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, bodyH); ctx.clip()
+    ctx.drawImage(hero, w - dw + (dw - w) * 0.15, (bodyH - dh) * 0.42, dw, dh)
+    ctx.restore()
+    const shadeW = Math.round(w * .72)
+    shade(ctx, 0, 0, shadeW, bodyH, 'across', [[0, .86], [.45, .74], [.75, .32], [1, 0]])
+
+    const x = pad, copyW = Math.round(w * .5) - pad
+    let y = pad * .8
+    y += eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, x, y, label)
+    y += s * 12
+    y += nameBlock(ctx, over, x, y, copyW, name, Math.round(s * 42), 3)
+    y += s * 22
+    const { h: priceH } = priceHeight(ctx, over, saving, price, copyW)
+    const bottom = bodyH - pad * .7
+    const room = bottom - priceH - s * 20 - y
+    if (list.length && room > s * 60) {
+      const fits = Math.max(0, Math.min(list.length, Math.floor(room / (s * 25 * 1.32 * 2 + s * 16))))
+      if (fits) pointList(ctx, over, x, y, copyW, list.slice(0, fits), s * 16)
+    }
+    priceBlock(ctx, over, x, bottom - priceH, saving, price, copyW)
   } else {
-    const nameY = top + eyeH + s * 10
+    cover(ctx, hero, 0, 0, w, bodyH, 0.36)
+    const maxW = w - pad * 2
     const tall = h / w > 1.6 ? 1.3 : 1
-    const nameH = nameBlock(ctx, ink, pad, nameY, w - pad * 2, name, Math.round(s * 51 * tall), 2)
-    const list = (points || []).slice(0, 2)
-    const pointsH = list.length ? measureWith(w, 600, (m) => pointList(m, pointDir, pad, 0, w - pad * 2, list, s * 12)) : 0
-    const { h: priceH } = priceHeight(ctx, priceDir, saving, price, w - pad * 2)
-    const fulH = fulfilment ? s * 30 : 0
-    const gap = s * 22
-    const priceY = bottom - fulH - priceH
-    const pointsY = priceY - gap - pointsH
-    const photoY = nameY + nameH + gap
-    photoPanel(ctx, dir, hero, pad, photoY, w - pad * 2, (pointsH ? pointsY : priceY) - gap - photoY)
-    if (pointsH) pointList(ctx, pointDir, pad, pointsY, w - pad * 2, list, s * 12)
-    priceBlock(ctx, priceDir, pad, priceY, saving, price, w - pad * 2)
-  }
-  // "In stock" and the like, on tall posters only: on a wide one the
-  // corner it would use belongs to the QR card.
-  if (fulfilment && !isWide) {
-    ctx.font = `600 ${Math.round(s * 17)}px ${dir.body}`; ctx.fillStyle = '#67586C'
-    ctx.fillText(fulfilment, pad, bottom)
+    const nameSize = Math.round(s * 50 * tall)
+    const pointsH = list.length ? measureWith(w, 600, (m) => pointList(m, over, pad, 0, maxW, list, s * 12)) : 0
+    const { h: priceH } = priceHeight(ctx, over, saving, price, maxW)
+    const nameH = measureWith(w, bodyH, (m) => nameBlock(m, over, pad, 0, maxW, name, nameSize, 2))
+    const fulH = fulfilment ? s * 44 : 0
+    const gap = s * 20
+    const blockH = s * 30 + nameH + gap + (pointsH ? pointsH + gap : 0) + priceH + (fulH ? gap + fulH : 0)
+    const blockTop = bodyH - pad * .8 - blockH
+    // Shop name top-left on its own soft shadow.
+    shade(ctx, 0, 0, w, Math.max(s * 240, bodyH * .16), 'down', [[0, .8], [.5, .5], [1, 0]])
+    eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, pad, pad * .8, label)
+    // The words on a shadow rising from the bottom.
+    const sh = bodyH - blockTop + s * 200
+    shade(ctx, 0, bodyH - sh, w, sh, 'down', [[0, 0], [s * 200 / sh, .72], [1, .92]])
+    let y = blockTop + s * 30
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(pad, y - s * 18, s * 56, Math.max(2, s * 4))
+    y += nameBlock(ctx, over, pad, y, maxW, name, nameSize, 2) + gap
+    if (pointsH) { pointList(ctx, over, pad, y, maxW, list, s * 12); y += pointsH + gap }
+    priceBlock(ctx, over, pad, y, saving, price, maxW)
+    y += priceH + gap
+    if (fulH) glassChips(ctx, dir, pad, y, maxW, [fulfilment])
   }
   buyFooter(ctx, dir, 0, bodyH, w, footerH, qr, link)
 }
 
-// --- the emporium sheet --------------------------------------------------
-// Drawn after the reference adverts Abubakr approved: a light ground, the
-// product photographed whole rather than cropped into a band, a serif
-// headline, the saving as a badge instead of a strikethrough, benefits in a
-// column with gold markers, and the seller's details along the foot.
+// A shadow with several stops, so it fades smoothly with no visible edge.
+function shade(ctx, x, y, width, height, way, stops) {
+  const g = way === 'across' ? ctx.createLinearGradient(x, y, x + width, y) : ctx.createLinearGradient(x, y, x, y + height)
+  for (const [at, a] of stops) g.addColorStop(Math.min(1, Math.max(0, at)), `rgba(0,0,0,${a})`)
+  ctx.fillStyle = g
+  ctx.fillRect(x, y, width, height)
+}
 
-const SHEET = {
-  ground: '#FBF7EC', ink: '#5E1620', ink2: '#2E2A26',
-  gold: '#B08A3E', rule: '#D8C9A6', foot: '#2B2724',
+// Small frosted pills for facts like "In stock", readable on any photo.
+function glassChips(ctx, dir, x, y, maxW, facts) {
+  const fh = Math.round(dir._s * 40)
+  ctx.save()
+  ctx.textBaseline = 'middle'
+  let cx = x
+  for (const f of facts) {
+    ctx.font = `600 ${Math.round(dir._s * 18)}px ${dir.body}`
+    const bw = ctx.measureText(f).width + Math.round(dir._s * 34)
+    if (cx + bw > x + maxW) break
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'
+    rounded(ctx, cx, y, bw, fh, fh / 2); ctx.fill()
+    ctx.fillStyle = '#FFFFFF'
+    ctx.fillText(f, cx + Math.round(dir._s * 17), y + fh / 2 + 1)
+    cx += bw + Math.round(dir._s * 10)
+  }
+  ctx.restore()
+  return fh
 }
 
 // A thin gold rule with a small diamond at its centre, as the references use

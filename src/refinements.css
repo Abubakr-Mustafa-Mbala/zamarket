@@ -572,3 +572,35 @@ html, body, #root { width: 100%; max-width: 100%; overflow-x: clip; }
 @media (max-width: 560px) {
   .grid-products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
 }
+
+/* Product page on phones: the column must never grow wider than the screen.
+   A product with many photos made the thumbnail row stretch the page to
+   ~600px, and the site-wide clip then hid the right half (price box,
+   buttons, photo). minmax(0, 1fr) and min-width: 0 keep everything inside. */
+.pdp-grid > *, .pdp-gallery, .pdp-gallery .thumbs, .pdp-gallery .main-img, .pdp-info { min-width: 0; max-width: 100%; }
+.pdp-info { overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .pdp-grid { grid-template-columns: minmax(0, 1fr); }
+  .pdp-gallery .thumbs { width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+}
+
+/* Tap the product photo to open it full screen */
+.main-img-open { display: block; position: relative; width: 100%; height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.main-img-open img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.main-img-hint { position: absolute; right: 10px; bottom: 10px; padding: 5px 10px; border-radius: 999px; background: rgba(15, 16, 28, .72); color: white; font-size: .78rem; font-weight: 600; pointer-events: none; }
+.pv { position: fixed; inset: 0; z-index: 1000; background: rgb(11, 11, 18); display: flex; flex-direction: column; }
+.pv-bar { display: flex; align-items: center; gap: 8px; padding: max(10px, env(safe-area-inset-top)) 12px 10px; color: white; }
+.pv-count { flex: 1; font-size: .9rem; opacity: .85; }
+.pv-btn { min-height: 40px; padding: 0 14px; border-radius: 999px; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08); color: white; font-weight: 600; font-size: .9rem; cursor: pointer; }
+.pv-close { width: 40px; padding: 0; font-size: 1rem; }
+.pv-stage { flex: 1; min-height: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; touch-action: pan-y pinch-zoom; }
+.pv-stage img { max-width: 100%; max-height: 100%; object-fit: contain; user-select: none; -webkit-user-select: none; cursor: zoom-in; }
+.pv-stage.zoomed { overflow: auto; display: block; touch-action: pan-x pan-y pinch-zoom; -webkit-overflow-scrolling: touch; }
+.pv-stage.zoomed img { max-width: none; max-height: none; width: 250%; height: auto; cursor: zoom-out; }
+@media (min-width: 761px) { .pv-stage.zoomed img { width: 180%; } }
+.pv-nav { position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; border: 0; background: rgba(255,255,255,.14); color: white; font-size: 1.8rem; line-height: 1; cursor: pointer; }
+.pv-nav.prev { left: 10px; }
+.pv-nav.next { right: 10px; }
+
+/* Solid top bar on phones so page text never shows through it while scrolling */
+@media (max-width: 760px) { .shop-header { background-color: rgb(17, 18, 30); } }

@@ -18,6 +18,7 @@ import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
+import PhotoViewer from '../../components/PhotoViewer'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
@@ -1126,6 +1127,7 @@ export function ProductPage() {
   const [offers, setOffers] = useState([])
   const [reviews, setReviews] = useState([])
   const [img, setImg] = useState(0)
+  const [viewer, setViewer] = useState(false)
   const [qty, setQty] = useState(1)
   const [notify, setNotify] = useState(false)
   const [choices, setChoices] = useState({})
@@ -1239,7 +1241,10 @@ export function ProductPage() {
               {p.images.map((src, i) => <button key={i} type="button" className={i === img ? 'on' : ''} onClick={() => setImg(i)} aria-label={`Photo ${i + 1}`}><img src={src} alt="" /></button>)}
             </div>
           )}
-          <div className="main-img">{p.images?.[img] ? <img src={p.images[img]} alt={p.name} /> : <span className="pc-ph big" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}</div>
+          <div className="main-img">{p.images?.[img]
+            ? <button type="button" className="main-img-open" onClick={() => setViewer(true)} aria-label="Open photo full screen"><img src={p.images[img]} alt={p.name} /><span className="main-img-hint" aria-hidden>Tap to zoom</span></button>
+            : <span className="pc-ph big" aria-hidden>{iconFor(p.category, DEPARTMENTS)}</span>}</div>
+          {viewer && <PhotoViewer images={p.images || []} start={img} alt={p.name} onClose={() => setViewer(false)} />}
         </div>
 
         <div className="pdp-info">

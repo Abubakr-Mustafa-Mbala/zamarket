@@ -213,13 +213,23 @@ test('product grids are two across on a phone', () => {
   assert.match(read('src/refinements.css'), /@media \(max-width: 560px\) \{\n  \.grid-products \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/)
 })
 
-test('the two newer poster designs give the photo the space the words leave', () => {
+test('Clean Catalogue and Editorial Split are full bleed, with no white photo panel', () => {
   const pp = read('src/lib/productPoster.js')
   const cat = pp.slice(pp.indexOf('function drawCatalogue('), pp.indexOf('function drawSplit('))
-  assert.match(cat, /photoPanel\(ctx, dir, hero, pad, photoY, w - pad \* 2, priceY - gap - photoY\)/)
-  const split = pp.slice(pp.indexOf('function drawSplit('), pp.indexOf('// --- the emporium sheet'))
-  // The price never sits under the QR card on a square or wide poster.
-  assert.match(split, /const copyBottom = Math\.min\(bottom, qrTopOf\(dir, w, bodyH, footerH\)\)/)
-  // Photos are contained, never cropped.
-  assert.match(pp, /function photoPanel[\s\S]*?Math\.min\(\(width - inset \* 2\) \/ hero\.width, \(height - inset \* 2\) \/ hero\.height\)/)
+  const split = pp.slice(pp.indexOf('function drawSplit('), pp.indexOf('function glassChips('))
+  assert.match(cat, /cover\(ctx, hero, 0, 0, w, bodyH/)
+  assert.match(cat, /shade\(/)
+  assert.match(split, /shade\(ctx, 0, 0, shadeW, bodyH, 'across'/)
+  assert.match(split, /cover\(ctx, hero, 0, 0, w, bodyH/)
+  assert.doesNotMatch(pp, /photoPanel|#FBF9F4|#F6F2EA/)
+})
+
+test('the product page never grows wider than a phone, and photos open full screen', () => {
+  const css = read('src/refinements.css')
+  assert.match(css, /\.pdp-grid > \*, \.pdp-gallery, \.pdp-gallery \.thumbs, \.pdp-gallery \.main-img, \.pdp-info \{ min-width: 0; max-width: 100%; \}/)
+  assert.match(css, /\.pdp-grid \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+  const mp = read('src/pages/public/Marketplace.jsx')
+  assert.match(mp, /<PhotoViewer images=\{p\.images \|\| \[\]\} start=\{img\}/)
+  const pv = read('src/components/PhotoViewer.jsx')
+  assert.match(pv, /document\.body\.style\.overflow = prev/)
 })
