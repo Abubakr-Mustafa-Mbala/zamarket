@@ -1,4 +1,5 @@
 import { suggestProductSeo } from '../../lib/productDiscovery'
+import { PRODUCT_WORD } from '../../lib/statuses'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
@@ -11,6 +12,8 @@ import VendorMath from '../../components/VendorMath'
 import PriceMaths from '../../components/PriceMaths'
 import PhotoUpload from '../../components/PhotoUpload'
 import NameHelp from '../../components/NameHelp'
+import ProductPreview from '../../components/ProductPreview'
+import ProductReview from '../../components/ProductReview'
 import CreativeStudio from '../shared/CreativeStudio'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented, Breakdown, Light, useToast, Tabs } from '../../components/ui'
 
@@ -51,8 +54,8 @@ export default function Products() {
           onRow={(p) => (p.offering_type === 'vehicle' ? nav(`/admin/vehicles/${p.id}`) : setEdit(p))}
           empty={tab === 'review' ? 'No vendor products waiting for review' : 'No products yet'}
           cols={[
-            { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div><div className="tiny muted">{p.vendor?.business_name || p.category || ''}</div></div> },
-            { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
+            { key: 'name', label: 'Product', render: (p) => <div className="pr-row">{p.images?.[0] ? <img className="pr-row-thumb" src={p.images[0]} alt="" loading="lazy" /> : <span className="pr-row-thumb empty" aria-hidden>?</span>}<div><div className="strong">{p.name}</div><div className="tiny muted">{p.vendor?.business_name || p.category || ''}</div>{['suspended', 'rejected'].includes(p.status) && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div></div> },
+            { key: 'status', label: 'Status', render: (p) => <Badge status={p.status}>{PRODUCT_WORD[p.status]}</Badge> },
             { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },
             ...(tab === 'founder' ? [
               { key: 'cost', label: 'Cost', num: true, render: (p) => money(effectiveCost(p)) },
@@ -108,6 +111,8 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const [calc, setCalc] = useState({ mode: 'markup', value: settings.target_markup_pct ?? 50 })
   const [uploading, setUploading] = useState(false)
   const [removing, setRemoving] = useState(false)
+  const [view, setView] = useState('edit')
+  const [deciding, setDeciding] = useState(false)
   const set = (k) => (v) => setP((c) => ({ ...c, [k]: v }))
   const cost = effectiveCost(p)
   const isNew = !p.id
@@ -129,7 +134,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
   const lt = light(econ.netMargin, econ.netProfit, settings)
   const suggested = calc.mode === 'margin' ? priceFromMargin(cost, calc.value) : priceFromMarkup(cost, calc.value)
 
-  const save = async (status) => {
+  const save = async (status, extra = {}) => {
     const row = {
       name: p.name, slug: p.slug || slugify(p.name), category: p.category || null, description: p.description || null,
       benefits: p.benefits_text.split('\n').map((s) => s.trim()).filter(Boolean),
@@ -153,11 +158,12 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
       note_label: (p.note_label || '').trim() || null,
       page: { ...(p.page || {}), seo: { title: (p.seo_title || '').trim() || null, description: (p.seo_description || '').trim() || null } },
       status: status || (vendorMode && !['draft', 'submitted'].includes(p.status) ? 'draft' : p.status), rejection_reason: p.rejection_reason || null,
+      ...extra,
     }
     if (isNew) { row.owner_type = vendorMode ? 'vendor' : 'founder'; row.created_by = user.id; if (vendorMode) row.vendor_id = vendorMode }
     const res = isNew ? await supabase.from('products').insert(row) : await supabase.from('products').update(row).eq('id', p.id)
     if (res.error) return toast(res.error.message, true)
-    toast(status === 'published' ? 'Published' : status === 'submitted' ? 'Sent for review' : 'Saved')
+    toast({ published: 'Live in the marketplace', submitted: 'Sent for review', suspended: 'On hold. Hidden from shoppers.', rejected: 'Sent back to the seller' }[status] || 'Saved')
     onDone()
   }
 
@@ -180,7 +186,21 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
 
   return (
     <Modal title={isNew ? 'New product' : p.name} onClose={onClose} wide>
-      <form onSubmit={(e) => { e.preventDefault(); save() }} className="stack">
+      <div className="pp-tabs" role="tablist" aria-label="Edit or preview">
+        <button type="button" role="tab" aria-selected={view === 'edit'} className={view === 'edit' ? 'on' : ''} onClick={() => setView('edit')}>Details</button>
+        <button type="button" role="tab" aria-selected={view === 'preview'} className={view === 'preview' ? 'on' : ''} onClick={() => setView('preview')}>Preview</button>
+      </div>
+      {view === 'preview' && (
+        <div className="stack">
+          <ProductPreview draft={p} vendorName={vendorMode ? vendorProfile?.business_name : p.vendor?.business_name} takeHome={vendorMode && takeHomePricing} />
+          <button type="button" className="btn" onClick={() => setView('edit')}>Back to the details</button>
+        </div>
+      )}
+      <form onSubmit={(e) => { e.preventDefault(); save() }} className="stack" hidden={view !== 'edit'}>
+        {!isNew && !vendorMode && isStaff && p.owner_type === 'vendor' && (
+          <ProductReview p={p} images={p.images_text.split('\n').map((x) => x.trim()).filter(Boolean)} busy={deciding}
+            onDecide={async (status, reason) => { setDeciding(true); await save(status, { rejection_reason: reason }); setDeciding(false) }} />
+        )}
         {vendorMode && <section className="card flat stack-sm vendor-listing-guide" aria-label="Product listing checklist">
           <div className="between"><h3>Get your listing ready</h3><strong>{completedChecks} of {listingChecks.length}</strong></div>
           <progress value={completedChecks} max={listingChecks.length} style={{ width: '100%', accentColor: 'var(--accent, #14856b)' }} aria-label="Listing completeness" />
@@ -203,7 +223,7 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
                 options={sections.map((x) => [x.id, x.name])} />
             </Field>
           )}
-          <Field label="Status">{vendorMode ? <Badge status={p.status} /> : <Select value={p.status} onChange={set('status')} options={['draft', 'submitted', 'approved', 'published', 'rejected', 'out_of_stock', 'suspended']} />}</Field>
+          <Field label="Status">{vendorMode ? <Badge status={p.status}>{PRODUCT_WORD[p.status]}</Badge> : <Select value={p.status} onChange={set('status')} options={['draft', 'submitted', 'approved', 'published', 'rejected', 'out_of_stock', 'suspended']} />}</Field>
           {vendorMode && takeHomePricing ? (
             <Field label="What you want to receive" span
               hint="Type what you want in your pocket for one of these. ZaMarket works out the price the customer pays.">
@@ -344,16 +364,6 @@ export function ProductEditor({ product, onClose, onDone, vendorMode }) {
           </div>
         )}
 
-        {p.status === 'submitted' && isStaff && !vendorMode && (
-          <div className="card flat stack-sm">
-            <h3>Vendor product review</h3>
-            <Field label="Reason (if rejecting)"><Input value={p.rejection_reason} onChange={set('rejection_reason')} /></Field>
-            <div className="btn-row">
-              <button type="button" className="btn primary" onClick={() => save('published')}>Approve and publish</button>
-              <button type="button" className="btn danger" onClick={() => save('rejected')}>Reject</button>
-            </div>
-          </div>
-        )}
 
         <div className="btn-row">
           <button className="btn primary">{isNew ? 'Create' : 'Save changes'}</button>

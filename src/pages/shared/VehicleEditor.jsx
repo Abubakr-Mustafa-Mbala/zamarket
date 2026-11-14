@@ -13,6 +13,7 @@ import {
   MAKES, BODY_TYPES, TRANSMISSIONS, FUELS, DRIVES, CONDITIONS, PAPERS, SERVICE, TOWNS, FEATURES,
   vehicleOf, vehicleTitle, specsFrom, normaliseVehicle, listingChecks,
 } from '../../lib/vehicle'
+import { PRODUCT_WORD } from '../../lib/statuses'
 import '../../motors.css'
 
 const SHOTS = ['Front', 'Back', 'Left side', 'Right side', 'Front seats', 'Back seats', 'Dashboard with mileage', 'Engine', 'Boot', 'Tyres']
@@ -160,6 +161,7 @@ export default function VehicleEditor() {
         page: { ...(row.page || {}), vehicle: clean, specs: specsFrom(clean), location_text: clean.location || null },
         status,
       }
+      if (status === 'published') out.rejection_reason = null
       if (isStaff) {
         out.deal_fee_pct = fee
         out.vehicle_affiliate_share_pct = share
@@ -187,6 +189,18 @@ export default function VehicleEditor() {
   }
 
   const live = row.status === 'published'
+  // Take a live vehicle out of the showroom, or return a dealer's listing,
+  // with a note the dealer sees.
+  const holdOrReturn = async (status) => {
+    const note = window.prompt(status === 'suspended' ? 'Why is it on hold? The seller sees this.' : 'What should the seller fix? They see this.')
+    if (!note || !note.trim()) return
+    setBusy(status)
+    const { error } = await supabase.from('products').update({ status, rejection_reason: note.trim() }).eq('id', row.id)
+    setBusy('')
+    if (error) return toast(error.message, true)
+    setRow((x) => ({ ...x, status, rejection_reason: note.trim() }))
+    toast(status === 'suspended' ? 'On hold. Hidden from the showroom.' : 'Sent back to the seller')
+  }
   const sold = row.status === 'out_of_stock'
 
   return (
@@ -198,7 +212,8 @@ export default function VehicleEditor() {
           <p>Photos, price and the details. Everything a buyer needs, on one page.</p>
         </div>
         <div className="stack-sm" style={{ alignItems: 'flex-end' }}>
-          {!isNew && <Badge status={row.status} />}
+          {!isNew && <Badge status={row.status}>{PRODUCT_WORD[row.status]}</Badge>}
+          {['suspended', 'rejected'].includes(row.status) && row.rejection_reason && <span className="tiny bad" style={{ maxWidth: 320, textAlign: 'right' }}>{row.rejection_reason}</span>}
           <div className="vx-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'edit'} className={tab === 'edit' ? 'on' : ''} onClick={() => setTab('edit')}>Details</button>
             <button type="button" role="tab" aria-selected={tab === 'preview'} className={tab === 'preview' ? 'on' : ''} onClick={() => { setTab('preview'); window.scrollTo(0, 0) }}>Preview</button>
@@ -337,13 +352,14 @@ export default function VehicleEditor() {
 
       <div className="vx-savebar">
         <span className="vx-note">{ready ? (live ? 'Live in the showroom' : sold ? 'Marked as sold' : 'Ready to go') : `${checks.length - doneCount} thing${checks.length - doneCount === 1 ? '' : 's'} still needed`}</span>
-        {!(vendorId && (live || sold)) && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => save(vendorId ? 'draft' : live || sold ? row.status : 'draft')}>{busy && busy !== 'submitted' && busy !== 'published' ? 'Saving…' : 'Save'}</button>}
+        {!(vendorId && (live || sold)) && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => save(vendorId ? 'draft' : isNew ? 'draft' : row.status)}>{busy && busy !== 'submitted' && busy !== 'published' ? 'Saving…' : 'Save'}</button>}
         {vendorId
           ? <button type="button" className="vx-btn primary" disabled={!!busy || !ready} onClick={() => { if (!(live || sold) || window.confirm('Your changes go to ZaMarket for a quick check. The vehicle leaves the showroom until they are approved. Continue?')) save('submitted') }}>{busy === 'submitted' ? 'Sending…' : live || sold ? 'Send changes for review' : 'Send for review'}</button>
           : (
             <>
               {live && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => { if (window.confirm('Mark this vehicle as sold? It leaves the showroom.')) save('out_of_stock') }}>Mark as sold</button>}
-              {!live && <button type="button" className="vx-btn primary" disabled={!!busy || !ready} onClick={() => save('published')}>{busy === 'published' ? 'Publishing…' : sold ? 'Put back on sale' : 'Publish'}</button>}
+              {(live || row.status === 'submitted') && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => holdOrReturn(live ? 'suspended' : 'rejected')}>{live ? 'Put on hold' : 'Send back'}</button>}
+              {!live && <button type="button" className="vx-btn primary" disabled={!!busy || !ready} onClick={() => save('published')}>{busy === 'published' ? 'Publishing…' : sold ? 'Put back on sale' : row.status === 'suspended' ? 'Put back live' : 'Publish'}</button>}
             </>
           )}
         {!isNew && (live || sold) && <a className="vx-btn ghost" href={`/p/${row.slug || row.id}`} target="_blank" rel="noreferrer">View</a>}

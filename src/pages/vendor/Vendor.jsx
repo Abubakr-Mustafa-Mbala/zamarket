@@ -1,3 +1,4 @@
+import { PRODUCT_WORD } from '../../lib/statuses'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase, q } from '../../lib/supabase'
@@ -192,9 +193,9 @@ export function VendorProducts() {
         </ol>
       </section>
       {loading ? <Loading /> : (
-        <Table rows={data} onRow={(p) => p.offering_type === 'vehicle' ? nav(`/vendor/vehicles/${p.id}`) : ['draft', 'submitted', 'rejected'].includes(p.status) ? setEdit(p) : null} empty="No products yet" cols={[
-          { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
-          { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
+        <Table rows={data} onRow={(p) => p.offering_type === 'vehicle' ? nav(`/vendor/vehicles/${p.id}`) : ['draft', 'submitted', 'rejected', 'suspended'].includes(p.status) ? setEdit(p) : null} empty="No products yet" cols={[
+          { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{['rejected', 'suspended'].includes(p.status) && p.rejection_reason && <div className="tiny bad">{p.status === 'suspended' ? 'On hold: ' : 'To fix: '}{p.rejection_reason}</div>}</div> },
+          { key: 'status', label: 'Status', render: (p) => <Badge status={p.status}>{PRODUCT_WORD[p.status]}</Badge> },
           { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },
           { key: 'stock', label: 'In stock', num: true, render: (p) => (
             p.fulfilment !== 'in_stock'

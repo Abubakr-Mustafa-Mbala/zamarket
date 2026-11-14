@@ -32,3 +32,12 @@ export const CHANNELS = ['marketplace', 'whatsapp', 'phone', 'physical', 'instag
 export const CATEGORIES = ['Electronics', 'Home', 'Beauty', 'Fashion', 'Food', 'Kids', 'Health', 'Tools', 'Other']
 export const PAYMENT_METHODS = ['cash', 'airtel_money', 'mtn_money', 'bank', 'paypal', 'other']
 export const EXPENSE_CATEGORIES = ['packaging', 'fuel', 'transport', 'rent', 'storage', 'airtime', 'software', 'advertising', 'other']
+
+// Plain words for a product's status, where the stored word reads oddly.
+export const PRODUCT_WORD = {
+  submitted: 'Waiting for review',
+  published: 'Live',
+  suspended: 'On hold',
+  rejected: 'Sent back',
+  out_of_stock: 'Out of stock',
+}

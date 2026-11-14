@@ -254,9 +254,9 @@ function VendorModal({ v: initial, onClose, onReview, onSave, canReview }) {
         )}
         {canReview && (
           <div className="btn-row">
-            {v.status !== 'approved' && <button className="btn primary" onClick={() => onReview(v.id, 'approved')}>Approve</button>}
+            {v.status !== 'approved' && <button className="btn primary" onClick={() => onReview(v.id, 'approved')}>{v.status === 'suspended' ? 'Reinstate' : 'Approve'}</button>}
             {v.status === 'pending' && <button className="btn danger" onClick={() => onReview(v.id, 'rejected')}>Reject</button>}
-            {v.status === 'approved' && <button className="btn danger" onClick={() => onReview(v.id, 'suspended')}>Suspend</button>}
+            {v.status === 'approved' && <button className="btn danger" onClick={() => onReview(v.id, 'suspended')}>Suspend (put on hold)</button>}
             {v.status === 'suspended' && <button className="btn danger" onClick={() => onReview(v.id, 'terminated')}>Terminate</button>}
           </div>
         )}
@@ -350,7 +350,7 @@ export function Resellers() {
             )}
             {isFounder ? (
               <div className="btn-row">
-                {open.status !== 'approved' && <button className="btn primary" onClick={() => review(open.id, 'approved')}>Approve</button>}
+                {open.status !== 'approved' && <button className="btn primary" onClick={() => review(open.id, 'approved')}>{open.status === 'suspended' ? 'Reinstate' : 'Approve'}</button>}
                 {open.status === 'pending' && <button className="btn danger" onClick={() => review(open.id, 'rejected')}>Reject</button>}
                 {open.status === 'approved' && <button className="btn danger" onClick={() => review(open.id, 'suspended')}>Suspend</button>}
               </div>

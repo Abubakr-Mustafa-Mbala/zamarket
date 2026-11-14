@@ -127,3 +127,24 @@ test('a vehicle post uses only the listing facts and the link', async () => {
   assert.match(t, /📍 Lusaka/)
   assert.match(t, /\/r\/ann\/hilux$/)
 })
+
+test('the founder can see photos large, put a live product on hold, or send it back with a note', () => {
+  const r = read('src/components/ProductReview.jsx')
+  assert.match(r, /<PhotoViewer images=\{images\}/)
+  assert.match(r, /setAsking\('suspended'\)/)
+  assert.match(r, /setAsking\('rejected'\)/)
+  assert.match(r, /'Put back live'/)
+  const ed = read('src/pages/admin/Products.jsx')
+  assert.match(ed, /<ProductReview p=\{p\}/)
+  assert.match(ed, /save\(status, \{ rejection_reason: reason \}\)/)
+  assert.match(ed, /<ProductPreview draft=\{p\}/)
+  const v = read('src/pages/vendor/Vendor.jsx')
+  assert.match(v, /'On hold: '/)
+  assert.match(read('src/pages/shared/VehicleEditor.jsx'), /holdOrReturn\(live \? 'suspended' : 'rejected'\)/)
+})
+
+test('a product preview reads the form without saving', async () => {
+  const src = read('src/components/ProductPreview.jsx')
+  assert.doesNotMatch(src, /from\('products'\)/)
+  assert.match(src, /rpc\('price_preview'/)
+})
