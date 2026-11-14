@@ -58,6 +58,7 @@ const Receipt = lazy(() => import('./pages/admin/Receipt'))
 const OfferingBuilder = lazy(() => import('./pages/admin/OfferingBuilder'))
 const VehicleEditor = lazy(() => import('./pages/shared/VehicleEditor'))
 const VehicleList = named(() => import('./pages/shared/VehicleEditor'), 'VehicleList')
+const ResellerVehicles = lazy(() => import('./pages/reseller/Vehicles'))
 const Deals = lazy(() => import('./pages/admin/Deals'))
 const earningsPages = () => import('./pages/shared/EarningsPages')
 const AdminEarnings = named(earningsPages, 'AdminEarnings')
@@ -229,6 +230,7 @@ export default function App() {
       <Route path="/sell" element={<Guard roles={['reseller']}><Shell kind="reseller" /></Guard>}>
         <Route index element={<ResellerHome />} />
         <Route path="products" element={<ResellerProducts />} />
+        <Route path="vehicles" element={<ResellerVehicles />} />
         <Route path="find-customers" element={<FindCustomers />} />
         <Route path="training" element={<Training />} />
         <Route path="new-sale" element={<ResellerNewSale />} />

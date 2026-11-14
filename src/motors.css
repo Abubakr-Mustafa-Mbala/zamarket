@@ -303,3 +303,48 @@
 .vx-photo-tools button { min-width: 32px; }
 .vx-photo-tools .rm { margin-left: auto; }
 .vx-search input, .vx-search input:focus { background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; min-height: 0; height: auto; }
+.vx-hero-count { margin-top: 12px !important; color: var(--vx-text) !important; font-size: .95rem; }
+.vx-hero-count strong { color: var(--vx-accent); font-size: 1.1rem; }
+
+/* Affiliate tools on the vehicle page */
+.vx-aff { border: 1px solid var(--vx-accent); border-radius: 14px; padding: 14px; background: rgba(169, 139, 255, .08); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.vx-aff-head strong { display: block; font-size: 1rem; margin-bottom: 4px; }
+.vx-aff-head p { font-size: .9rem; color: var(--vx-muted); line-height: 1.45; }
+.vx-aff-head b { color: var(--vx-ok); font-size: 1.05rem; }
+.vx-aff-link { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.vx-aff-link span { font-size: .75rem; color: var(--vx-muted); font-weight: 600; }
+.vx-aff-link code { display: block; padding: 8px 10px; border-radius: 10px; background: var(--vx-bg); border: 1px solid var(--vx-line); font-size: .82rem; color: var(--vx-text); overflow-wrap: anywhere; }
+.vx-aff-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vx-aff-grid .vx-btn { padding: 0 8px; min-height: 44px; font-size: .88rem; }
+.vx-aff-grid .vx-btn.primary { grid-column: 1 / -1; }
+.vx-aff-note { font-size: .8rem; color: var(--vx-muted); line-height: 1.45; }
+.vx-aff-note b { color: var(--vx-text); }
+.vx-share { display: flex; flex-direction: column; gap: 8px; }
+.vx-saver { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vx-saver-item { position: relative; aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; background: #0b0a12; }
+.vx-saver-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vx-saver-item button { position: absolute; right: 6px; bottom: 6px; min-height: 30px; padding: 0 10px; border-radius: 999px; border: 0; background: rgba(10, 9, 18, .8); color: #fff; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
+.modal .vx-btn.primary { background: #a98bff; color: #160f2a; }
+.modal .vx-btn.big { width: 100%; min-height: 50px; }
+
+/* Affiliate: My buyers */
+.vx-aff-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.vx-aff-stats > div { background: var(--vx-panel); border: 1px solid var(--vx-line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.vx-aff-stats span { font-size: .78rem; color: var(--vx-muted); }
+.vx-aff-stats strong { font-size: 1.3rem; }
+.vx-buyers { display: flex; flex-direction: column; gap: 10px; }
+.vx-buyer { border: 1px solid var(--vx-line); border-radius: 14px; padding: 12px; background: var(--vx-bg); display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.vx-buyer-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.vx-buyer-car { color: var(--vx-text); font-weight: 600; text-decoration: none; overflow-wrap: anywhere; }
+.vx-buyer-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: .8rem; color: var(--vx-muted); }
+.vx-stage { flex: none; font-size: .75rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(169, 139, 255, .15); color: var(--vx-accent); }
+.vx-stage.is-agreed { background: rgba(240, 180, 94, .15); color: var(--vx-warn); }
+.vx-stage.is-closed { background: rgba(95, 211, 154, .15); color: var(--vx-ok); }
+.vx-stage.is-lost { background: rgba(255, 255, 255, .07); color: var(--vx-muted); }
+.vx-buyer-reward { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 10px; border-radius: 10px; background: rgba(95, 211, 154, .08); }
+.vx-buyer-reward span { font-size: .82rem; color: var(--vx-muted); }
+.vx-buyer-reward strong { color: var(--vx-ok); }
+.vx-buyer-reward em { font-style: normal; font-size: .8rem; color: var(--vx-text); width: 100%; }
+.vx-promo { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.vx-promo-reward { position: absolute; top: 10px; left: 10px; z-index: 2; padding: 5px 10px; border-radius: 999px; background: var(--vx-ok); color: #062b14; font-size: .8rem; font-weight: 800; }
+@media (max-width: 760px) { .vx-aff-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .vx-aff-stats > div:last-child { grid-column: 1 / -1; } }

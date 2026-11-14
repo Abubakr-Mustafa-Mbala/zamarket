@@ -9,6 +9,7 @@ import { Modal, useToast } from '../ui'
 import ShareProduct from '../ShareProduct'
 import PhotoViewer from '../PhotoViewer'
 import VehicleCard from './VehicleCard'
+import AffiliateTools, { PhotoSaver } from './AffiliateTools'
 import { VI, FACT_ICON } from './icons'
 import { vehicleOf, vehicleTitle, vehicleFacts, bodyGroup, QUICK_QUESTIONS, whatsappText, whatsappLink } from '../../lib/vehicle'
 import '../../motors.css'
@@ -73,8 +74,9 @@ function Gallery({ p, title }) {
 }
 
 // Pure layout: used by the live page and by the listing form's preview.
-export function VehicleView({ p, preview = false, onAsk, contact, similar = [] }) {
-  const { role, profile, settings } = useAuth()
+export function VehicleView({ p, preview = false, onAsk, onRegister, contact, similar = [] }) {
+  const { role, profile, settings, isStaff } = useAuth()
+  const [saving, setSaving] = useState(false)
   const v = vehicleOf(p)
   const title = vehicleTitle(v, p.name)
   const facts = vehicleFacts(v)
@@ -138,13 +140,16 @@ export function VehicleView({ p, preview = false, onAsk, contact, similar = [] }
             </>
           )}
 
-          {!preview && (
-            <div className={`vx-share ${affiliate ? 'is-affiliate' : ''}`}>
-              {affiliate && <p><strong>Promote this vehicle.</strong> Share it with your link. When a buyer you send buys it, you earn your share of ZaMarket's fee.</p>}
-              <ShareProduct product={{ ...p, name: title }} store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null}
-                settings={settings} link={contact?.link} className="vx-btn ghost" label={affiliate ? 'Share with your link' : 'Share this vehicle'} />
-            </div>
-          )}
+          {!preview && (affiliate
+            ? <AffiliateTools p={p} title={title} link={contact?.link} onRegister={() => onRegister?.()} />
+            : (
+              <div className="vx-share">
+                <ShareProduct product={{ ...p, name: title }} store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null}
+                  settings={settings} link={contact?.link} className="vx-btn ghost" label="Share this vehicle" />
+                {isStaff && <button type="button" className="vx-btn ghost" onClick={() => setSaving(true)}>{VI.camera}Photos to post</button>}
+                {saving && <PhotoSaver p={p} title={title} onClose={() => setSaving(false)} />}
+              </div>
+            ))}
         </section>
       </div>
 
@@ -240,15 +245,15 @@ export default function VehiclePage({ p }) {
 
   return (
     <>
-      <VehicleView p={p} contact={contact} similar={similar} onAsk={(question) => setAsking({ question })} />
-      {asking && <AskModal p={p} first={asking.question} onClose={() => setAsking(null)} />}
+      <VehicleView p={p} contact={contact} similar={similar} onAsk={(question) => setAsking({ question })} onRegister={() => setAsking({ question: '', register: true })} />
+      {asking && <AskModal p={p} first={asking.question} register={asking.register} affiliateCode={contact.ref} onClose={() => setAsking(null)} />}
     </>
   )
 }
 
 // Name, phone, the questions. Recorded as a deal so the team follows it up
 // and any affiliate who sent the buyer is credited.
-function AskModal({ p, first, onClose }) {
+function AskModal({ p, first, onClose, register = false, affiliateCode = null }) {
   const toast = useToast()
   const { attribution } = useCart()
   const v = vehicleOf(p)
@@ -259,10 +264,11 @@ function AskModal({ p, first, onClose }) {
   const [done, setDone] = useState(null)
   const toggle = (q) => setPicked((s) => { const n = new Set(s); if (n.has(q)) n.delete(q); else n.add(q); return n })
   const message = useMemo(() => [
+    register ? 'Buyer registered by their affiliate.' : '',
     [...picked].join(' '),
     f.note.trim(),
     `Reply by: ${f.via}.`,
-  ].filter(Boolean).join(' '), [picked, f.note, f.via])
+  ].filter(Boolean).join(' '), [picked, f.note, f.via, register])
 
   const send = async (e) => {
     e.preventDefault()
@@ -271,7 +277,7 @@ function AskModal({ p, first, onClose }) {
     const { data, error } = await supabase.rpc('submit_enquiry', {
       payload: {
         product_id: p.id, name: f.name, phone: f.phone, message, offer_amount: f.offer ? f.offer : null,
-        referral_code: a.referral_code, campaign_code: a.campaign_code, invite_code: a.invite_code, store_ref: a.store_ref,
+        referral_code: register ? affiliateCode : a.referral_code, campaign_code: a.campaign_code, invite_code: a.invite_code, store_ref: a.store_ref,
       },
     })
     setBusy(false)
@@ -280,17 +286,19 @@ function AskModal({ p, first, onClose }) {
   }
 
   return (
-    <Modal title={done ? 'We have your question' : `Ask about the ${title}`} onClose={onClose}>
+    <Modal title={done ? (register ? 'Buyer registered' : 'We have your question') : register ? `Register a buyer for the ${title}` : `Ask about the ${title}`} onClose={onClose}>
       {done ? (
         <div className="stack center">
-          <p>Thank you, {f.name.split(' ')[0]}. We will {f.via === 'Phone call' ? 'call' : 'message'} you on {f.phone} soon.</p>
+          {register
+            ? <p>{f.name.split(' ')[0]} is registered to you. We will {f.via === 'Phone call' ? 'call' : 'message'} them soon. Follow it in Vehicles → My buyers.</p>
+            : <p>Thank you, {f.name.split(' ')[0]}. We will {f.via === 'Phone call' ? 'call' : 'message'} you on {f.phone} soon.</p>}
           <div className="voucher" style={{ fontSize: '1.3rem' }}>Ref {done.reference}</div>
           <button className="btn primary" onClick={onClose}>Done</button>
         </div>
       ) : (
         <form onSubmit={send} className="stack vx-ask">
           <div>
-            <span className="small strong">What would you like to know?</span>
+            <span className="small strong">{register ? 'What does the buyer want to know?' : 'What would you like to know?'}</span>
             <div className="vx-ask-chips">
               {QUICK_QUESTIONS.map((q) => (
                 <button type="button" key={q} className={picked.has(q) ? 'on' : ''} aria-pressed={picked.has(q)} onClick={() => toggle(q)}>{picked.has(q) && VI.check}{q}</button>
@@ -299,18 +307,18 @@ function AskModal({ p, first, onClose }) {
           </div>
           <label className="field"><span>Anything else? (optional)</span><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
           {v.negotiable !== false && (
-            <label className="field"><span>Your offer (optional)</span><input className="input" inputMode="numeric" value={f.offer} onChange={(e) => setF({ ...f, offer: e.target.value.replace(/[^0-9.]/g, '') })} placeholder={`Asking ${money(p.price, { whole: true })}`} /></label>
+            <label className="field"><span>{register ? "Buyer's offer (optional)" : 'Your offer (optional)'}</span><input className="input" inputMode="numeric" value={f.offer} onChange={(e) => setF({ ...f, offer: e.target.value.replace(/[^0-9.]/g, '') })} placeholder={`Asking ${money(p.price, { whole: true })}`} /></label>
           )}
-          <label className="field"><span>Your name</span><input className="input" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete="name" /></label>
-          <label className="field"><span>Your phone number</span><input className="input" type="tel" required value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete="tel" placeholder="0977 123 456" /></label>
+          <label className="field"><span>{register ? "Buyer's name" : 'Your name'}</span><input className="input" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete={register ? 'off' : 'name'} /></label>
+          <label className="field"><span>{register ? "Buyer's phone number" : 'Your phone number'}</span><input className="input" type="tel" required value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} autoComplete={register ? 'off' : 'tel'} placeholder="0977 123 456" /></label>
           <div>
-            <span className="small strong">How should we reply?</span>
+            <span className="small strong">{register ? 'How should we contact them?' : 'How should we reply?'}</span>
             <div className="vx-ask-chips">
               {['WhatsApp', 'Phone call'].map((x) => <button type="button" key={x} className={f.via === x ? 'on' : ''} aria-pressed={f.via === x} onClick={() => setF({ ...f, via: x })}>{x}</button>)}
             </div>
           </div>
-          <button className="btn buy block" disabled={busy || (!picked.size && !f.note.trim() && !f.offer)}>{busy ? 'Sending…' : 'Send'}</button>
-          <p className="tiny muted">Your number goes to the ZaMarket team only, to answer you about this vehicle.</p>
+          <button className="btn buy block" disabled={busy || (!register && !picked.size && !f.note.trim() && !f.offer)}>{busy ? 'Sending…' : register ? 'Register this buyer' : 'Send'}</button>
+          <p className="tiny muted">{register ? 'Only register someone who asked you about this vehicle and agreed to be contacted. Their number goes to the ZaMarket team only.' : 'Your number goes to the ZaMarket team only, to answer you about this vehicle.'}</p>
         </form>
       )}
     </Modal>

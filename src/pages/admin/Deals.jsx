@@ -14,6 +14,7 @@ const wa = (phone) => `https://wa.me/${String(phone || '').replace(/\D/g, '').re
 export default function Deals() {
   const [tab, setTab] = useState('open')
   const [open, setOpen] = useState(null)
+  const [recording, setRecording] = useState(false)
   const { data, loading, reload } = useData(() => q(
     supabase.from('deals').select('*,product:products(name,slug),package:product_packages(name),vendor:vendors(business_name),reseller:resellers(full_name,code)').order('created_at', { ascending: false }).limit(300)
   ), [])
@@ -33,6 +34,7 @@ export default function Deals() {
           <h1>Enquiries and deals</h1>
           <p>For cars and anything where the buyer and the owner talk directly. You introduce them, then record what the owner tells you was paid, so your share is worked out.</p>
         </div>
+        <button type="button" className="btn primary" onClick={() => setRecording(true)}>Record a buyer</button>
       </div>
 
       <div className="grid-4">
@@ -74,6 +76,7 @@ export default function Deals() {
       )}
 
       {open && <DealDrawer deal={open} onClose={() => setOpen(null)} onChanged={reload} />}
+      {recording && <RecordBuyer onClose={() => setRecording(false)} onDone={() => { setRecording(false); reload() }} />}
     </div>
   )
 }
@@ -85,6 +88,7 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
   const [note, setNote] = useState('')
   const [evidence, setEvidence] = useState('')
   const [busy, setBusy] = useState(false)
+  const [credit, setCredit] = useState(false)
   const { data, reload } = useData(async () => ({
     deal: await q(supabase.from('deals').select('*,product:products(name),package:product_packages(name),vendor:vendors(business_name),reseller:resellers(full_name,code)').eq('id', initial.id).single()),
     events: await q(supabase.from('deal_events').select('*,user:profiles(full_name)').eq('deal_id', initial.id).order('created_at', { ascending: false })),
@@ -134,7 +138,11 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
           {d.final_price != null && <><dt>{closed ? 'Sold for' : 'Agreed at'}</dt><dd className="strong">{money(d.final_price)}</dd></>}
           {d.message && <><dt>Their message</dt><dd>{d.message}</dd></>}
           {d.vendor && <><dt>Vendor</dt><dd>{d.vendor.business_name}</dd></>}
-          {d.reseller && <><dt>Brought by</dt><dd>{d.reseller.full_name} ({d.reseller.code}) · {rateWord}</dd></>}
+          <dt>Brought by</dt>
+          <dd>
+            {d.reseller ? <>{d.reseller.full_name} ({d.reseller.code}) · {rateWord}</> : <span className="muted">No affiliate</span>}
+            {isStaff && !closed && <> <button type="button" className="btn sm ghost" onClick={() => setCredit((c) => !c)}>{d.reseller ? 'Change' : 'Credit an affiliate'}</button></>}
+          </dd>
           {isFeeShare && <><dt>Seller's agreed success fee</dt><dd>{n(d.fee_pct)}% of completed sale</dd></>}
           {closed && isFeeShare && <><dt>Seller receives</dt><dd>{money(n(d.final_price) - n(d.marketplace_amount))}</dd></>}
           {closed && d.reseller && <><dt>Affiliate earns</dt><dd className="copper strong">{money(d.reseller_amount)}</dd></>}
@@ -143,6 +151,8 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
           {closed && d.evidence && <><dt>Verified by</dt><dd>{d.evidence}</dd></>}
           {lost && d.lost_reason && <><dt>Lost because</dt><dd>{d.lost_reason}</dd></>}
         </dl>
+
+        {credit && isStaff && !closed && <CreditAffiliate deal={d} onDone={() => { setCredit(false); reload(); onChanged() }} />}
 
         {!closed && !lost && (
           <div className="log-box stack-sm">
@@ -203,6 +213,88 @@ function DealDrawer({ deal: initial, onClose, onChanged }) {
           )}
         </div>
       </div>
+    </Modal>
+  )
+}
+
+// Approved affiliates, for picking who brought a buyer.
+function useAffiliates() {
+  return useData(() => q(supabase.from('resellers').select('id,full_name,code').eq('status', 'approved').order('full_name')), [])
+}
+
+// Credit a buyer to an affiliate (or change / remove the credit) before the
+// sale is recorded. Every change goes into the deal's history.
+function CreditAffiliate({ deal, onDone }) {
+  const toast = useToast()
+  const { data: affs } = useAffiliates()
+  const [code, setCode] = useState(deal.reseller?.code || '')
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    const { error } = await supabase.rpc('set_deal_affiliate', { p_deal: deal.id, p_code: code, p_note: note || null })
+    setBusy(false)
+    if (error) return toast(/function|schema cache/i.test(error.message) ? 'Run the latest SQL update in Supabase first.' : error.message, true)
+    toast(code ? 'Buyer credited to the affiliate' : 'Affiliate removed')
+    onDone()
+  }
+  return (
+    <div className="card flat stack-sm">
+      <h3>Who brought this buyer?</h3>
+      <div className="form-grid">
+        <Field label="Affiliate">
+          <select className="input" value={code} onChange={(e) => setCode(e.target.value)}>
+            <option value="">No affiliate</option>
+            {(affs || []).map((a) => <option key={a.id} value={a.code}>{a.full_name} ({a.code})</option>)}
+          </select>
+        </Field>
+        <Field label="Why (kept in the history)"><Input value={note} onChange={setNote} placeholder="e.g. Buyer messaged Ann on WhatsApp first" /></Field>
+      </div>
+      <button type="button" className="btn primary" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save'}</button>
+    </div>
+  )
+}
+
+// A buyer who reached us by WhatsApp, a call or in person. Recorded like any
+// enquiry, credited to the affiliate who sent them if there is one.
+function RecordBuyer({ onClose, onDone }) {
+  const toast = useToast()
+  const { data: affs } = useAffiliates()
+  const { data: cars } = useData(() => q(supabase.from('products').select('id,name,price').eq('status', 'published').in('sales_model', ['negotiate', 'enquire']).order('created_at', { ascending: false })), [])
+  const [f, setF] = useState({ product: '', name: '', phone: '', note: '', offer: '', code: '' })
+  const [busy, setBusy] = useState(false)
+  const save = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    const { data, error } = await supabase.rpc('submit_enquiry', {
+      payload: { product_id: f.product, name: f.name, phone: f.phone, message: `Recorded by ZaMarket. ${f.note}`.trim(), offer_amount: f.offer || null, referral_code: f.code || null },
+    })
+    setBusy(false)
+    if (error) return toast(error.message, true)
+    toast(`Recorded as ${data?.reference || 'a new enquiry'}`)
+    onDone()
+  }
+  return (
+    <Modal title="Record a buyer" onClose={onClose}>
+      <form className="stack" onSubmit={save}>
+        <Field label="Which listing">
+          <select className="input" required value={f.product} onChange={(e) => setF({ ...f, product: e.target.value })}>
+            <option value="">Choose…</option>
+            {(cars || []).map((c) => <option key={c.id} value={c.id}>{c.name} · {money(c.price)}</option>)}
+          </select>
+        </Field>
+        <Field label="Buyer's name"><Input value={f.name} onChange={(v) => setF({ ...f, name: v })} required /></Field>
+        <Field label="Buyer's phone"><Input type="tel" value={f.phone} onChange={(v) => setF({ ...f, phone: v })} required placeholder="0977 123 456" /></Field>
+        <Field label="What they asked (optional)"><Input value={f.note} onChange={(v) => setF({ ...f, note: v })} /></Field>
+        <Field label="Their offer (optional)"><Input money value={f.offer} onChange={(v) => setF({ ...f, offer: v })} /></Field>
+        <Field label="Brought by an affiliate?">
+          <select className="input" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value })}>
+            <option value="">No affiliate</option>
+            {(affs || []).map((a) => <option key={a.id} value={a.code}>{a.full_name} ({a.code})</option>)}
+          </select>
+        </Field>
+        <button className="btn buy block" disabled={busy}>{busy ? 'Saving…' : 'Record'}</button>
+      </form>
     </Modal>
   )
 }

@@ -201,3 +201,22 @@ export function sortVehicles(list, sort) {
   else out.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
   return out
 }
+
+// A ready-to-paste post for WhatsApp, Facebook or Instagram. Only the
+// seller's own facts, the asking price and the link.
+export function vehiclePostText(p, v, link) {
+  const title = vehicleTitle(v, p?.name)
+  const price = Number(p?.price) > 0 ? `K${Math.round(Number(p.price)).toLocaleString('en-ZM')}${v?.negotiable === false ? '' : ' (negotiable)'}` : ''
+  const lines = [
+    `🚗 ${title} for sale`,
+    price && `💰 ${price}`,
+    factLine(v, 4) && `📋 ${factLine(v, 4)}`,
+    [v?.engine, v?.drive, v?.body].filter(Boolean).join(' · ') && `⚙️ ${[v?.engine, v?.drive, v?.body].filter(Boolean).join(' · ')}`,
+    v?.features?.length ? `✅ ${v.features.slice(0, 5).join(', ')}` : '',
+    v?.location && `📍 ${v.location}`,
+    '',
+    'All the photos and details, and ask on WhatsApp:',
+    link || '',
+  ]
+  return lines.filter((l) => l !== false && l !== undefined && l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}

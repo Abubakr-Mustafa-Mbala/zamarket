@@ -14,7 +14,7 @@ test('Motors hero handles the first render when vehicle data is not available ye
   assert.match(lib, /Array\.isArray\(page\.specs\)/)
   assert.match(lib, /page\.location_text/)
   // A meaningful empty list and a retry when data is unavailable.
-  assert.match(src, /No vehicles match these filters/)
+  assert.match(src, /No vehicles match/)
   assert.match(src, /Vehicles could not be loaded/)
 })
 

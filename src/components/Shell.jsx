@@ -57,6 +57,7 @@ const STAFF_NAV = [
 const RESELLER_NAV = [
   { to: '/sell', label: 'Dashboard', end: true },
   { to: '/sell/products', label: 'Promote products' },
+  { to: '/sell/vehicles', label: 'Vehicles' },
   { to: '/sell/find-customers', label: 'Promotion studio' },
   { to: '/sell/earnings', label: 'My earnings' },
   { to: '/sell/training', label: 'Academy' },

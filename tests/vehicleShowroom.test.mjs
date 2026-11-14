@@ -85,7 +85,7 @@ test('vehicle enquiries are recorded as deals so affiliates are credited, and th
   assert.doesNotMatch(ed, /vendor_price/)
   const page = read('src/components/vehicle/VehiclePage.jsx')
   assert.match(page, /rpc\('submit_enquiry'/)
-  assert.match(page, /referral_code: a\.referral_code/)
+  assert.match(page, /referral_code: register \? affiliateCode : a\.referral_code/)
   // The private seller agreement is staff-only.
   assert.match(ed, /\{isStaff && \(\s*<Step n=\{7\} title="Seller agreement · private"/)
 })
@@ -95,4 +95,35 @@ test('vehicle pages and listing form are wired in', () => {
   assert.equal((app.match(/path="vehicles\/:id" element=\{<VehicleEditor \/>\}/g) || []).length, 2)
   assert.match(read('src/pages/public/Offering.jsx'), /offering_type === 'vehicle' \? <VehiclePage p=\{props\.p\} \/>/)
   assert.match(read('src/pages/admin/OfferingBuilder.jsx'), /vehicles\/\$\{p\.id\}/)
+})
+
+test('the showroom shows only what ZaMarket lists: no public "send us your car" section', () => {
+  const m = read('src/pages/public/Motors.jsx')
+  assert.doesNotMatch(m, /Selling a vehicle\?|Send us your car|Tell us what you want/)
+  assert.match(m, /No vehicles listed right now/)
+  assert.match(m, /const showTools = \(cars \|\| \[\]\)\.length >= 6/)
+})
+
+test('affiliates see their own vehicle buyers, register buyers, and staff can credit an affiliate', () => {
+  const sql = read('supabase/migrations/20261114_vehicle_affiliate_deals_REVIEW.sql')
+  assert.match(sql, /where r\.user_id = auth\.uid\(\) and r\.status = 'approved'/)
+  assert.match(sql, /right\(regexp_replace\(d\.customer_phone/)
+  assert.doesNotMatch(sql.slice(0, sql.indexOf('set_deal_affiliate')), /fee_pct/)
+  assert.match(sql, /if not is_staff\(\) then raise exception/)
+  assert.match(sql, /if d\.status = 'closed' then raise exception/)
+  assert.match(sql, /cannot be credited for buying themselves/)
+  assert.match(read('supabase/run-in-supabase.sql'), /SECTION 24 of 24 — 20261114_vehicle_affiliate_deals_REVIEW\.sql/)
+  assert.match(read('src/pages/reseller/Vehicles.jsx'), /rpc\('my_vehicle_deals'\)/)
+  assert.match(read('src/components/vehicle/VehiclePage.jsx'), /referral_code: register \? affiliateCode : a\.referral_code/)
+  assert.match(read('src/pages/admin/Deals.jsx'), /rpc\('set_deal_affiliate'/)
+})
+
+test('a vehicle post uses only the listing facts and the link', async () => {
+  const { vehiclePostText } = await import('../src/lib/vehicle.js')
+  const t = vehiclePostText(hilux, vehicleOf(hilux), 'https://zamarket.shop/r/ann/hilux')
+  assert.match(t, /2016 Toyota Hilux 2\.8 GD-6 for sale/)
+  assert.match(t, /K185,000 \(negotiable\)/)
+  assert.match(t, /2016 · 98,000 km · Manual · Diesel/)
+  assert.match(t, /📍 Lusaka/)
+  assert.match(t, /\/r\/ann\/hilux$/)
 })
