@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useMemo } from 'react'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
@@ -136,6 +136,7 @@ export function VendorHome() {
 }
 
 export function VendorProducts() {
+  const nav = useNavigate()
   const v = useVendor()
   const toast = useToast()
   const [edit, setEdit] = useState(null)
@@ -175,7 +176,10 @@ export function VendorProducts() {
     <div className="stack">
       <div className="page-head">
         <div><h1>My products</h1><p>Add products and send them for review. We publish them once approved.</p></div>
-        <button className="btn primary" onClick={() => setEdit({ status: 'draft', owner_type: 'vendor', benefits: [], images: [], faqs: [] })}>Add product</button>
+        <div className="btn-row">
+          <Link className="btn" to="/vendor/vehicles/new">List a vehicle</Link>
+          <button className="btn primary" onClick={() => setEdit({ status: 'draft', owner_type: 'vendor', benefits: [], images: [], faqs: [] })}>Add product</button>
+        </div>
       </div>
       <section className="card stack-sm" aria-label="Getting started with selling">
         <h2>Start selling in four steps</h2>
@@ -188,7 +192,7 @@ export function VendorProducts() {
         </ol>
       </section>
       {loading ? <Loading /> : (
-        <Table rows={data} onRow={(p) => ['draft', 'submitted', 'rejected'].includes(p.status) ? setEdit(p) : null} empty="No products yet" cols={[
+        <Table rows={data} onRow={(p) => p.offering_type === 'vehicle' ? nav(`/vendor/vehicles/${p.id}`) : ['draft', 'submitted', 'rejected'].includes(p.status) ? setEdit(p) : null} empty="No products yet" cols={[
           { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div>{p.status === 'rejected' && p.rejection_reason && <div className="tiny bad">{p.rejection_reason}</div>}</div> },
           { key: 'status', label: 'Status', render: (p) => <Badge status={p.status} /> },
           { key: 'price', label: 'Price', num: true, render: (p) => money(p.price) },

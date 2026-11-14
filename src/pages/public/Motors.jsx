@@ -1,78 +1,172 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { money } from '../../lib/format'
 import { useSeo } from '../../lib/seo'
 import { Loading } from '../../components/ui'
+import VehicleCard from '../../components/vehicle/VehicleCard'
+import { useVehicleContact, askOnWhatsApp, vehicleLink } from '../../components/vehicle/VehiclePage'
+import { VI } from '../../components/vehicle/icons'
+import { vehicleOf, bodyGroup, BODY_GROUPS, filterVehicles, sortVehicles, TRANSMISSIONS, FUELS, whatsappLink } from '../../lib/vehicle'
+import { useAuth } from '../../lib/auth'
+import '../../motors.css'
 
-const readSpec = (p, term) => {
-  const specs = p?.page?.specs
-  const row = (Array.isArray(specs) ? specs : []).find(s => new RegExp(term, 'i').test(s?.label || ''))
-  return row?.value || ''
+const PRICE_STEPS = [50000, 100000, 150000, 200000, 300000, 500000, 800000]
+const thisYear = new Date().getFullYear()
+const YEAR_STEPS = [thisYear - 3, thisYear - 6, thisYear - 10, thisYear - 15]
+
+const GROUP_ICON = {
+  All: VI.body,
+  Cars: <svg viewBox="0 0 32 20" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" d="M3 14v-3l3.5-1.5L10 5h11l4 4.5 4 1V14z" /><circle cx="9" cy="15" r="2.2" fill="currentColor" /><circle cx="24" cy="15" r="2.2" fill="currentColor" /></svg>,
+  SUVs: <svg viewBox="0 0 32 20" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" d="M3 14V8l3-4h17l4 5 2 1v4z" /><path stroke="currentColor" strokeWidth="1.7" d="M15 4v5" /><circle cx="9" cy="15" r="2.4" fill="currentColor" /><circle cx="23.5" cy="15" r="2.4" fill="currentColor" /></svg>,
+  Pickups: <svg viewBox="0 0 32 20" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" d="M2.5 14V9h13V4h7l4 5h3v5z" /><circle cx="8" cy="15" r="2.4" fill="currentColor" /><circle cx="24" cy="15" r="2.4" fill="currentColor" /></svg>,
+  'Vans & buses': <svg viewBox="0 0 32 20" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" d="M3 14V4h21l5 6v4z" /><path stroke="currentColor" strokeWidth="1.5" d="M7 4v5h17M13 4v5M19 4v5" /><circle cx="8.5" cy="15" r="2.2" fill="currentColor" /><circle cx="24" cy="15" r="2.2" fill="currentColor" /></svg>,
+  Trucks: <svg viewBox="0 0 32 20" aria-hidden="true"><path fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" d="M2.5 14V3h17v11M19.5 7h5l4.5 4v3z" /><circle cx="7" cy="15" r="2.3" fill="currentColor" /><circle cx="24" cy="15" r="2.3" fill="currentColor" /></svg>,
 }
-const locationOf = p => p?.page?.location_text || readSpec(p, 'location|town') || 'Ask for location'
-const photoOf = p => (Array.isArray(p?.images) ? p.images : []).find(s => typeof s === 'string' && /^https:\/\//i.test(s))
 
 export default function Motors() {
-  useSeo({ title: 'Vehicles for sale in Zambia | ZaMarket Motors', description: 'Browse available cars, SUVs and pickups on ZaMarket. Compare real vehicle photos and specifications and send an enquiry to sellers in Zambia.' })
+  useSeo({ title: 'Vehicles for sale in Zambia | ZaMarket Motors', description: 'Cars, SUVs, pickups and trucks for sale in Zambia. Real photos, clear prices and every detail on one page. Ask on WhatsApp in one tap.' })
+  const [params, setParams] = useSearchParams()
+  const nav = useNavigate()
+  const { settings } = useAuth()
   const [cars, setCars] = useState(null)
   const [error, setError] = useState('')
-  const [search, setSearch] = useState('')
-  const [sort, setSort] = useState('new')
-  const [kind, setKind] = useState('All vehicles')
   const [refresh, setRefresh] = useState(0)
+  const [more, setMore] = useState(false)
+
+  const f = {
+    q: params.get('q') || '',
+    group: params.get('type') || 'All',
+    make: params.get('make') || '',
+    maxPrice: params.get('max') || '',
+    transmission: params.get('gear') || '',
+    fuel: params.get('fuel') || '',
+    minYear: params.get('from') || '',
+  }
+  const sort = params.get('sort') || 'new'
+  const setF = (key, value) => {
+    const next = new URLSearchParams(params)
+    if (value && value !== 'All') next.set(key, value); else next.delete(key)
+    setParams(next, { replace: true })
+  }
 
   useEffect(() => {
     let alive = true
     setError('')
-    supabase.from('public_products').select('*').eq('offering_type', 'vehicle').eq('status', 'published').order('created_at', { ascending: false }).limit(200)
+    supabase.from('public_products').select('*').eq('offering_type', 'vehicle').eq('status', 'published').order('created_at', { ascending: false }).limit(300)
       .then(({ data, error: failure }) => {
         if (!alive) return
-        if (failure) { setCars([]); setError('Vehicles are temporarily unavailable. Please try again.') }
-        else setCars(data || [])
+        if (failure) { setCars([]); setError('Vehicles could not be loaded. Please try again.') } else setCars(data || [])
       })
     return () => { alive = false }
   }, [refresh])
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase()
-    const list = (cars || []).filter(p => {
-      if (term && !`${p.name} ${p.description || ''} ${locationOf(p)}`.toLowerCase().includes(term)) return false
-      if (kind === 'Cars' && !/sedan|saloon|hatchback|car/i.test(`${p.category || ''} ${readSpec(p, 'body')}`)) return false
-      if (kind === 'SUVs' && !/suv|4x4/i.test(`${p.category || ''} ${readSpec(p, 'body')}`)) return false
-      if (kind === 'Pickups' && !/pickup|double cab|single cab|bakkie/i.test(`${p.category || ''} ${readSpec(p, 'body')}`)) return false
-      return true
-    })
-    return list.sort((a,b) => sort === 'price_asc' ? a.price-b.price : sort === 'price_desc' ? b.price-a.price : (b.created_at || '').localeCompare(a.created_at || ''))
-  }, [cars, search, sort, kind])
+  const makes = useMemo(() => [...new Set((cars || []).map((p) => vehicleOf(p).make).filter(Boolean))].sort(), [cars])
+  const counts = useMemo(() => {
+    const c = { All: (cars || []).length }
+    for (const p of cars || []) { const g = bodyGroup(vehicleOf(p).body || p.category) || 'Cars'; c[g] = (c[g] || 0) + 1 }
+    return c
+  }, [cars])
+  const list = useMemo(() => sortVehicles(filterVehicles(cars, f), sort), [cars, params]) // eslint-disable-line react-hooks/exhaustive-deps
+  const filtersOn = Boolean(f.make || f.maxPrice || f.transmission || f.fuel || f.minYear || f.q || f.group !== 'All')
 
-  return <div className="motors-root stack">
-    <section className="motors-intro">
-      <div className="motors-intro-copy">
-        <span className="eyebrow">ZAMARKET MOTORS · ZAMBIA</span>
-        <h1>Find a vehicle worth taking a closer look at.</h1>
-        <p>Real listings, real photographs and the specifications you need before arranging an enquiry or viewing.</p>
-        <div className="btn-row"><a className="btn primary" href="#vehicles">Explore vehicles</a><Link className="btn" to="/apply/vendor">List a vehicle</Link></div>
-      </div>
-      <div className="motors-intro-photo" aria-hidden>
-        {photoOf(cars?.[0]) ? <img src={photoOf(cars[0])} alt="" /> : <span>Cars · SUVs · Pickups</span>}
-      </div>
-    </section>
-    <div className="motors-assurance"><span>Clear specifications</span><span>Direct vehicle enquiries</span><span>Real seller photographs</span><span>Promote with ZaMarket</span></div>
-    <section id="vehicles" className="stack-sm">
-      <div className="between"><div><span className="eyebrow">VEHICLE LISTINGS</span><h2>Explore available vehicles</h2></div><Link className="btn sm" to="/how-it-works">How ZaMarket works</Link></div>
-      <div className="motors-filters">
-        <input className="input" aria-label="Find a vehicle" placeholder="Search make, model or location…" value={search} onChange={e=>setSearch(e.target.value)} />
-        <select className="input" aria-label="Vehicle type" value={kind} onChange={e=>setKind(e.target.value)}>{['All vehicles','Cars','SUVs','Pickups'].map(k=><option key={k}>{k}</option>)}</select>
-        <select className="input" aria-label="Sort vehicles" value={sort} onChange={e=>setSort(e.target.value)}><option value="new">Newest first</option><option value="price_asc">Lowest price</option><option value="price_desc">Highest price</option></select>
-      </div>
-      {cars === null ? <Loading /> : error ? <div className="card stack-sm"><p role="alert">{error}</p><button className="btn" onClick={()=>setRefresh(n=>n+1)}>Retry</button></div> :
-        filtered.length ? <div className="motors-grid">{filtered.map(p => <Link key={p.id} className="motors-card" to={`/p/${p.slug || p.id}`}>
-          <div className="motors-photo">{photoOf(p) ? <img src={photoOf(p)} alt={p.name} loading="lazy" /> : <div>Photographs requested from seller</div>}</div>
-          <div className="motors-card-body"><h3>{p.name}</h3><p className="small muted">{[readSpec(p,'year'),readSpec(p,'mileage|kilomet'),readSpec(p,'transmission'),readSpec(p,'fuel')].filter(Boolean).join(' · ') || 'View full specifications'}</p>
-          <div className="motors-card-bottom"><strong>{money(p.price)}</strong><span>{locationOf(p)}</span></div><span className="motors-card-cta">See vehicle &amp; enquire →</span></div>
-        </Link>)}</div> : <div className="card stack-sm"><h3>No matching vehicles yet</h3><p className="small muted">Try another keyword or check back for new listings.</p><button className="btn" onClick={()=>{setSearch('');setKind('All vehicles')}}>Clear filters</button></div>}
-      <p className="tiny muted">Vehicles are offered by independent sellers. Confirm registration documents, ownership, condition and the final price before making payment. ZaMarket does not guarantee a vehicle's condition without an independently verified inspection.</p>
-    </section>
-  </div>
+  // "Ask" on a card: straight to WhatsApp when ZaMarket has a WhatsApp number,
+  // otherwise the vehicle page opens with the question form.
+  const contact = useVehicleContact(null)
+  const onAsk = (p) => {
+    const url = contact.whatsapp ? askOnWhatsApp(p, { ...contact, link: vehicleLink(p, contact.ref) }, '') : ''
+    if (url) window.open(url, '_blank', 'noopener')
+    else nav(`/p/${p.slug || p.id}?ask=1`)
+  }
+  const sellWa = whatsappLink(settings?.company_whatsapp, 'Hello ZaMarket, I would like to sell my vehicle through the showroom.')
+
+  return (
+    <div className="vx vx-showroom">
+      <section className="vx-hero">
+        <div className="vx-hero-copy">
+          <span className="vx-eyebrow">ZaMarket Motors</span>
+          <h1>Find your next vehicle</h1>
+          <p>Every car with real photos, the asking price and the details you need, on one page. Ask on WhatsApp in one tap.</p>
+        </div>
+        <form className="vx-search" role="search" onSubmit={(e) => e.preventDefault()}>
+          {VI.search}
+          <input aria-label="Search vehicles" placeholder="Search Toyota, Hilux, Lusaka…" value={f.q} onChange={(e) => setF('q', e.target.value)} />
+          {f.q && <button type="button" onClick={() => setF('q', '')} aria-label="Clear search">✕</button>}
+        </form>
+        <div className="vx-groups" role="tablist" aria-label="Vehicle type">
+          {['All', ...BODY_GROUPS].map((g) => (
+            <button key={g} type="button" role="tab" aria-selected={f.group === g} className={f.group === g ? 'on' : ''} onClick={() => setF('type', g)}>
+              <span className="vx-group-ic">{GROUP_ICON[g]}</span>
+              <span>{g === 'All' ? 'All vehicles' : g}</span>
+              {cars && <em>{counts[g] || 0}</em>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="vx-filters" aria-label="Filters">
+        <div className="vx-filter-row">
+          <label><span>Make</span>
+            <select value={f.make} onChange={(e) => setF('make', e.target.value)}><option value="">Any make</option>{makes.map((m) => <option key={m}>{m}</option>)}</select>
+          </label>
+          <label><span>Price up to</span>
+            <select value={f.maxPrice} onChange={(e) => setF('max', e.target.value)}><option value="">Any price</option>{PRICE_STEPS.map((x) => <option key={x} value={x}>K{x.toLocaleString('en-ZM')}</option>)}</select>
+          </label>
+          <label className={more ? '' : 'vx-hide-sm'}><span>Gearbox</span>
+            <select value={f.transmission} onChange={(e) => setF('gear', e.target.value)}><option value="">Any</option>{TRANSMISSIONS.map((x) => <option key={x}>{x}</option>)}</select>
+          </label>
+          <label className={more ? '' : 'vx-hide-sm'}><span>Fuel</span>
+            <select value={f.fuel} onChange={(e) => setF('fuel', e.target.value)}><option value="">Any</option>{FUELS.map((x) => <option key={x}>{x}</option>)}</select>
+          </label>
+          <label className={more ? '' : 'vx-hide-sm'}><span>Year</span>
+            <select value={f.minYear} onChange={(e) => setF('from', e.target.value)}><option value="">Any year</option>{YEAR_STEPS.map((y) => <option key={y} value={y}>{y} or newer</option>)}</select>
+          </label>
+        </div>
+        <div className="vx-filter-foot">
+          <strong>{cars ? `${list.length} vehicle${list.length === 1 ? '' : 's'}` : 'Loading vehicles'}</strong>
+          <select aria-label="Sort vehicles" className="vx-sort" value={sort} onChange={(e) => setF('sort', e.target.value === 'new' ? '' : e.target.value)}>
+              <option value="new">Newest listed</option><option value="price_asc">Lowest price</option><option value="price_desc">Highest price</option>
+              <option value="year_desc">Newest year</option><option value="mileage_asc">Lowest mileage</option>
+            </select>
+          <button type="button" className="vx-link vx-show-sm" onClick={() => setMore((m) => !m)}>{more ? 'Fewer filters' : 'More filters'}</button>
+          {filtersOn && <button type="button" className="vx-link" onClick={() => setParams(new URLSearchParams(), { replace: true })}>Clear all</button>}
+        </div>
+      </section>
+
+      {cars === null ? <Loading shape="cards" />
+        : error ? <div className="vx-empty"><p role="alert">{error}</p><button className="vx-btn primary" onClick={() => setRefresh((n) => n + 1)}>Try again</button></div>
+          : list.length ? <div className="vx-grid">{list.map((p) => <VehicleCard key={p.id} p={p} onAsk={onAsk} />)}</div>
+            : (
+              <div className="vx-empty">
+                <h2>{cars.length ? 'No vehicles match these filters' : 'New vehicles are on the way'}</h2>
+                <p>{cars.length ? 'Try fewer filters, or tell us what you are looking for and we will let you know when one comes in.' : 'Tell us what you are looking for and we will let you know when one comes in.'}</p>
+                <div className="vx-empty-actions">
+                  {filtersOn && <button className="vx-btn ghost" onClick={() => setParams(new URLSearchParams(), { replace: true })}>Clear filters</button>}
+                  {whatsappLink(settings?.company_whatsapp, '') && <a className="vx-btn wa" target="_blank" rel="noreferrer" href={whatsappLink(settings.company_whatsapp, `Hello ZaMarket, I am looking for a vehicle: ${[f.make, f.group !== 'All' ? f.group : '', f.maxPrice ? `up to K${Number(f.maxPrice).toLocaleString('en-ZM')}` : ''].filter(Boolean).join(', ') || '…'}`)}>{VI.whatsapp}Tell us what you want</a>}
+                </div>
+              </div>
+            )}
+
+      <section className="vx-how">
+        <h2>How buying works</h2>
+        <ol>
+          <li><span>1</span><div><strong>Ask</strong><p>Tap Ask on WhatsApp or leave your number. Ask anything: price, papers, more photos.</p></div></li>
+          <li><span>2</span><div><strong>See it</strong><p>We arrange a viewing with the seller. Bring a mechanic if you like.</p></div></li>
+          <li><span>3</span><div><strong>Agree</strong><p>Agree the price, check the papers, and only then pay.</p></div></li>
+        </ol>
+      </section>
+
+      <section className="vx-sell">
+        <div>
+          <h2>Selling a vehicle?</h2>
+          <p>Send us the photos, the price you want and the details. We list it here and our affiliates share it across Zambia.</p>
+        </div>
+        <div className="vx-sell-actions">
+          {sellWa && <a className="vx-btn wa" href={sellWa} target="_blank" rel="noreferrer">{VI.whatsapp}Send us your car</a>}
+          <Link className="vx-btn ghost" to="/apply/vendor">Become a seller</Link>
+        </div>
+      </section>
+
+      <p className="vx-fine">Vehicles are listed by their owners and dealers. Details come from the seller. See the vehicle and check the papers before paying anything.</p>
+    </div>
+  )
 }

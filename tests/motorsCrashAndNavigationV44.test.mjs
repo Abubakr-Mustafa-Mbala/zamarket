@@ -5,14 +5,17 @@ const read = path => readFileSync(new URL('../' + path, import.meta.url), 'utf8'
 
 test('Motors hero handles the first render when vehicle data is not available yet', () => {
   const src = read('src/pages/public/Motors.jsx')
-  // The page calls photoOf(cars?.[0]) on the first render, while cars is null.
-  assert.match(src, /photoOf\(cars\?\.\[0\]\)/)
-  assert.match(src, /Array\.isArray\(p\?\.images\)/)
-  assert.match(src, /Array\.isArray\(specs\)/)
-  assert.match(src, /p\?\.page\?\.location_text/)
-  // Also preserve a meaningful empty-list and unavailable-data experience.
-  assert.match(src, /No matching vehicles yet/)
-  assert.match(src, /Vehicles are temporarily unavailable/)
+  // cars is null on the first render: every use of it is guarded.
+  assert.match(src, /\(cars \|\| \[\]\)/)
+  assert.match(src, /cars === null \? <Loading/)
+  const card = read('src/components/vehicle/VehicleCard.jsx')
+  assert.match(card, /Array\.isArray\(p\?\.images\)/)
+  const lib = read('src/lib/vehicle.js')
+  assert.match(lib, /Array\.isArray\(page\.specs\)/)
+  assert.match(lib, /page\.location_text/)
+  // A meaningful empty list and a retry when data is unavailable.
+  assert.match(src, /No vehicles match these filters/)
+  assert.match(src, /Vehicles could not be loaded/)
 })
 
 test('top links are destinations, product departments appear only once on home', () => {

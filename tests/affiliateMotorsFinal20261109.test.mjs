@@ -7,8 +7,9 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
 
 test('vehicle showroom is part of public ZaMarket routing and vehicle pages remain enquiries', () => {
   assert.match(read('../src/App.jsx'), /path="\/motors"/)
-  assert.match(read('../src/pages/public/Offering.jsx'), /VehicleShowroom/)
-  assert.match(read('../src/pages/public/Offering.jsx'), /Enquire about this vehicle/)
+  assert.match(read('../src/pages/public/Offering.jsx'), /VehiclePage/)
+  assert.match(read('../src/components/vehicle/VehiclePage.jsx'), /Ask about this vehicle/)
+  assert.match(read('../src/pages/shared/VehicleEditor.jsx'), /sales_model: 'negotiate'/)
 })
 
 test('normal public product sharing preserves approved affiliate attribution', () => {

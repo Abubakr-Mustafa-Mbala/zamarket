@@ -124,3 +124,21 @@ export const PHOTO_TIPS = [
   'Wipe the lens first. That alone fixes most blurry photos.',
   'Show the front, the back, the label, and anything a buyer would ask about.',
 ]
+
+// Vehicle photos keep their own shape. A car is wide; squaring it would add
+// grey bands above and below. Long side capped at 1600px, gently brightened.
+export async function uploadVehiclePhoto(file, { long = 1600, quality = 0.86 } = {}) {
+  if (!file.type?.startsWith('image/')) throw new Error('Please choose a photo')
+  const img = await loadImage(file)
+  const scale = Math.min(1, long / Math.max(img.width, img.height))
+  const w = Math.max(1, Math.round(img.width * scale))
+  const h = Math.max(1, Math.round(img.height * scale))
+  const c = document.createElement('canvas')
+  c.width = w; c.height = h
+  const ctx = c.getContext('2d', { willReadFrequently: true })
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(img, 0, 0, w, h)
+  levels(ctx, w, h)
+  const blob = await new Promise((res) => c.toBlob(res, 'image/jpeg', quality))
+  return uploadWithOriginal(file, blob, { kind: 'product' })
+}

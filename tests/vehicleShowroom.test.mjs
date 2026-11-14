@@ -1,0 +1,98 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import {
+  vehicleOf, vehicleTitle, vehicleFacts, specsFrom, factLine, listingChecks, normaliseVehicle, bodyGroup,
+  whatsappNumber, whatsappText, whatsappLink, filterVehicles, sortVehicles, km,
+} from '../src/lib/vehicle.js'
+
+const read = (p) => readFileSync(fileURLToPath(new URL(`../${p}`, import.meta.url)), 'utf8')
+
+const hilux = {
+  id: 'a', slug: 'hilux', name: 'old name', price: 185000, created_at: '2026-11-10',
+  page: { vehicle: { make: 'Toyota', model: 'Hilux', variant: '2.8 GD-6', year: '2016', body: 'Pickup (double cab)', mileage_km: '98000', transmission: 'Manual', fuel: 'Diesel', drive: '4x4', location: 'Lusaka', features: ['Tow bar'] } },
+}
+const vitz = {
+  id: 'b', slug: 'vitz', name: 'Toyota Vitz 2014', price: 85000, created_at: '2026-11-12',
+  page: { location_text: 'Ndola', specs: [{ label: 'Make', value: 'Toyota' }, { label: 'Model', value: 'Vitz' }, { label: 'Year', value: '2014' }, { label: 'Mileage (km)', value: '120,500' }, { label: 'Transmission', value: 'Automatic' }, { label: 'Fuel type', value: 'Petrol' }, { label: 'Body type', value: 'Hatchback' }] },
+}
+
+test('a vehicle reads the same from the new fields and from older hand-typed specs', () => {
+  assert.equal(vehicleTitle(vehicleOf(hilux)), '2016 Toyota Hilux 2.8 GD-6')
+  const old = vehicleOf(vitz)
+  assert.equal(vehicleTitle(old), '2014 Toyota Vitz')
+  assert.equal(old.mileage_km, '120500')
+  assert.equal(old.location, 'Ndola')
+  assert.equal(km(old.mileage_km), '120,500 km')
+})
+
+test('facts come out in the order buyers ask, and empty fields are never shown', () => {
+  const facts = vehicleFacts(vehicleOf(hilux))
+  assert.deepEqual(facts.slice(0, 4).map((f) => f.value), ['2016', '98,000 km', 'Manual', 'Diesel'])
+  assert.ok(!facts.some((f) => f.key === 'colour'))
+  assert.equal(factLine(vehicleOf(hilux)), '2016 · 98,000 km · Manual · Diesel')
+  assert.deepEqual(specsFrom(vehicleOf(hilux))[0], { label: 'Year', value: '2016' })
+})
+
+test('a listing needs photos, make, model, year, price, mileage, gearbox, fuel and town', () => {
+  const v = vehicleOf(hilux)
+  assert.ok(listingChecks(v, { price: 185000, images: ['x'] }).every((c) => c.done))
+  const missing = listingChecks({ make: 'Toyota' }, { price: 0, images: [] }).filter((c) => !c.done).map((c) => c.key)
+  assert.deepEqual(missing, ['photos', 'make', 'year', 'price', 'mileage', 'transmission', 'fuel', 'location'])
+})
+
+test('saving keeps only filled fields and strips mileage to digits', () => {
+  const out = normaliseVehicle({ make: ' Toyota ', model: '', mileage_km: '98,000 km', features: ['A', 'A', ' '], negotiable: false })
+  assert.deepEqual(out, { make: 'Toyota', mileage_km: '98000', features: ['A'], negotiable: false })
+})
+
+test('body types fall into the showroom groups', () => {
+  assert.equal(bodyGroup('Pickup (double cab)'), 'Pickups')
+  assert.equal(bodyGroup('SUV'), 'SUVs')
+  assert.equal(bodyGroup('Van / minibus'), 'Vans & buses')
+  assert.equal(bodyGroup('Truck'), 'Trucks')
+  assert.equal(bodyGroup('Hatchback'), 'Cars')
+})
+
+test('WhatsApp goes to the Zambian number with the vehicle, the question and the link', () => {
+  assert.equal(whatsappNumber('0977 123 456'), '260977123456')
+  assert.equal(whatsappNumber('+260 97 7123456'), '260977123456')
+  assert.equal(whatsappNumber(''), '')
+  const text = whatsappText({ title: '2016 Toyota Hilux', price: 'K185,000', link: 'https://zamarket.shop/r/amy/hilux', question: 'Is it still available?' })
+  assert.match(text, /2016 Toyota Hilux \(K185,000\)/)
+  assert.match(text, /\/r\/amy\/hilux/)
+  assert.match(whatsappLink('0977123456', text), /^https:\/\/wa\.me\/260977123456\?text=/)
+  assert.equal(whatsappLink('', text), '')
+})
+
+test('showroom filters and sorting', () => {
+  const list = [hilux, vitz]
+  assert.deepEqual(filterVehicles(list, { group: 'Pickups' }).map((p) => p.id), ['a'])
+  assert.deepEqual(filterVehicles(list, { maxPrice: 100000 }).map((p) => p.id), ['b'])
+  assert.deepEqual(filterVehicles(list, { transmission: 'Automatic' }).map((p) => p.id), ['b'])
+  assert.deepEqual(filterVehicles(list, { minYear: 2015 }).map((p) => p.id), ['a'])
+  assert.deepEqual(filterVehicles(list, { q: 'ndola' }).map((p) => p.id), ['b'])
+  assert.deepEqual(sortVehicles(list, 'price_asc').map((p) => p.id), ['b', 'a'])
+  assert.deepEqual(sortVehicles(list, 'year_desc').map((p) => p.id), ['a', 'b'])
+  assert.deepEqual(sortVehicles(list, 'mileage_asc').map((p) => p.id), ['a', 'b'])
+  assert.deepEqual(sortVehicles(list).map((p) => p.id), ['b', 'a'])
+})
+
+test('vehicle enquiries are recorded as deals so affiliates are credited, and the fee is never added to the price', () => {
+  const ed = read('src/pages/shared/VehicleEditor.jsx')
+  assert.match(ed, /sales_model: 'negotiate'/)
+  assert.doesNotMatch(ed, /vendor_price/)
+  const page = read('src/components/vehicle/VehiclePage.jsx')
+  assert.match(page, /rpc\('submit_enquiry'/)
+  assert.match(page, /referral_code: a\.referral_code/)
+  // The private seller agreement is staff-only.
+  assert.match(ed, /\{isStaff && \(\s*<Step n=\{7\} title="Seller agreement · private"/)
+})
+
+test('vehicle pages and listing form are wired in', () => {
+  const app = read('src/App.jsx')
+  assert.equal((app.match(/path="vehicles\/:id" element=\{<VehicleEditor \/>\}/g) || []).length, 2)
+  assert.match(read('src/pages/public/Offering.jsx'), /offering_type === 'vehicle' \? <VehiclePage p=\{props\.p\} \/>/)
+  assert.match(read('src/pages/admin/OfferingBuilder.jsx'), /vehicles\/\$\{p\.id\}/)
+})

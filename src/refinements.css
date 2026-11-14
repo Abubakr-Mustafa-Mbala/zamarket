@@ -604,3 +604,13 @@ html, body, #root { width: 100%; max-width: 100%; overflow-x: clip; }
 
 /* Solid top bar on phones so page text never shows through it while scrolling */
 @media (max-width: 760px) { .shop-header { background-color: rgb(17, 18, 30); } }
+
+/* Pop-ups sit above everything fixed on the page. They were at layer 30,
+   under the phone bottom bar (40) and the buy bars (39), so on a phone the
+   Send / Save buttons at the bottom of a full-screen pop-up were covered and
+   could not be tapped. Messages (toasts) stay above pop-ups. */
+.modal-backdrop { z-index: 95; }
+.toast { z-index: 99; }
+/* The message itself was white text on the light ink colour: unreadable. */
+.toast { background: rgb(38, 33, 58); color: white; border: 1px solid rgb(120, 98, 200); box-shadow: 0 12px 30px rgba(0, 0, 0, .45); }
+.toast.bad { background: rgb(120, 34, 34); border-color: rgb(232, 115, 107); color: white; }

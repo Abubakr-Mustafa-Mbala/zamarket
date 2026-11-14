@@ -56,6 +56,8 @@ const Reviews = named(adminGrowth, 'Reviews')
 const Finance = lazy(() => import('./pages/admin/Finance'))
 const Receipt = lazy(() => import('./pages/admin/Receipt'))
 const OfferingBuilder = lazy(() => import('./pages/admin/OfferingBuilder'))
+const VehicleEditor = lazy(() => import('./pages/shared/VehicleEditor'))
+const VehicleList = named(() => import('./pages/shared/VehicleEditor'), 'VehicleList')
 const Deals = lazy(() => import('./pages/admin/Deals'))
 const earningsPages = () => import('./pages/shared/EarningsPages')
 const AdminEarnings = named(earningsPages, 'AdminEarnings')
@@ -197,6 +199,8 @@ export default function App() {
         <Route path="products" element={<Products />} />
         <Route path="studio" element={<StudioPage />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />
+        <Route path="vehicles" element={<VehicleList />} />
+        <Route path="vehicles/:id" element={<VehicleEditor />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />
         <Route path="inventory" element={<Inventory />} />
@@ -240,6 +244,8 @@ export default function App() {
         <Route path="orders" element={<VendorOrders />} />
         <Route path="payouts" element={<VendorPayouts />} />
         <Route path="products/:id/page" element={<OfferingBuilder />} />
+        <Route path="vehicles" element={<VehicleList />} />
+        <Route path="vehicles/:id" element={<VehicleEditor />} />
         <Route path="earnings" element={<VendorEarnings />} />
         <Route path="marketing" element={<VendorMarketing />} />
         <Route path="coupons" element={<VendorCoupons />} />

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams, Link } from 'react-router-dom'
+import { useNavigate, useParams, Link, Navigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
@@ -81,6 +81,8 @@ export default function OfferingBuilder() {
 
   if (error) return <Empty title="This page could not be opened">{error}</Empty>
   if (loading || !p) return <Loading />
+  // Vehicles have their own one-page listing form.
+  if (p.offering_type === 'vehicle') return <Navigate to={`${vendorId ? '/vendor' : '/admin'}/vehicles/${p.id}`} replace />
   const hint = HINTS[p.offering_type] || HINTS.other
   const setField = (k) => (v) => setP((x) => ({ ...x, [k]: v }))
   const set = (k) => (v) => setPg((x) => ({ ...x, [k]: v }))

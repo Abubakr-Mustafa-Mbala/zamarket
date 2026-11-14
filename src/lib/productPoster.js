@@ -1,5 +1,6 @@
 import { FORMATS, directionFrom, load, rounded, cover, coverRounded, fit, wrap, tracked, trackedWidth, enhance, grain, vignette, scrim, divider, qrImage, qrMinSize, qrPanel, brandLockup } from './posterKit'
 import { money } from './format'
+import { vehicleOf, factLine } from './vehicle'
 
 // ---------------------------------------------------------------------------
 // Product posters.
@@ -119,6 +120,16 @@ export function sellingPoints(product, want = 4, limit = 0) {
     if (limit && t.length > limit) return
     seen.add(key)
     out.push(t)
+  }
+
+  // A vehicle's selling points are its facts: year, mileage, gearbox, fuel.
+  if (product?.offering_type === 'vehicle') {
+    const v = vehicleOf(product)
+    add(factLine(v, 2))
+    add([v.fuel, v.engine, v.drive].filter(Boolean).join(' · '))
+    add([v.condition, v.papers].filter(Boolean).join(' · '))
+    if (v.location) add(`In ${v.location}`)
+    if (out.length >= want) return out.slice(0, want)
   }
 
   for (const b of (product?.benefits || [])) {

@@ -1,5 +1,6 @@
 import { suggestProductSeo } from '../../lib/productDiscovery'
 import { useEffect, useMemo, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
@@ -16,6 +17,7 @@ import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, Segmented
 export const effectiveCost = (p) => (p.cost_override != null ? n(p.cost_override) : p.landed_units > 0 ? n(p.landed_cost_total) / p.landed_units : 0)
 
 export default function Products() {
+  const nav = useNavigate()
   const DEPARTMENTS = useDepartments()
   const { advanced, settings, isStaff, isFounder } = useAuth()
   const [edit, setEdit] = useState(null)
@@ -33,6 +35,7 @@ export default function Products() {
         <div><h1>Products</h1><p>What we sell, what it really costs, and what's left.</p></div>
         <div className="btn-row">
           {isFounder && <SampleButton onDone={reload} />}
+          <Link className="btn" to="/admin/vehicles/new">List a vehicle</Link>
           <button className="btn primary" onClick={() => setEdit({ owner_type: 'founder', status: 'draft', benefits: [], images: [], faqs: [] })}>Add product</button>
         </div>
       </div>
@@ -45,7 +48,7 @@ export default function Products() {
       {loading ? <Loading /> : !error && (
         <Table
           rows={visibleRows}
-          onRow={setEdit}
+          onRow={(p) => (p.offering_type === 'vehicle' ? nav(`/admin/vehicles/${p.id}`) : setEdit(p))}
           empty={tab === 'review' ? 'No vendor products waiting for review' : 'No products yet'}
           cols={[
             { key: 'name', label: 'Product', render: (p) => <div><div className="strong">{p.name}</div><div className="tiny muted">{p.vendor?.business_name || p.category || ''}</div></div> },
