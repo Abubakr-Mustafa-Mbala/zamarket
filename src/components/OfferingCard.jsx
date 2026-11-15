@@ -5,6 +5,7 @@ import { useSaved } from '../lib/saved'
 import { useCart } from '../lib/cart'
 import { useAuth } from '../lib/auth'
 import Icon from '../lib/icons'
+import VehicleCard from './vehicle/VehicleCard'
 
 // The price, written the way a shop writes it: big kwacha, small ngwee.
 function Price({ value, was }) {
@@ -102,19 +103,7 @@ export default function OfferingCard({ p, deal, inStore }) {
   const out = p.stock_available <= 0 && p.owner_type === 'founder' && p.fulfilment === 'in_stock'
 
   // vehicles: photo first, then the facts a buyer asks for
-  if (kind === 'vehicle') {
-    return (
-      <Link to={to} className="oc oc-vehicle">
-        <Media p={p} badge={badge} />
-        <span className="oc-body">
-          <span className="oc-name">{p.name}</span>
-          {specs.length > 0 && <span className="oc-specs">{specs.join(' · ')}</span>}
-          <span className="oc-row"><Price value={p.price} /><Chip icon={<Icon.pin />}>{p.page?.location_text || 'Location on enquiry'}</Chip></span>
-          <span className="oc-action">Enquire <Icon.arrow /></span>
-        </span>
-      </Link>
-    )
-  }
+  if (kind === 'vehicle') return <VehicleCard p={p} compact />
 
   const service = p.fulfilment === 'service' && !['course', 'class'].includes(kind)
   const course = ['course', 'class'].includes(kind)

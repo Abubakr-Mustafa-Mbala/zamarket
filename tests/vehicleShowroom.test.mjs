@@ -101,7 +101,9 @@ test('the showroom shows only what ZaMarket lists: no public "send us your car" 
   const m = read('src/pages/public/Motors.jsx')
   assert.doesNotMatch(m, /Selling a vehicle\?|Send us your car|Tell us what you want/)
   assert.match(m, /No vehicles listed right now/)
-  assert.match(m, /const showTools = \(cars \|\| \[\]\)\.length >= 6/)
+  assert.match(m, /<h1>ZaMarket Motors<\/h1>/)
+  assert.match(m, /'Featured vehicles'/)
+  assert.doesNotMatch(m, /Listed by ZaMarket for sellers we know|Every vehicle here is listed by/)
 })
 
 test('affiliates see their own vehicle buyers, register buyers, and staff can credit an affiliate', () => {

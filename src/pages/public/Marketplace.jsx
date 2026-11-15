@@ -20,6 +20,7 @@ import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
 import PhotoViewer from '../../components/PhotoViewer'
 import LunchPromo from '../../components/LunchPromo'
+import VehicleCard from '../../components/vehicle/VehicleCard'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
@@ -861,22 +862,6 @@ function useSeoStore(store) {
 }
 
 // Cars and similar are listings, not shelf items: big photo, key facts, asking price.
-function ListingCard({ p, store }) {
-  const specs = (p.page?.specs || []).slice(0, 4)
-  return (
-    <Link to={store ? `/${store}/${p.slug}` : `/p/${p.slug}`} className="listing">
-      <span className="listing-photo">{p.images?.[0] ? <img src={p.images[0]} alt="" loading="lazy" /> : <span className="ph" aria-hidden />}</span>
-      <span className="listing-body">
-        <span className="listing-name">{p.name}</span>
-        {specs.length > 0 && <span className="listing-specs">{specs.map((sp) => <span key={sp.label}><b>{sp.label}</b> {sp.value}</span>)}</span>}
-        <span className="listing-foot">
-          <span className="listing-price">{money(p.price)}{p.sales_model === 'negotiate' && <span className="tiny muted"> asking</span>}</span>
-          <span className="btn sm primary">{p.sales_model === 'negotiate' || p.sales_model === 'enquire' ? 'Enquire' : 'View'}</span>
-        </span>
-      </span>
-    </Link>
-  )
-}
 
 // A seller card is a shop window, so it shows what is actually on the shelf
 // rather than a cover photo and a rating they may not have yet. Three real
@@ -1443,9 +1428,9 @@ export function StorePage() {
       special={<><LunchPromo vendorId={store.id} />{special.map(([kind, title]) => (
         <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
           <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>
-          <div className={kind === 'vehicle' ? 'grid-listings' : 'zsv-grid'}>
+          <div className={kind === 'vehicle' ? 'vx-grid' : 'zsv-grid'}>
             {byKind[kind].map((p) => (kind === 'vehicle'
-              ? <ListingCard key={p.id} p={p} store={store.slug} />
+              ? <VehicleCard key={p.id} p={{ ...p, vendor_name: p.vendor_name || store.business_name }} />
               : <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
           </div>
         </section>

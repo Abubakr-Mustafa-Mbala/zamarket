@@ -17,7 +17,7 @@ test('the store page keeps its data loading and hands it to the new layout', () 
   // The existing card and share button do the buying and sharing.
   assert.match(store, /renderProduct=\{\(p\) => <OfferingCard p=\{p\} deal=\{dealFor\(offersBy, p\.id\)\} inStore=\{store\.slug\} \/>\}/)
   assert.match(store, /share=\{<ShareStore store=\{store\}/)
-  assert.match(store, /<ListingCard key=\{p\.id\} p=\{p\} store=\{store\.slug\} \/>/)
+  assert.match(store, /<VehicleCard key=\{p\.id\} p=\{\{ \.\.\.p, vendor_name: p\.vendor_name \|\| store\.business_name \}\} \/>/)
 })
 
 test('the storefront claims nothing the data does not say', () => {

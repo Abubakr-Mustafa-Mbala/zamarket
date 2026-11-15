@@ -20,6 +20,24 @@
   min-width: 0;
 }
 .vx *, .vx *::before, .vx *::after { box-sizing: border-box; }
+/* The vehicle card carries its own colours, so it looks the same in any grid. */
+.vx-card {
+  --vx-bg: #12111d;
+  --vx-panel: #1a1828;
+  --vx-panel-2: #221f33;
+  --vx-line: #2f2a45;
+  --vx-text: #f5f2ff;
+  --vx-muted: #b4adc9;
+  --vx-accent: #a98bff;
+  --vx-accent-ink: #160f2a;
+  --vx-wa: #25d366;
+  --vx-wa-ink: #062b14;
+  --vx-ok: #5fd39a;
+  --vx-warn: #f0b45e;
+  color: var(--vx-text);
+}
+.vx-card *, .vx-card *::before, .vx-card *::after { box-sizing: border-box; }
+.vx-card svg { flex: none; }
 .vx svg { width: 1em; height: 1em; flex: none; }
 .vx h1, .vx h2, .vx h3 { color: var(--vx-text); margin: 0; letter-spacing: -.02em; }
 .vx p { margin: 0; }
@@ -350,3 +368,136 @@
 @media (max-width: 760px) { .vx-aff-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .vx-aff-stats > div:last-child { grid-column: 1 / -1; } }
 .vx-money dd { white-space: nowrap; }
 .vx-money > div { align-items: baseline; }
+
+/* ===== Showroom, as designed: banner, filter chips, featured vehicles ===== */
+.vx-showroom { gap: 16px; }
+.vx-banner { position: relative; display: flex; align-items: center; min-height: 150px; padding: 20px; border-radius: 0 0 18px 18px; margin: -4px -4px 0;
+  background: linear-gradient(100deg, #17152a 0%, #1f1a3a 45%, #3b2470 78%, #5b2fa8 100%); overflow: hidden; }
+.vx-banner-copy { position: relative; z-index: 2; display: flex; flex-direction: column; gap: 6px; max-width: 62%; }
+.vx-banner h1 { font-family: inherit; font-size: clamp(1.55rem, 6.4vw, 2.3rem); font-weight: 800; letter-spacing: -.02em; line-height: 1.05; }
+.vx-banner p { color: #d4cfe6; font-size: clamp(.95rem, 3.6vw, 1.1rem); }
+.vx-banner-car { position: absolute; right: -6px; top: 0; bottom: 0; width: 52%; display: flex; align-items: center; justify-content: flex-end; z-index: 1; }
+.vx-banner-car img { width: 100%; height: 100%; object-fit: cover;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, .55) 28%, #000 60%); mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, .55) 28%, #000 60%); }
+.vx-banner-svg { width: 100%; max-width: 330px; height: auto; filter: drop-shadow(0 12px 18px rgba(0, 0, 0, .5)); }
+
+.vx-chips { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: 0 -2px; }
+.vx-chips::-webkit-scrollbar { display: none; }
+.vx-chip { position: relative; flex: none; display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 18px; border-radius: 999px; border: 1.5px solid #3a3456;
+  background: transparent; color: var(--vx-text); font: inherit; font-size: .98rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.vx-chip svg { width: 18px; height: 18px; }
+.vx-chip.on { border-color: var(--vx-accent); background: rgba(169, 139, 255, .14); color: #e2d8ff; }
+.vx-chip select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+
+.vx-list { display: flex; flex-direction: column; gap: 14px; }
+.vx-list-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vx-list-head h2 { font-family: inherit; font-size: clamp(1.3rem, 5vw, 1.6rem); font-weight: 800; }
+.vx-viewall { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 6px 0; color: var(--vx-accent); font: inherit; font-weight: 700; font-size: 1rem; cursor: pointer; }
+.vx-viewall svg { width: 20px; height: 20px; }
+
+/* The vehicle card */
+.vx-card { position: relative; background: #1b1830; border: 1px solid #2c2746; border-radius: 20px; overflow: hidden; }
+.vx-card-photo { aspect-ratio: 16 / 10; background: #0d0c15; }
+.vx-card-photo img { object-fit: cover; }
+.vx-card-heart { position: absolute; top: 12px; right: 12px; z-index: 3; width: 46px; height: 46px; border-radius: 50%; border: 0; display: grid; place-items: center;
+  background: rgba(14, 12, 24, .72); color: #fff; cursor: pointer; }
+.vx-card-heart svg { width: 24px; height: 24px; }
+.vx-card-heart.on { color: #ff6b8b; }
+.vx-card-count { right: 12px; left: auto; bottom: 12px; padding: 6px 12px; font-size: .9rem; gap: 7px; background: rgba(14, 12, 24, .8); }
+.vx-card-sold { position: absolute; left: 12px; top: 12px; padding: 5px 12px; border-radius: 999px; background: #f0b45e; color: #2a1505; font-weight: 800; font-size: .85rem; }
+.vx-card-main { padding: 16px 18px 10px; gap: 10px; }
+.vx-card-title { font-size: clamp(1.1rem, 4.6vw, 1.35rem); font-weight: 800; letter-spacing: -.01em; }
+.vx-card-price { align-items: center; gap: 12px; }
+.vx-card-price b { font-size: clamp(1.6rem, 7vw, 2.1rem); font-weight: 800; letter-spacing: -.03em; color: #b49bff; line-height: 1; }
+.vx-card-price em { font-style: normal; font-size: .85rem; font-weight: 700; color: #58d68d; background: rgba(88, 214, 141, .1); border: 1.5px solid rgba(88, 214, 141, .55); padding: 4px 12px; border-radius: 999px; }
+.vx-card-facts { display: grid; grid-template-columns: repeat(4, minmax(0, auto)); justify-content: space-between; gap: 8px 14px; }
+.vx-card-facts > span { display: flex; align-items: center; gap: 8px; font-size: .95rem; color: var(--vx-text); min-width: 0; white-space: nowrap; }
+.vx-card-facts > span i { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
+.vx-card-facts svg { width: 22px; height: 22px; color: #a49cc4; flex: none; }
+.vx-card-loc { gap: 8px; color: var(--vx-text); font-size: .95rem; min-width: 0; }
+.vx-card-loc svg { width: 20px; height: 20px; color: #a49cc4; }
+.vx-card-loc .dot { color: var(--vx-muted); }
+.vx-card-loc .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.vx-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 6px 18px 18px; }
+.vx-card-actions .vx-btn { min-height: 52px; border-radius: 14px; font-size: 1rem; padding: 0 10px; }
+.vx-btn.outline { background: transparent; color: var(--vx-text); border: 1.5px solid #8e6cff; }
+.vx-btn.outline:hover { background: rgba(142, 108, 255, .1); }
+.vx-btn.wa { background: #22c55e; color: #fff; }
+.vx-btn.wa svg { width: 24px; height: 24px; }
+
+/* Compact card in mixed product grids (homepage, search, shop) */
+.vx-card.is-compact { border-radius: 16px; }
+.vx-card.is-compact .vx-card-heart { width: 36px; height: 36px; top: 8px; right: 8px; }
+.vx-card.is-compact .vx-card-heart svg { width: 19px; height: 19px; }
+.vx-card.is-compact .vx-card-count { padding: 4px 8px; font-size: .75rem; right: 8px; bottom: 8px; }
+.vx-card.is-compact .vx-card-main { padding: 10px 12px 12px; gap: 7px; }
+.vx-card.is-compact .vx-card-title { font-size: .98rem; line-height: 1.25; }
+.vx-card.is-compact .vx-card-price { gap: 8px; flex-wrap: wrap; }
+.vx-card.is-compact .vx-card-price b { font-size: 1.2rem; }
+.vx-card.is-compact .vx-card-price em { font-size: .7rem; padding: 2px 8px; }
+.vx-card.is-compact .vx-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; }
+.vx-card.is-compact .vx-card-facts > span { font-size: .8rem; gap: 5px; }
+.vx-card.is-compact .vx-card-facts svg { width: 16px; height: 16px; }
+.vx-card.is-compact .vx-card-loc { font-size: .8rem; gap: 5px; flex-wrap: wrap; }
+.vx-card.is-compact .vx-card-loc svg { width: 15px; height: 15px; }
+
+/* Filters sheet */
+.vx-filter-sheet { max-width: 520px; }
+.vx-sheet-inner { display: flex; flex-direction: column; gap: 16px; padding: 4px 2px; }
+.vx-sheet-field { display: flex; flex-direction: column; gap: 8px; }
+.vx-sheet-field > span { font-weight: 700; font-size: .9rem; }
+.vx-sheet-field input { min-height: 48px; border-radius: 12px; border: 1px solid var(--vx-line); background: var(--vx-bg); color: var(--vx-text); font: inherit; font-size: 1rem; padding: 0 12px; }
+.vx-sheet-actions { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; }
+
+@media (max-width: 760px) {
+  .vx-grid { gap: 18px; }
+}
+@media (max-width: 400px) {
+  .vx-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vx-card-actions .vx-btn { font-size: .92rem; }
+  .vx-chip { padding: 0 14px; font-size: .92rem; }
+}
+@media (min-width: 401px) and (max-width: 760px) {
+  .vx-card-facts > span { font-size: .9rem; gap: 6px; }
+  .vx-card-facts svg { width: 20px; height: 20px; }
+}
+
+/* Vehicle page in the same style as the cards */
+.vx-price { color: #b49bff; }
+.vx-tag.on { color: #58d68d; background: rgba(88, 214, 141, .1); border: 1.5px solid rgba(88, 214, 141, .55); }
+.vx-loc { flex-wrap: wrap; }
+.vx-loc .dot { color: var(--vx-muted); }
+.vx-loc svg { width: 20px; height: 20px; }
+.vx-keyfacts svg { color: #a49cc4; }
+.vx-similar-row { grid-auto-columns: minmax(230px, 260px); }
+
+/* Closer to the agreed design */
+.vx-banner { min-height: 128px; padding: 18px 20px; border-radius: 16px; margin: 0; }
+.vx-banner-copy { max-width: 70%; gap: 4px; }
+.vx-banner h1 { font-size: clamp(1.4rem, 5.8vw, 2.3rem); white-space: nowrap; }
+.vx-banner-car { width: 50%; }
+.vx-banner-car img { -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 42%); mask-image: linear-gradient(90deg, transparent 0%, #000 42%); filter: saturate(1.05) contrast(1.05); }
+.vx-chip { min-height: 40px; padding: 0 14px; font-size: .9rem; gap: 6px; border-width: 1.5px; }
+.vx-chip svg { width: 16px; height: 16px; }
+.vx-card-facts { grid-template-columns: repeat(4, auto); }
+.vx-card-facts > span { font-size: .86rem; gap: 6px; }
+.vx-card-facts svg { width: 19px; height: 19px; }
+@media (max-width: 760px) {
+  .vx-banner { margin: -8px calc(50% - 50vw) 0; border-radius: 0; }
+}
+@media (max-width: 400px) {
+  .vx-card-facts { grid-template-columns: repeat(4, auto); }
+  .vx-card-facts > span { font-size: .8rem; gap: 4px; }
+  .vx-card-facts svg { width: 17px; height: 17px; }
+  .vx-card-main { padding: 14px 14px 8px; }
+  .vx-card-actions { padding: 6px 14px 14px; gap: 10px; }
+}
+@media (max-width: 350px) {
+  .vx-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.vx-card.is-compact .vx-card-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vx-chip { min-height: 38px; padding: 0 12px; font-size: .86rem; }
+.vx-card .vx-card-count svg, .vx-card .vx-card-nophoto svg { width: 1.05em; height: 1.05em; }
+.vx-card.is-compact .vx-card-count svg { width: 13px; height: 13px; }
+.vx h1, .vx h2, .vx h3, .vx-card-title { font-family: inherit; font-weight: 800; }
+.vx-title { font-size: clamp(1.4rem, 6vw, 1.9rem); }

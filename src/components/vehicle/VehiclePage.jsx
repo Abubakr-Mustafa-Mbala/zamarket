@@ -4,39 +4,19 @@ import { supabase } from '../../lib/supabase'
 import { money } from '../../lib/format'
 import { useAuth } from '../../lib/auth'
 import { useCart } from '../../lib/cart'
-import { productShareUrl } from '../../lib/affiliateLinks'
 import { Modal, useToast } from '../ui'
 import ShareProduct from '../ShareProduct'
 import PhotoViewer from '../PhotoViewer'
 import VehicleCard from './VehicleCard'
+import { useVehicleContact, askOnWhatsApp } from './contact'
 import AffiliateTools, { PhotoSaver } from './AffiliateTools'
 import { VI, FACT_ICON } from './icons'
-import { vehicleOf, vehicleTitle, vehicleFacts, bodyGroup, QUICK_QUESTIONS, whatsappText, whatsappLink } from '../../lib/vehicle'
+import { vehicleOf, vehicleTitle, vehicleFacts, bodyGroup, QUICK_QUESTIONS } from '../../lib/vehicle'
 import '../../motors.css'
 
 const photosOf = (p) => (Array.isArray(p?.images) ? p.images : []).filter((s) => typeof s === 'string' && /^https?:\/\//i.test(s))
 
-// The link a buyer's message carries. When a tracked affiliate sent this buyer
-// (or the viewer is the affiliate), it is their /r/ link, so the team can
-// credit them when the sale closes.
-export function vehicleLink(p, ref) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://zamarket.shop'
-  return ref ? productShareUrl(origin, p, 'reseller', ref) : productShareUrl(origin, p)
-}
-
-export function useVehicleContact(p) {
-  const { settings, role, profile } = useAuth()
-  const { attribution } = useCart()
-  const ownCode = role === 'reseller' ? profile?.partner?.code : null
-  const ref = ownCode || (attribution ? attribution().referral_code : null) || null
-  return { ref, link: p ? vehicleLink(p, ref) : '', whatsapp: (settings?.company_whatsapp || '').trim(), phone: (settings?.company_phone || '').trim() }
-}
-
-export function askOnWhatsApp(p, contact, question) {
-  const v = vehicleOf(p)
-  const text = whatsappText({ title: vehicleTitle(v, p.name), price: money(p.price, { whole: true }), link: contact.link, question })
-  return whatsappLink(contact.whatsapp, text)
-}
+export { vehicleLink, useVehicleContact, askOnWhatsApp } from './contact'
 
 function Gallery({ p, title }) {
   const photos = photosOf(p)
@@ -102,7 +82,7 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
         <section className="vx-panel" aria-label="Price and how to ask">
           <h1 className="vx-title">{title}</h1>
           {sub && <p className="vx-sub">{sub}</p>}
-          <p className="vx-loc">{VI.pin}{v.location || 'Location on enquiry'}</p>
+          <p className="vx-loc">{VI.pin}<span>{v.location || 'Location on enquiry'}</span><span className="dot" aria-hidden>•</span><span>{p.vendor_name || 'ZaMarket'}</span></p>
 
           <div className="vx-price-box">
             <span className="vx-price-label">Asking price</span>
@@ -202,7 +182,7 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
       {similar.length > 0 && (
         <section className="vx-similar">
           <div className="vx-similar-head"><h2>More vehicles</h2><Link to="/motors">See all</Link></div>
-          <div className="vx-similar-row">{similar.map((s) => <VehicleCard key={s.id} p={s} />)}</div>
+          <div className="vx-similar-row">{similar.map((s) => <VehicleCard key={s.id} p={s} compact />)}</div>
         </section>
       )}
 
