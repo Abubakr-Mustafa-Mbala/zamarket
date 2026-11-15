@@ -193,3 +193,11 @@ test('lunch plans: one order per day, staff-only payment and rates, and shoppers
   assert.doesNotMatch(page, /affiliate_pct/)
   assert.match(read('netlify/edge-functions/seo.js'), /parts\[0\] === 'r' && parts\.length === 4 && parts\[2\] === 'lunch'/)
 })
+
+test('an expired sign-in is renewed and the request repeated, instead of showing "JWT expired"', () => {
+  const s = read('src/lib/supabase.js')
+  assert.match(s, /global: \{ fetch: \(\.\.\.args\) => fetchWithRenewal\(\.\.\.args\) \}/)
+  assert.match(s, /jwt expired/i)
+  assert.match(s, /supabase\.auth\.refreshSession\(\)/)
+  assert.match(s, /if \(target\.includes\('\/auth\/v1\/'\)\) return res/)
+})

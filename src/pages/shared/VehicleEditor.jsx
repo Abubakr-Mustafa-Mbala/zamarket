@@ -339,7 +339,7 @@ export default function VehicleEditor() {
                 </F>
               </div>
               {math && (
-                <div className="vx-specs one" style={{ display: 'grid' }}>
+                <div className="vx-specs one vx-money" style={{ display: 'grid' }}>
                   <div><dt>Seller receives at the asking price</dt><dd>{money(math.sellerReceives)}</dd></div>
                   <div><dt>ZaMarket's fee</dt><dd>{money(math.grossFee)}</dd></div>
                   <div><dt>Affiliate earns, if one brought the buyer</dt><dd>{money(math.affiliateEarns)}</dd></div>

@@ -348,3 +348,5 @@
 .vx-promo { position: relative; display: flex; flex-direction: column; min-width: 0; }
 .vx-promo-reward { position: absolute; top: 10px; left: 10px; z-index: 2; padding: 5px 10px; border-radius: 999px; background: var(--vx-ok); color: #062b14; font-size: .8rem; font-weight: 800; }
 @media (max-width: 760px) { .vx-aff-stats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .vx-aff-stats > div:last-child { grid-column: 1 / -1; } }
+.vx-money dd { white-space: nowrap; }
+.vx-money > div { align-items: baseline; }
