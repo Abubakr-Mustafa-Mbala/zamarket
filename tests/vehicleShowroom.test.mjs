@@ -112,7 +112,7 @@ test('affiliates see their own vehicle buyers, register buyers, and staff can cr
   assert.match(sql, /if not is_staff\(\) then raise exception/)
   assert.match(sql, /if d\.status = 'closed' then raise exception/)
   assert.match(sql, /cannot be credited for buying themselves/)
-  assert.match(read('supabase/run-in-supabase.sql'), /SECTION 24 of 24 — 20261114_vehicle_affiliate_deals_REVIEW\.sql/)
+  assert.match(read('supabase/run-in-supabase.sql'), /SECTION 24 of 25 — 20261114_vehicle_affiliate_deals_REVIEW\.sql/)
   assert.match(read('src/pages/reseller/Vehicles.jsx'), /rpc\('my_vehicle_deals'\)/)
   assert.match(read('src/components/vehicle/VehiclePage.jsx'), /referral_code: register \? affiliateCode : a\.referral_code/)
   assert.match(read('src/pages/admin/Deals.jsx'), /rpc\('set_deal_affiliate'/)
@@ -147,4 +147,49 @@ test('a product preview reads the form without saving', async () => {
   const src = read('src/components/ProductPreview.jsx')
   assert.doesNotMatch(src, /from\('products'\)/)
   assert.match(src, /rpc\('price_preview'/)
+})
+
+test('lunch plans: dates, cut-off, totals and affiliate earnings', async () => {
+  const L = await import('../src/lib/lunch.js')
+  // 17:00 in Lusaka on Sun 22 Nov 2026 (15:00 UTC): tomorrow is still open at an 18:00 cut-off
+  const before = new Date('2026-11-22T15:00:00Z')
+  const after = new Date('2026-11-22T17:30:00Z') // 19:30 in Lusaka
+  assert.equal(L.firstBookable(18, before), '2026-11-23')
+  assert.equal(L.firstBookable(18, after), '2026-11-24')
+  const deal = { cutoff_hour: 18, dishes: [{ product_id: 'a' }, { product_id: 'b', kind: 'tray', serves: '5' }] }
+  const products = [
+    { id: 'a', name: 'Chicken stew', price: 133, order_days: [1, 2], daily_limit: 3, lead_time_days: 1 },
+    { id: 'b', name: 'Beef tray', price: 600, order_days: [1], daily_limit: 2, lead_time_days: 1 },
+  ]
+  const availability = [{ product_id: 'a', day: '2026-11-23', day_limit: 3, booked: 3 }, { product_id: 'b', day: '2026-11-23', day_limit: 2, booked: 1 }]
+  const menu = L.upcomingMenu({ deal, products, availability, days: 3, now: before })
+  assert.deepEqual(menu.map((d) => d.date), ['2026-11-23', '2026-11-24'])
+  const mon = menu[0].dishes
+  assert.equal(mon.find((x) => x.id === 'a').soldOut, true)
+  assert.equal(mon.find((x) => x.id === 'b').remaining, 1)
+  assert.equal(mon.find((x) => x.id === 'b').kind, 'tray')
+  const picks = { '2026-11-23': { b: 1 }, '2026-11-24': { a: 2 } }
+  assert.deepEqual(L.planTotals(picks, menu), { lunches: 3, total: 866, days: 2 })
+  assert.deepEqual(L.planPayloadDays(picks), [{ date: '2026-11-23', items: [{ product_id: 'b', quantity: 1 }] }, { date: '2026-11-24', items: [{ product_id: 'a', quantity: 2 }] }])
+  assert.equal(L.fromPrice(products, deal), 133)
+  const earn = L.affiliateEarnings(10, [{ dishes: [{ price: 130 }, { price: 150 }] }])
+  assert.deepEqual(earn, { perLunch: 14, week: 70, month: 308 })
+  assert.equal(L.affiliateEarnings(0, menu), null)
+})
+
+test('lunch plans: one order per day, staff-only payment and rates, and shoppers never see the rate', () => {
+  const sql = read('supabase/migrations/20261115_lunch_plans_REVIEW.sql')
+  assert.match(sql, /r := place_order\(jsonb_build_object\(/)
+  assert.match(sql, /update orders set meal_plan_id = plan\.id/)
+  assert.match(sql, /v_date = v_today \+ 1 and v_hour >= d\.cutoff_hour/)
+  assert.match(sql, /if v_pct > v_cap then raise exception/)
+  assert.match(sql, /revoke select on public\.meal_deals from anon;/)
+  assert.doesNotMatch(sql.match(/grant select \(([^)]*)\)\s+on public\.meal_deals to anon/)[1], /affiliate_pct/)
+  assert.match(sql, /create policy meal_plans_read on public\.meal_plans for select using \(is_staff\(\)\);/)
+  assert.match(read('supabase/run-in-supabase.sql'), /SECTION 25 of 25 — 20261115_lunch_plans_REVIEW\.sql/)
+  const page = read('src/pages/public/Lunch.jsx')
+  assert.match(page, /rpc\('place_meal_plan'/)
+  assert.match(page, /referral_code: a\.referral_code/)
+  assert.doesNotMatch(page, /affiliate_pct/)
+  assert.match(read('netlify/edge-functions/seo.js'), /parts\[0\] === 'r' && parts\.length === 4 && parts\[2\] === 'lunch'/)
 })

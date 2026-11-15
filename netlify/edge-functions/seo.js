@@ -18,7 +18,7 @@ const RESERVED = new Set([
   'p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review',
   'login', 'reset-password', 'recover', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
   'free', 'invite', 'saved', 'categories', 'about', 'how-it-works', 'protection',
-  'giveaways', 'motors',
+  'giveaways', 'motors', 'lunch',
   'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml',
 ])
 const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'reset-password', 'recover', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
@@ -156,6 +156,24 @@ export default async function handler(request, context) {
       canonical = `${SITE}/p/${encodeURIComponent(slug)}`
       initialContent = fallback(p.name, description, `${SITE}/r/${encodeURIComponent(parts[1])}/${encodeURIComponent(slug)}`)
     }
+  } else if ((parts[0] === 'lunch' && parts.length === 2) || (parts[0] === 'r' && parts.length === 4 && parts[2] === 'lunch')) {
+    // A lunch plan, shared directly or with an affiliate's link: the real dish
+    // photo, title and tagline in the WhatsApp/Facebook preview.
+    const slug = parts[0] === 'lunch' ? parts[1] : parts[3]
+    if (base && key) {
+      const { item: d } = await getOne(`meal_deals?slug=eq.${encodeURIComponent(slug)}&status=eq.published&select=title,tagline,cover_url,slug,cutoff_hour,delivery_windows`, base, key)
+      if (d) {
+        title = `${d.title} | ${SHOP}`
+        description = clip(`${d.tagline || 'Homemade lunch delivered to your workplace.'} Order by ${d.cutoff_hour ?? 18}:00 the day before. Try one lunch first.`)
+        if (typeof d.cover_url === 'string' && /^https:\/\//i.test(d.cover_url)) image = d.cover_url
+        canonical = `${SITE}/lunch/${encodeURIComponent(d.slug)}`
+        initialContent = fallback(d.title, description, canonical)
+      }
+    }
+  } else if (parts[0] === 'lunch') {
+    title = `Homemade lunch delivered to your workplace | ${SHOP}`
+    description = 'Order homemade lunches a day ahead and get them delivered to your office in Lusaka. Try one lunch first.'
+    canonical = `${SITE}/lunch`
   } else if (parts[0] === 'motors') {
     title = `Cars and vehicles for sale in Zambia | ZaMarket Motors`
     description = 'Explore real car listings from sellers across Zambia, compare photographs and specifications, and enquire about a vehicle on ZaMarket Motors.'

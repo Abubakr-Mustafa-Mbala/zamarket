@@ -645,3 +645,14 @@ html, body, #root { width: 100%; max-width: 100%; overflow-x: clip; }
 .pr-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .pr-row-thumb { flex: none; width: 48px; height: 48px; border-radius: 10px; object-fit: cover; background: rgb(11, 10, 18); border: 1px solid rgb(57, 56, 78); }
 .pr-row-thumb.empty { display: grid; place-items: center; font-weight: 800; opacity: .6; }
+
+/* Lunch plan banner (shop page, Today's deals) */
+.lunch-promo-list { display: grid; gap: 12px; margin: 12px 0; }
+.lunch-promo { position: relative; display: flex; align-items: flex-end; min-height: 190px; border-radius: 18px; overflow: hidden; text-decoration: none; color: white; background: radial-gradient(120% 140% at 100% 0%, rgb(107, 58, 23), rgb(42, 28, 18) 60%, rgb(21, 18, 15)); }
+.lunch-promo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.lunch-promo-shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(10, 8, 6, .9) 0%, rgba(10, 8, 6, .55) 55%, rgba(10, 8, 6, .1) 100%); }
+.lunch-promo-copy { position: relative; padding: 18px; display: flex; flex-direction: column; gap: 4px; max-width: 560px; }
+.lunch-promo-copy small { text-transform: uppercase; letter-spacing: .14em; font-weight: 800; font-size: .72rem; color: rgb(242, 166, 90); }
+.lunch-promo-copy strong { font-size: 1.35rem; line-height: 1.15; }
+.lunch-promo-copy span { font-size: .92rem; opacity: .9; }
+.lunch-promo-copy em { font-style: normal; font-weight: 800; color: rgb(242, 166, 90); margin-top: 4px; }

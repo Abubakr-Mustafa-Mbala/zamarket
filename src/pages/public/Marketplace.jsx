@@ -19,6 +19,7 @@ import { payLine } from '../../lib/paymentWords'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
 import PhotoViewer from '../../components/PhotoViewer'
+import LunchPromo from '../../components/LunchPromo'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
@@ -645,15 +646,15 @@ export function PublicShell() {
 
 // /r/:code — reseller link. Remember the code, go to the store.
 export function ReferralCapture() {
-  const { code, product } = useParams()
+  const { code, product, lunch } = useParams()
   const { setRef } = useCart()
   const nav = useNavigate()
   useEffect(() => {
     if (!code) return
     setRef(code.toLowerCase())
     supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null })
-    nav(product ? `/p/${product}` : '/', { replace: true })
-  }, [code, product, nav])
+    nav(lunch ? `/lunch/${lunch}` : product ? `/p/${product}` : '/', { replace: true })
+  }, [code, product, lunch, nav])
   return null
 }
 
@@ -1048,6 +1049,7 @@ export function SearchPage() {
             </select>
           </div>
         </div>
+        {deals && <LunchPromo />}
         {results.length === 0 ? (
           <div className="empty-shop">
             <h2>Nothing matches yet</h2>
@@ -1438,7 +1440,7 @@ export function StorePage() {
       verified={verified}
       share={<ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />}
       renderProduct={(p) => <OfferingCard p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />}
-      special={special.map(([kind, title]) => (
+      special={<><LunchPromo vendorId={store.id} />{special.map(([kind, title]) => (
         <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
           <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>
           <div className={kind === 'vehicle' ? 'grid-listings' : 'zsv-grid'}>
@@ -1447,7 +1449,7 @@ export function StorePage() {
               : <OfferingCard key={p.id} p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />))}
           </div>
         </section>
-      ))}
+      ))}</>}
     />
   )
 }

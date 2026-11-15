@@ -41,6 +41,9 @@ const InvitePage = named(growthPages, 'InvitePage')
 const RatePage = named(growthPages, 'RatePage')
 const About = lazy(() => import('./pages/public/About'))
 const Motors = lazy(() => import('./pages/public/Motors'))
+const LunchPage = lazy(() => import('./pages/public/Lunch'))
+const LunchIndex = named(() => import('./pages/public/Lunch'), 'LunchIndex')
+const LunchDeals = lazy(() => import('./pages/shared/LunchDeals'))
 const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
 const AffiliateRecruitment = lazy(() => import('./pages/public/AffiliateRecruitment'))
@@ -159,6 +162,8 @@ export default function App() {
         <Route path="/store/:id" element={<StorePage />} />
         <Route path="/search" element={<SearchPage />} />
         <Route path="/motors" element={<Motors />} />
+        <Route path="/lunch" element={<LunchIndex />} />
+        <Route path="/lunch/:slug" element={<LunchPage />} />
         <Route path="/sellers" element={<SellersPage />} />
         <Route path="/cart" element={<Cart />} />
         <Route path="/checkout" element={<Checkout />} />
@@ -183,6 +188,7 @@ export default function App() {
       </Route>
       <Route path="/r/:code" element={<ReferralCapture />} />
       <Route path="/r/:code/:product" element={<ReferralCapture />} />
+      <Route path="/r/:code/lunch/:lunch" element={<ReferralCapture />} />
       <Route path="/go/:code" element={<GoLink />} />
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
@@ -202,6 +208,7 @@ export default function App() {
         <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="vehicles" element={<VehicleList />} />
         <Route path="vehicles/:id" element={<VehicleEditor />} />
+        <Route path="lunch" element={<LunchDeals />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />
         <Route path="inventory" element={<Inventory />} />
@@ -248,6 +255,7 @@ export default function App() {
         <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="vehicles" element={<VehicleList />} />
         <Route path="vehicles/:id" element={<VehicleEditor />} />
+        <Route path="lunch" element={<LunchDeals />} />
         <Route path="earnings" element={<VendorEarnings />} />
         <Route path="marketing" element={<VendorMarketing />} />
         <Route path="coupons" element={<VendorCoupons />} />
