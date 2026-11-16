@@ -38,7 +38,23 @@ test('the shop lunch section lets people pick days and see the total, and books 
   const s = read('src/components/LunchShop.jsx')
   assert.match(s, /Choose your days/)
   assert.match(s, /Whole week/)
-  assert.match(s, /planTotals\(picks, menu\)/)
+  assert.match(s, /planTotals\(picks, menu, deal.group_discounts\)/)
   assert.match(s, /<BookSheet /)
   assert.match(read('src/pages/public/Marketplace.jsx'), /<LunchShop vendorId=\{store\.id\}/)
+})
+
+test('team discounts follow the best tier per delivery day and match what the database charges', async () => {
+  const L = await import('../src/lib/lunch.js')
+  const tiers = [{ min: 10, pct: 8 }, { min: 5, pct: 5 }, { min: 1, pct: 50 }, { min: 3, pct: 40 }]
+  assert.deepEqual(L.cleanTiers(tiers).map((t) => [t.min, t.pct]), [[3, 10], [5, 5], [10, 8]].sort((a, b) => a[0] - b[0]))
+  assert.equal(L.groupPct([{ min: 5, pct: 5 }, { min: 10, pct: 8 }], 4), 0)
+  assert.equal(L.groupPct([{ min: 5, pct: 5 }, { min: 10, pct: 8 }], 6), 5)
+  assert.equal(L.groupPct([{ min: 5, pct: 5 }, { min: 10, pct: 8 }], 12), 8)
+  const menu = [{ date: 'a', dishes: [{ id: 'x', price: 133 }] }, { date: 'b', dishes: [{ id: 'x', price: 133 }] }]
+  const t = L.planTotals({ a: { x: 10 }, b: { x: 1 } }, menu, [{ min: 5, pct: 5 }, { min: 10, pct: 8 }])
+  assert.deepEqual(t, { lunches: 11, total: 1356.6, days: 2, subtotal: 1463, discount: 106.4 })
+  const sql = read('supabase/migrations/20261116_lunch_team_discounts_REVIEW.sql')
+  assert.match(sql, /Only ZaMarket can set team discounts/)
+  assert.match(sql, /> 10 then raise exception/)
+  assert.match(sql, /request text check \(request is null or length\(request\) <= 300\)/)
 })

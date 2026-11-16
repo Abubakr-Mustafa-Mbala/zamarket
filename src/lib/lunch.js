@@ -60,19 +60,38 @@ export function upcomingMenu({ deal, products, availability = [], days = 12, now
   return out
 }
 
-// picks: { [date]: { [productId]: quantity } }
-export function planTotals(picks, menu) {
-  let lunches = 0, total = 0, days = 0
+// Team discount tiers set by ZaMarket on a lunch plan: [{ min, pct }].
+// The best tier one delivery reaches applies to that day (at most 10%).
+export function cleanTiers(tiers) {
+  return (Array.isArray(tiers) ? tiers : [])
+    .map((t) => ({ min: Math.round(Number(t?.min)), pct: Math.min(10, Number(t?.pct)) }))
+    .filter((t) => t.min >= 2 && t.pct > 0)
+    .sort((a, b) => a.min - b.min)
+}
+export function groupPct(tiers, qty) {
+  let pct = 0
+  for (const t of cleanTiers(tiers)) if (qty >= t.min) pct = Math.max(pct, t.pct)
+  return pct
+}
+
+// picks: { [date]: { [productId]: quantity } }. Totals match what the
+// database charges: each day's subtotal less that day's team discount.
+export function planTotals(picks, menu, tiers = []) {
+  let lunches = 0, subtotal = 0, discount = 0, days = 0
   for (const day of menu) {
     const chosen = picks?.[day.date] || {}
-    let any = false
+    let q = 0, sub = 0
     for (const dish of day.dishes) {
-      const q = Number(chosen[dish.id] || 0)
-      if (q > 0) { lunches += q; total += q * Number(dish.price || 0); any = true }
+      const n = Number(chosen[dish.id] || 0)
+      if (n > 0) { q += n; sub += n * Number(dish.price || 0) }
     }
-    if (any) days++
+    if (q > 0) {
+      days++; lunches += q; subtotal += sub
+      discount += Math.round(sub * groupPct(tiers, q)) / 100
+    }
   }
-  return { lunches, total, days }
+  discount = Math.round(discount * 100) / 100
+  return { lunches, total: Math.round((subtotal - discount) * 100) / 100, days, subtotal, discount }
 }
 
 export function planPayloadDays(picks) {

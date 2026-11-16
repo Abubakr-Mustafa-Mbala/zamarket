@@ -6,11 +6,11 @@ import { money, slugify } from '../../lib/format'
 import { Loading, Empty, Badge, useToast } from '../../components/ui'
 import { uploadVehiclePhoto } from '../../lib/photos'
 import { PRODUCT_WORD } from '../../lib/statuses'
-import { firstBookable, dayLabel, addDays } from '../../lib/lunch'
+import { firstBookable, dayLabel, addDays, cleanTiers } from '../../lib/lunch'
 import { LunchView } from '../public/Lunch'
 import '../../lunch.css'
 
-const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,rejection_reason,created_at'
+const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,rejection_reason,created_at,group_discounts'
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const WINDOW_CHOICES = ['11:00–11:30', '11:30–12:00', '12:00–12:30', '12:30–13:00', '13:00–13:30', '13:30–14:00']
 const rand = () => Math.random().toString(36).slice(2, 6)
@@ -156,6 +156,8 @@ function DealEditor({ deal, vendorId, onSaved }) {
       cover_url: d.cover_url || null, proof_images: d.proof_images || [], dishes: d.dishes, delivery_windows: d.delivery_windows,
       delivery_area: d.delivery_area?.trim() || null, cutoff_hour: Number(d.cutoff_hour) || 18, guarantee: !!d.guarantee,
     }
+    // Team discounts are ZaMarket's to set (they come out of ZaMarket's share).
+    if (isStaff) row.group_discounts = cleanTiers(d.group_discounts)
     if (status) row.status = status
     // A seller's change to a live plan goes back to ZaMarket for a quick check.
     if (!isStaff && !status && !['draft', 'submitted'].includes(d.status)) {
@@ -268,6 +270,7 @@ function DealEditor({ deal, vendorId, onSaved }) {
               <F label="Orders close the day before at"><select value={d.cutoff_hour} onChange={(e) => set('cutoff_hour')(Number(e.target.value))}>{[14, 15, 16, 17, 18, 19, 20, 21].map((h) => <option key={h} value={h}>{h}:00</option>)}</select></F>
               <F label="Where we deliver" optional hint="e.g. Offices in central Lusaka: Cairo Road, Longacres, Rhodes Park"><input value={d.delivery_area || ''} onChange={(e) => set('delivery_area')(e.target.value)} maxLength={300} /></F>
             </div>
+            {isStaff && <TierEditor tiers={d.group_discounts || []} onChange={set('group_discounts')} />}
             <label className="ln-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" checked={!!d.guarantee} onChange={(e) => set('guarantee')(e.target.checked)} style={{ width: 22, height: 22, minHeight: 0 }} />
               <span>Guarantee: a lunch that is late or not as described is free</span>
@@ -311,6 +314,27 @@ function DealEditor({ deal, vendorId, onSaved }) {
 }
 
 // The morning view: how many of each dish, and where each lunch goes.
+// Staff only: discount levels for team orders. ZaMarket pays for them from
+// its share, so the seller is still paid in full for every lunch.
+function TierEditor({ tiers, onChange }) {
+  const rows = tiers.length ? tiers : []
+  const put = (i, k, v) => onChange(rows.map((t, j) => (j === i ? { ...t, [k]: v } : t)))
+  return (
+    <div className="ln-field">
+      <span>Team discount (ZaMarket pays for it)</span>
+      {rows.map((t, i) => (
+        <div key={i} className="ln-tier-row">
+          <label>From <input type="number" min={2} max={100} value={t.min} onChange={(e) => put(i, 'min', e.target.value)} /> lunches</label>
+          <label><input type="number" min={1} max={10} step={0.5} value={t.pct} onChange={(e) => put(i, 'pct', e.target.value)} />% off</label>
+          <button type="button" className="ln-mini" onClick={() => onChange(rows.filter((_, j) => j !== i))}>Remove</button>
+        </div>
+      ))}
+      {rows.length < 4 && <button type="button" className="ln-mini" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...rows, rows.length ? { min: Number(rows[rows.length - 1].min) * 2 || 10, pct: Math.min(10, Number(rows[rows.length - 1].pct) + 3) } : { min: 5, pct: 5 }])}>Add a level</button>}
+      <small className="ln-hint">Counted per delivery day: a manager ordering 10 lunches for Monday gets the 10+ level on Monday. At most 10%.</small>
+    </div>
+  )
+}
+
 function Kitchen({ deals, vendorId }) {
   const [date, setDate] = useState(() => firstBookable(23))
   const [vendor, setVendor] = useState(vendorId || deals[0]?.vendor_id || '')
@@ -348,6 +372,7 @@ function Kitchen({ deals, vendorId }) {
                 <div key={x.order_number} className="ln-drop">
                   <div className="ln-drop-top"><strong>{x.window} · {x.name}</strong><span className={`ln-pill ${x.paid ? '' : 'wait'}`}>{x.paid ? 'Paid' : 'Awaiting payment'}</span></div>
                   <span>{x.items}</span>
+                  {x.request && <span className="ln-request"><b>Request:</b> {x.request}</span>}
                   <small>{x.workplace} · {x.plan} · order #{x.order_number}</small>
                 </div>
               ))}
@@ -387,6 +412,7 @@ function Bookings({ deals }) {
         <div key={p.id} className="ln-plan">
           <div className="ln-plan-top"><strong>LP{p.plan_number} · {p.customer_name}</strong><span className={`ln-pill ${p.status === 'paid' ? '' : 'wait'}`}>{p.status === 'paid' ? 'Paid' : p.status === 'cancelled' ? 'Cancelled' : 'Awaiting payment'}</span></div>
           <span>{p.lunches} lunch{p.lunches === 1 ? '' : 'es'} · {money(p.total, { whole: true })} · {{ trial: 'Trial', week: 'Own lunches', team: 'Team' }[p.kind]} · {titles[p.deal_id] || ''}</span>
+          {p.request && <span className="ln-request"><b>Request:</b> {p.request} <em>Confirm with the customer and the kitchen.</em></span>}
           <small className="ln-muted"><a className="ln-link" href={`tel:${p.customer_phone}`}>{p.customer_phone}</a> · {p.workplace} · {p.delivery_window}{p.referral_code ? ` · via ${p.referral_code}` : ''}</small>
           {p.status === 'awaiting_payment' && (paying === p.id ? (
             <div className="ln-fields">

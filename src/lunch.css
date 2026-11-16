@@ -314,3 +314,14 @@
 .ln-shop-foot > * { flex: 1 1 160px; }
 @media (min-width: 760px) { .ln-shop-days { grid-template-columns: repeat(8, minmax(0, 1fr)); } .ln-shop-banner { min-height: 260px; } .ln-shop-banner-copy { padding: 26px; } }
 .ln-shop h2, .ln-shop h3 { font-family: inherit; }
+/* Team discounts and requests (Nov 16) */
+.ln-tiers { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 12px; background: rgba(126, 211, 157, .12); border: 1px solid rgba(126, 211, 157, .35); font-size: .88rem; }
+.ln-tiers b { color: var(--ln-ok); }
+.ln-tiers span { color: var(--ln-text); }
+.ln-form-save { display: flex; justify-content: space-between; color: var(--ln-ok); font-weight: 700; }
+.ln-shop-line-total small { display: block; color: var(--ln-ok); font-size: .72rem; text-align: right; }
+.ln-request { display: block; padding: 6px 10px; border-radius: 10px; background: rgba(242, 166, 90, .14); color: var(--ln-text); font-size: .88rem; }
+.ln-request em { display: block; font-style: normal; color: var(--ln-muted); font-size: .78rem; }
+.ln-tier-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ln-tier-row input { width: 72px; min-height: 40px; }
+.ln-form textarea { width: 100%; }

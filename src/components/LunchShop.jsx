@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
-import { upcomingMenu, planTotals, fromPrice, lunchShareProduct } from '../lib/lunch'
-import { BookSheet } from '../pages/public/Lunch'
+import { upcomingMenu, planTotals, fromPrice, lunchShareProduct, groupPct } from '../lib/lunch'
+import { BookSheet, TeamDiscounts } from '../pages/public/Lunch'
 import ShareProduct from './ShareProduct'
 import PhotoViewer from './PhotoViewer'
 import '../lunch.css'
 
-const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status'
+const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,group_discounts'
 
 // The lunch section of a seller's shop, laid out like the showroom: a photo
 // banner, the dishes as cards, then the days. Tap the days you want, choose
@@ -53,7 +53,7 @@ function LunchDealShop({ deal, vendor }) {
     }
     return [...m.values()]
   }, [menu])
-  const totals = planTotals(picks, menu)
+  const totals = planTotals(picks, menu, deal.group_discounts)
   const from = fromPrice(products, deal)
   const firstOpen = (day) => day.dishes.find((x) => !x.soldOut)
 
@@ -162,17 +162,18 @@ function LunchDealShop({ deal, vendor }) {
                       <b>{q}</b>
                       <button type="button" disabled={q >= max} onClick={() => setQty(day, q + 1)} aria-label="One more">+</button>
                     </span>
-                    <b className="ln-shop-line-total">{money(Number(dish?.price || 0) * q, { whole: true })}</b>
+                    <b className="ln-shop-line-total">{money(Number(dish?.price || 0) * q, { whole: true })}{groupPct(deal.group_discounts, q) > 0 && <small>−{groupPct(deal.group_discounts, q)}%</small>}</b>
                   </li>
                 )
               })}
             </ul>
           )}
 
+          <TeamDiscounts tiers={deal.group_discounts} />
           <div className="ln-shop-total" aria-live="polite">
             <div>
-              <span>{totals.lunches ? `${totals.lunches} lunch${totals.lunches === 1 ? '' : 'es'} · ${totals.days} day${totals.days === 1 ? '' : 's'}` : 'Tap the days you want lunch'}</span>
-              <strong>{money(totals.total, { whole: true })}</strong>
+              <span>{totals.lunches ? `${totals.lunches} lunch${totals.lunches === 1 ? '' : 'es'} · ${totals.days} day${totals.days === 1 ? '' : 's'}` : 'Tap the days you want lunch'}{totals.discount > 0 ? ` · ${money(totals.discount)} off` : ''}</span>
+              <strong>{money(totals.total, { whole: totals.discount === 0 })}</strong>
             </div>
             <button type="button" className="ln-btn primary" disabled={!totals.lunches} onClick={() => setBooking(true)}>Order</button>
           </div>

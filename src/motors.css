@@ -598,3 +598,16 @@
 @media (max-width: 760px) { .vx-traffic-two { grid-template-columns: minmax(0, 1fr); } .vx-traffic-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .vx-traffic-stats > div:last-child { grid-column: auto !important; }
 .vx-table td:first-child { min-width: 190px; }
+/* How buying works, buyer's view (Nov 16, v2): four small steps always shown */
+.vx-buy { background: var(--vx-panel); border: 1px solid var(--vx-line); border-radius: 16px; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.vx-buy h2 { font-size: 1.1rem; margin: 0; }
+.vx-buy-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.vx-buy-steps li { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.vx-buy-steps li > span { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--vx-accent); color: var(--vx-accent-ink); font-weight: 800; font-size: .82rem; }
+.vx-buy-steps strong { font-size: .92rem; }
+.vx-buy-steps p { color: var(--vx-muted); font-size: .84rem; line-height: 1.4; margin: 2px 0 0; }
+.vx-buy .vx-faq { border-radius: 12px; background: transparent; }
+.vx-buy .vx-faq summary { padding: 11px 12px; font-size: .9rem; }
+.vx-buy .vx-faq details > p { padding: 0 12px 12px; }
+@media (max-width: 760px) { .vx-buy-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; } }
+.vx-buy.is-compact .vx-buy-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }

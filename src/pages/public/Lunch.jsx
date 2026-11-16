@@ -8,12 +8,12 @@ import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import PhotoViewer from '../../components/PhotoViewer'
 import { PhotoSaver } from '../../components/vehicle/AffiliateTools'
-import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct } from '../../lib/lunch'
+import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct, cleanTiers } from '../../lib/lunch'
 import ShareProduct from '../../components/ShareProduct'
 import { whatsappLink } from '../../lib/vehicle'
 import '../../lunch.css'
 
-const DEAL_COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status'
+const DEAL_COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,group_discounts'
 const KINDS = [
   ['trial', 'Try one lunch', 'One lunch, one day. See if you love it.'],
   ['week', 'My lunches', 'Pick your days. Lunch is sorted.'],
@@ -130,7 +130,7 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
   const [picks, setPicks] = useState({})
   const [viewer, setViewer] = useState(null)
   const [booking, setBooking] = useState(false)
-  const totals = planTotals(picks, menu)
+  const totals = planTotals(picks, menu, deal.group_discounts)
   const proofs = (deal.proof_images || []).filter(Boolean)
   const rating = reviews.length ? reviews.reduce((t, r) => t + Number(r.product_rating || 0), 0) / reviews.filter((r) => r.product_rating).length : 0
   const affiliate = role === 'reseller' && profile?.partner?.code
@@ -291,8 +291,9 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           ))}
         </div>
 
+        <TeamDiscounts tiers={deal.group_discounts} />
         <div className="ln-summary" aria-live="polite">
-          <div><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'} · {totals.days} day{totals.days === 1 ? '' : 's'}</span><strong>{money(totals.total, { whole: true })}</strong></div>
+          <div><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'} · {totals.days} day{totals.days === 1 ? '' : 's'}{totals.discount > 0 ? ` · ${money(totals.discount)} off` : ''}</span><strong>{money(totals.total, { whole: totals.discount === 0 })}</strong></div>
           <button type="button" className="ln-btn primary" disabled={!totals.lunches || preview} onClick={() => setBooking(true)}>Continue</button>
         </div>
       </section>
@@ -352,10 +353,22 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
   )
 }
 
+// The team discount levels, in plain words. Nothing shows when there are none.
+export function TeamDiscounts({ tiers }) {
+  const list = cleanTiers(tiers)
+  if (!list.length) return null
+  return (
+    <div className="ln-tiers">
+      <b>Ordering for your team?</b>
+      <span>{list.map((t) => `${t.min}+ lunches in one delivery: ${t.pct}% off`).join(' · ')}</span>
+    </div>
+  )
+}
+
 export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) {
   const toast = useToast()
   const { attribution } = useCart()
-  const [f, setF] = useState({ window: (deal.delivery_windows || [])[1] || (deal.delivery_windows || [])[0] || '', company: '', address: '', area: '', instructions: '', name: '', phone: '' })
+  const [f, setF] = useState({ window: (deal.delivery_windows || [])[1] || (deal.delivery_windows || [])[0] || '', company: '', address: '', area: '', instructions: '', name: '', phone: '', request: '' })
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(null)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
@@ -370,7 +383,7 @@ export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) 
         deal_id: deal.id, kind, window: f.window,
         workplace: { company: f.company, address: f.address, area: f.area, instructions: f.instructions },
         customer: { full_name: f.name, phone: f.phone },
-        days: planPayloadDays(picks),
+        days: planPayloadDays(picks), request: f.request.trim() || null,
         referral_code: a.referral_code, campaign_code: a.campaign_code, invite_code: a.invite_code, store_ref: a.store_ref,
       },
     })
@@ -388,7 +401,7 @@ export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) 
           <div className="ln-done">
             <div className="ln-done-tick" aria-hidden>✓</div>
             <h2>Booked. Reference {done.reference}</h2>
-            <p>{done.lunches} lunch{done.lunches === 1 ? '' : 'es'} over {done.days} day{done.days === 1 ? '' : 's'}, {money(done.total, { whole: true })} in total.</p>
+            <p>{done.lunches} lunch{done.lunches === 1 ? '' : 'es'} over {done.days} day{done.days === 1 ? '' : 's'}, {money(done.total)} in total{Number(done.saved) > 0 ? `, ${money(done.saved)} saved with the team discount` : ''}.</p>{f.request.trim() && <p>Your request is with the kitchen. We will tell you when we call if it can be done.</p>}
             <p><strong>What happens next:</strong> we call you on {f.phone} to confirm, and you pay by mobile money. Your lunches are confirmed once paid.</p>
             <button type="button" className="ln-btn primary" onClick={onClose}>Done</button>
           </div>
@@ -406,11 +419,14 @@ export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) 
             <label><span>Area</span><input value={f.area} onChange={set('area')} placeholder="e.g. Cairo Road, Longacres" /></label>
             <label><span>Note for the rider (optional)</span><input value={f.instructions} onChange={set('instructions')} placeholder="e.g. Call when at the gate" /></label>
 
+            <label><span>Any request? (optional)</span><textarea rows={2} maxLength={300} value={f.request} onChange={set('request')} placeholder="e.g. No pepper on two of them, extra rice, one vegetarian if possible" /><small className="ln-hint">The kitchen sees it. We confirm with you if it can be done.</small></label>
+
             <div className="ln-step"><b>3</b><span>Your details</span></div>
             <label><span>Your name</span><input required value={f.name} onChange={set('name')} autoComplete="name" /></label>
             <label><span>Phone (we call to confirm)</span><input required type="tel" value={f.phone} onChange={set('phone')} autoComplete="tel" placeholder="0977 123 456" /></label>
 
-            <div className="ln-form-total"><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'}</span><strong>{money(totals.total, { whole: true })}</strong></div>
+            {totals.discount > 0 && <div className="ln-form-save"><span>Team discount</span><b>−{money(totals.discount)}</b></div>}
+            <div className="ln-form-total"><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'}</span><strong>{money(totals.total, { whole: totals.discount === 0 })}</strong></div>
             <button className="ln-btn primary big" disabled={busy}>{busy ? 'Booking…' : 'Book my lunch' + (totals.lunches > 1 ? 'es' : '')}</button>
             <p className="ln-fine">Nothing is charged now. We call you to confirm and you pay by mobile money.</p>
           </form>

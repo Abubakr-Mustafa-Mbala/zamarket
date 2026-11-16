@@ -171,7 +171,7 @@ test('lunch plans: dates, cut-off, totals and affiliate earnings', async () => {
   assert.equal(mon.find((x) => x.id === 'b').remaining, 1)
   assert.equal(mon.find((x) => x.id === 'b').kind, 'tray')
   const picks = { '2026-11-23': { b: 1 }, '2026-11-24': { a: 2 } }
-  assert.deepEqual(L.planTotals(picks, menu), { lunches: 3, total: 866, days: 2 })
+  assert.deepEqual(L.planTotals(picks, menu), { lunches: 3, total: 866, days: 2, subtotal: 866, discount: 0 })
   assert.deepEqual(L.planPayloadDays(picks), [{ date: '2026-11-23', items: [{ product_id: 'b', quantity: 1 }] }, { date: '2026-11-24', items: [{ product_id: 'a', quantity: 2 }] }])
   assert.equal(L.fromPrice(products, deal), 133)
   const earn = L.affiliateEarnings(10, [{ dishes: [{ price: 130 }, { price: 150 }] }])
