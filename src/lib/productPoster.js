@@ -77,6 +77,7 @@ export function savingOf(product) {
 export function fulfilmentOf(product) {
   const days = n(product?.lead_time_days)
   if (product?.offering_type === 'vehicle') return 'View vehicle · enquire for details'
+  if (product?.offering_type === 'lunch') return `Order by ${n(product?.cutoff_hour) || 18}:00 the day before`
   if (product?.fulfilment === 'service') return 'A service · booked online, confirmed by phone'
   if (product?.fulfilment === 'made_to_order') {
     return days > 0 ? `Made to order · about ${days} day${days === 1 ? '' : 's'} to prepare` : 'Made to order'
@@ -1242,6 +1243,7 @@ function vehicleCaption({ product, store, link }) {
 
 export function productCaption({ product, store = null, settings = {}, link }) {
   if (product?.offering_type === 'vehicle') return vehicleCaption({ product, store, link })
+  if (product?.offering_type === 'lunch' && product.share_caption) return String(product.share_caption)
   const name = tidy(product?.name) || 'This item'
   const saving = savingOf(product)
   // No length limit here. A caption is read, not laid out, so the seller's

@@ -8,7 +8,8 @@ import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import PhotoViewer from '../../components/PhotoViewer'
 import { PhotoSaver } from '../../components/vehicle/AffiliateTools'
-import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText } from '../../lib/lunch'
+import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct } from '../../lib/lunch'
+import ShareProduct from '../../components/ShareProduct'
 import { whatsappLink } from '../../lib/vehicle'
 import '../../lunch.css'
 
@@ -162,6 +163,8 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           <div className="ln-hero-cta">
             <a href="#book" className="ln-btn primary" onClick={() => switchKind('trial')}>Try one lunch</a>
             <a href="#book" className="ln-btn ghost" onClick={() => switchKind('week')}>Book my lunches</a>
+            {!preview && !affiliate && <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: dishList, from, link: `${window.location.origin}/lunch/${deal.slug}` })}
+              link={`${window.location.origin}/lunch/${deal.slug}`} store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn ghost" label="Share" />}
           </div>
         </div>
       </section>
@@ -336,6 +339,8 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
       ) : null}
       <p className="ln-muted">You earn on every lunch delivered to a customer you bring, every day, including when they book again. Earned daily, paid out with your other earnings.</p>
       <code className="ln-code">{link}</code>
+      <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: menu.flatMap((d) => d.dishes), from, link })} link={link} audience="affiliate"
+        store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn primary big" label="Make a poster to share" />
       <div className="ln-aff-actions">
         <button type="button" className="ln-btn ghost" onClick={() => copy(link, 'Link copied')}>Copy link</button>
         <button type="button" className="ln-btn ghost" onClick={() => copy(post, 'Post copied')}>Copy post</button>
@@ -347,7 +352,7 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
   )
 }
 
-function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) {
+export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) {
   const toast = useToast()
   const { attribution } = useCart()
   const [f, setF] = useState({ window: (deal.delivery_windows || [])[1] || (deal.delivery_windows || [])[0] || '', company: '', address: '', area: '', instructions: '', name: '', phone: '' })

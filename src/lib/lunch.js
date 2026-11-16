@@ -116,3 +116,15 @@ export function lunchPostText({ deal, vendorName, from, link }) {
     link,
   ].filter((l) => l !== null && l !== undefined && l !== false).join('\n').replace(/\n{3,}/g, '\n\n').trim()
 }
+
+// A lunch plan as the poster maker sees it: the cover and dish photos, the
+// lowest price, and the ready post as the caption.
+export function lunchShareProduct({ deal, vendorName, dishes = [], from = 0, link }) {
+  return {
+    offering_type: 'lunch', name: deal.title, price: from, category: 'Lunch at work',
+    images: [...new Set([deal.cover_url, ...dishes.map((x) => x.images?.[0]), ...(deal.proof_images || [])].filter(Boolean))],
+    description: deal.tagline || '', benefits: [deal.tagline, deal.in_the_box].filter(Boolean),
+    cutoff_hour: deal.cutoff_hour, vendor_name: vendorName,
+    share_caption: lunchPostText({ deal, vendorName, from, link }),
+  }
+}

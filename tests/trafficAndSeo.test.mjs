@@ -29,3 +29,16 @@ test('visit counting is anonymous, staff-only to read, and skips private pages',
   assert.match(read('src/App.jsx'), /trackVisit\(pathname\)/)
   assert.match(read('src/components/vehicle/VehiclePage.jsx'), /track\('view'/)
 })
+
+test('the visitor counting is section 26 of the one-file SQL update', () => {
+  assert.match(read('supabase/run-in-supabase.sql'), /SECTION 26 of \d+ — 20261116_traffic_tracking_REVIEW\.sql/)
+})
+
+test('the shop lunch section lets people pick days and see the total, and books through the same sheet', () => {
+  const s = read('src/components/LunchShop.jsx')
+  assert.match(s, /Choose your days/)
+  assert.match(s, /Whole week/)
+  assert.match(s, /planTotals\(picks, menu\)/)
+  assert.match(s, /<BookSheet /)
+  assert.match(read('src/pages/public/Marketplace.jsx'), /<LunchShop vendorId=\{store\.id\}/)
+})
