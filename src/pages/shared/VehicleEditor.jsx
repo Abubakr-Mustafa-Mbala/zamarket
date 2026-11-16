@@ -405,7 +405,7 @@ export function VehicleList() {
     <div className="vx vx-form">
       <div className="vx-form-head">
         <div><h1>Vehicles</h1><p>The showroom: every vehicle, its status, and one tap to edit.</p></div>
-        <div className="btn-row"><Link className="vx-btn ghost" to="/motors" target="_blank">Open the showroom</Link><Link className="vx-btn primary" to={`${base}/new`}>List a vehicle</Link></div>
+        <div className="btn-row">{!vendorId && <Link className="vx-btn ghost" to="/admin/traffic">Views and enquiries</Link>}<Link className="vx-btn ghost" to="/motors" target="_blank">Open the showroom</Link><Link className="vx-btn primary" to={`${base}/new`}>List a vehicle</Link></div>
       </div>
       <div className="vx-tabs">
         {[['all', `All${rows ? ` (${rows.length})` : ''}`], ['live', `Live (${count('live')})`], ['other', `Drafts and review (${count('other')})`], ['sold', `Sold (${count('sold')})`]].map(([k, l]) => (

@@ -10,7 +10,7 @@
 
 
 -- ============================================================
--- SECTION 1 of 25 — 20261103_affiliate_recruitment_REVIEW.sql
+-- SECTION 1 of 26 — 20261103_affiliate_recruitment_REVIEW.sql
 -- ============================================================
 
 -- ZA Market affiliate recruitment, REVIEW BEFORE DEPLOYMENT.
@@ -67,7 +67,7 @@ drop function if exists public.is_approved_affiliate();
 
 
 -- ============================================================
--- SECTION 2 of 25 — 20261103_blog_media_staff_upload_REVIEW.sql
+-- SECTION 2 of 26 — 20261103_blog_media_staff_upload_REVIEW.sql
 -- ============================================================
 
 -- REVIEW AND APPLY in Supabase SQL editor before using Blog > Upload.
@@ -124,7 +124,7 @@ grant execute on function public.blog_report() to authenticated;
 
 
 -- ============================================================
--- SECTION 3 of 25 — 20261103_record_payment_reconciliation_REVIEW.sql
+-- SECTION 3 of 26 — 20261103_record_payment_reconciliation_REVIEW.sql
 -- ============================================================
 
 create or replace function record_payment(p_order uuid, p_method text, p_amount numeric, p_reference text default null)
@@ -160,7 +160,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 4 of 25 — 20261103_product_poster_support_REVIEW.sql
+-- SECTION 4 of 26 — 20261103_product_poster_support_REVIEW.sql
 -- ============================================================
 
 -- Product share posters: let the poster carry the seller's own branding.
@@ -193,7 +193,7 @@ grant select on public_products to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 5 of 25 — 20261104_growth_analytics_REVIEW.sql
+-- SECTION 5 of 26 — 20261104_growth_analytics_REVIEW.sql
 -- ============================================================
 
 -- Growth measurement, REVIEW BEFORE DEPLOYMENT.
@@ -333,7 +333,7 @@ grant execute on function public.growth_report(date, date) to authenticated;
 
 
 -- ============================================================
--- SECTION 6 of 25 — 20261104_order_alerts_REVIEW.sql
+-- SECTION 6 of 26 — 20261104_order_alerts_REVIEW.sql
 -- ============================================================
 
 -- Being told about an order when nobody is watching the screen.
@@ -439,7 +439,7 @@ revoke all on function public.claim_order_alert(int) from public, anon, authenti
 
 
 -- ============================================================
--- SECTION 7 of 25 — 20261104_giveaways_REVIEW.sql
+-- SECTION 7 of 26 — 20261104_giveaways_REVIEW.sql
 -- ============================================================
 
 -- Giveaways, REVIEW BEFORE DEPLOYMENT.
@@ -704,7 +704,7 @@ grant execute on function public.giveaway_public(text) to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 8 of 25 — 20261104_giveaway_conversion_REVIEW.sql
+-- SECTION 8 of 26 — 20261104_giveaway_conversion_REVIEW.sql
 -- ============================================================
 
 -- Turning a giveaway into something that pays for itself.
@@ -860,7 +860,7 @@ grant execute on function public.giveaway_report(text, int) to authenticated;
 
 
 -- ============================================================
--- SECTION 9 of 25 — 20261104_vendor_stock_REVIEW.sql
+-- SECTION 9 of 26 — 20261104_vendor_stock_REVIEW.sql
 -- ============================================================
 
 -- Stock that vendors can actually count, and a prize that cannot be sold.
@@ -1328,7 +1328,7 @@ grant execute on function public.vendor_set_stock(uuid, int, boolean) to authent
 
 
 -- ============================================================
--- SECTION 10 of 25 — 20261104_ai_blog_quota_REVIEW.sql
+-- SECTION 10 of 26 — 20261104_ai_blog_quota_REVIEW.sql
 -- ============================================================
 
 -- APPLY IN SUPABASE SQL EDITOR BEFORE ENABLING THE AI BLOG WRITER.
@@ -1371,7 +1371,7 @@ grant execute on function public.claim_ai_blog_generation() to authenticated;
 
 
 -- ============================================================
--- SECTION 11 of 25 — 20261105_promo_referrals_REVIEW.sql
+-- SECTION 11 of 26 — 20261105_promo_referrals_REVIEW.sql
 -- ============================================================
 
 -- Giveaway non-winner referral rewards.
@@ -2349,7 +2349,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 12 of 25 — 20261105_multi_prize_REVIEW.sql
+-- SECTION 12 of 26 — 20261105_multi_prize_REVIEW.sql
 -- ============================================================
 
 -- More than one prize in a giveaway.
@@ -2729,7 +2729,7 @@ grant execute on function public.giveaway_prize_slots(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 13 of 25 — 20261105_all_entries_on_wheel_REVIEW.sql
+-- SECTION 13 of 26 — 20261105_all_entries_on_wheel_REVIEW.sql
 -- ============================================================
 
 -- Everybody goes on the wheel.
@@ -2803,7 +2803,7 @@ grant execute on function public.giveaway_public(text) to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 14 of 25 — 20261106_public_offers_anon_fix.sql
+-- SECTION 14 of 26 — 20261106_public_offers_anon_fix.sql
 -- ============================================================
 
 -- Logged-out visitors could not load the marketplace: public_offers ran
@@ -2817,7 +2817,7 @@ alter view public.public_offers set (security_invoker = off);
 
 
 -- ============================================================
--- SECTION 15 of 25 — 20261106_coupons_complete_REVIEW.sql
+-- SECTION 15 of 26 — 20261106_coupons_complete_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket coupons — finish the system. REVIEW BEFORE DEPLOYMENT.
@@ -3305,7 +3305,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 16 of 25 — 20261106_front_page_and_delete_REVIEW.sql
+-- SECTION 16 of 26 — 20261106_front_page_and_delete_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket — choose what lands on the front page, and remove mistakes.
@@ -3482,7 +3482,7 @@ grant execute on function public.delete_product(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 17 of 25 — 20261109_vehicle_success_fee_REVIEW.sql
+-- SECTION 17 of 26 — 20261109_vehicle_success_fee_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Motors — seller-funded success-fee split.
@@ -3670,7 +3670,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 18 of 25 — 20261109_affiliate_monthly_earnings_goals_REVIEW.sql
+-- SECTION 18 of 26 — 20261109_affiliate_monthly_earnings_goals_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Affiliate Hub: personal monthly commission goals and private metrics.
@@ -3733,7 +3733,7 @@ grant execute on function public.affiliate_goal_metrics(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 19 of 25 — 20261109_affiliate_vehicle_rewards_REVIEW.sql
+-- SECTION 19 of 26 — 20261109_affiliate_vehicle_rewards_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Motors: approved affiliates may see their estimated reward in Kwacha
@@ -3765,7 +3765,7 @@ comment on function public.affiliate_vehicle_reward_estimates() is
   'Only approved affiliates receive estimated referral rewards for published vehicles. Estimates use advertised price and can change with final close. No seller terms are exposed.';
 
 -- ============================================================
--- SECTION 20 of 25 — 20261111_winners_recovery_proposals_REVIEW.sql
+-- SECTION 20 of 26 — 20261111_winners_recovery_proposals_REVIEW.sql
 -- ============================================================
 
 -- Winner contact details, account recovery, seller-proposed giveaways and
@@ -4232,7 +4232,7 @@ revoke all on function public.claim_ai_assist(text) from public, anon;
 grant execute on function public.claim_ai_assist(text) to authenticated;
 
 -- ============================================================
--- SECTION 21 of 25 — 20261111_delivery_fund_REVIEW.sql
+-- SECTION 21 of 26 — 20261111_delivery_fund_REVIEW.sql
 -- ============================================================
 
 -- The delivery fund.
@@ -4480,7 +4480,7 @@ revoke all on function public.delivery_fund_summary(date, date) from public, ano
 grant execute on function public.delivery_fund_summary(date, date) to authenticated;
 
 -- ============================================================
--- SECTION 22 of 25 — 20261112_storefront_delivery_message_REVIEW.sql
+-- SECTION 22 of 26 — 20261112_storefront_delivery_message_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket storefront: an optional, editable delivery sentence.
@@ -4525,7 +4525,7 @@ grant select (store_delivery_message) on public.vendors to anon, authenticated;
 grant select on public.public_vendors to anon, authenticated;
 
 -- ============================================================
--- SECTION 23 of 25 — 20261112_academy_code_REVIEW.sql
+-- SECTION 23 of 26 — 20261112_academy_code_REVIEW.sql
 -- ============================================================
 
 -- Each affiliate's access code for Al-Halaqa, the academy where affiliates
@@ -4559,7 +4559,7 @@ create trigger trg_resellers_academy_code before insert or update on public.rese
   for each row execute function public.resellers_academy_code_guard();
 
 -- ============================================================
--- SECTION 24 of 25 — 20261114_vehicle_affiliate_deals_REVIEW.sql
+-- SECTION 24 of 26 — 20261114_vehicle_affiliate_deals_REVIEW.sql
 -- ============================================================
 
 -- Vehicle buyers and the affiliate who brought them.
@@ -4625,7 +4625,7 @@ revoke all on function public.set_deal_affiliate(uuid, text, text) from public, 
 grant execute on function public.set_deal_affiliate(uuid, text, text) to authenticated;
 
 -- ============================================================
--- SECTION 25 of 25 — 20261115_lunch_plans_REVIEW.sql
+-- SECTION 25 of 26 — 20261115_lunch_plans_REVIEW.sql
 -- ============================================================
 
 -- Lunch plans: scheduled homemade lunches delivered to workplaces.
@@ -4907,3 +4907,117 @@ begin
 end $$;
 revoke all on function public.meal_kitchen(date, uuid) from public, anon;
 grant execute on function public.meal_kitchen(date, uuid) to authenticated;
+
+
+-- ============================================================
+-- SECTION 26 of 26 — 20261116_traffic_tracking_REVIEW.sql
+-- ============================================================
+-- 26. Traffic and vehicle interest: who visits, what they look at, what they tap.
+--
+-- First-party and anonymous. A visitor is a random id kept in their own
+-- browser; no name, no phone, no IP address is stored. Only staff can read it.
+-- Anyone (signed in or not) can add an event, through one function that
+-- checks every field and ignores repeats, so the table cannot be flooded
+-- with junk from one browser.
+
+create table if not exists public.traffic_events (
+  id          bigserial primary key,
+  created_at  timestamptz not null default now(),
+  kind        text not null check (kind in ('visit', 'view', 'whatsapp', 'call', 'enquiry', 'share')),
+  path        text,
+  product_id  uuid references public.products(id) on delete set null,
+  visitor     text not null,
+  ref_code    text,
+  channel     text,
+  from_site   text
+);
+create index if not exists traffic_events_time on public.traffic_events (created_at desc);
+create index if not exists traffic_events_product on public.traffic_events (product_id, created_at desc) where product_id is not null;
+
+alter table public.traffic_events enable row level security;
+revoke all on public.traffic_events from anon, authenticated;
+drop policy if exists traffic_staff_read on public.traffic_events;
+create policy traffic_staff_read on public.traffic_events for select using (public.is_staff());
+grant select on public.traffic_events to authenticated;
+
+create or replace function public.track_event(
+  p_kind text, p_path text default null, p_product uuid default null, p_visitor text default null,
+  p_ref text default null, p_channel text default null, p_from text default null
+) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v text := left(regexp_replace(coalesce(p_visitor, ''), '[^a-zA-Z0-9-]', '', 'g'), 40);
+  k text := lower(coalesce(p_kind, ''));
+  pth text := left(regexp_replace(coalesce(p_path, ''), '[?#].*$', ''), 200);
+  pid uuid := null;
+begin
+  if k not in ('visit', 'view', 'whatsapp', 'call', 'enquiry', 'share') or length(v) < 8 then return; end if;
+  -- Only published products count, so nothing hidden can be probed.
+  if p_product is not null then
+    select id into pid from products where id = p_product and status in ('published', 'out_of_stock');
+    if pid is null then return; end if;
+  end if;
+  -- Staff browsing their own site are not visitors.
+  if auth.uid() is not null and public.is_staff() then return; end if;
+  -- One visit per page and one view per vehicle per visitor every 30 minutes;
+  -- taps are kept, but not more than one of a kind per minute.
+  if exists (
+    select 1 from traffic_events
+    where visitor = v and kind = k
+      and coalesce(product_id::text, '') = coalesce(pid::text, '')
+      and (k not in ('visit') or path = pth)
+      and created_at > now() - case when k in ('visit', 'view') then interval '30 minutes' else interval '1 minute' end
+  ) then return; end if;
+  insert into traffic_events (kind, path, product_id, visitor, ref_code, channel, from_site)
+  values (k, nullif(pth, ''), pid, v,
+    nullif(left(lower(regexp_replace(coalesce(p_ref, ''), '[^a-zA-Z0-9_-]', '', 'g')), 40), ''),
+    nullif(left(lower(regexp_replace(coalesce(p_channel, ''), '[^a-z]', '', 'g')), 20), ''),
+    nullif(left(lower(regexp_replace(coalesce(p_from, ''), '^www\.', '')), 80), ''));
+end $$;
+revoke all on function public.track_event(text, text, uuid, text, text, text, text) from public;
+grant execute on function public.track_event(text, text, uuid, text, text, text, text) to anon, authenticated;
+
+-- The numbers, for staff: visitors per day, where they came from, the most
+-- visited pages, and every vehicle's views and taps.
+create or replace function public.traffic_summary(p_days int default 30)
+returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  since timestamptz := now() - make_interval(days => greatest(1, least(coalesce(p_days, 30), 365)));
+  out jsonb;
+begin
+  if not public.is_staff() then raise exception 'Staff only'; end if;
+  select jsonb_build_object(
+    'visitors', (select count(distinct visitor) from traffic_events where created_at >= since),
+    'visitors_today', (select count(distinct visitor) from traffic_events where created_at >= date_trunc('day', now() at time zone 'Africa/Lusaka') at time zone 'Africa/Lusaka'),
+    'page_views', (select count(*) from traffic_events where created_at >= since and kind in ('visit', 'view')),
+    'days', coalesce((select jsonb_agg(jsonb_build_object('day', to_char(day, 'YYYY-MM-DD'), 'visitors', n) order by day) from (
+        select (created_at at time zone 'Africa/Lusaka')::date as day, count(distinct visitor) as n
+        from traffic_events where created_at >= since group by (created_at at time zone 'Africa/Lusaka')::date) x), '[]'::jsonb),
+    'sources', coalesce((select jsonb_agg(s) from (
+        select jsonb_build_object('source', coalesce(channel, from_site, 'direct'), 'visitors', count(distinct visitor)) s
+        from traffic_events where created_at >= since and kind = 'visit' group by coalesce(channel, from_site, 'direct') order by count(distinct visitor) desc limit 12) x), '[]'::jsonb),
+    'pages', coalesce((select jsonb_agg(p) from (
+        select jsonb_build_object('path', path, 'visits', count(*), 'visitors', count(distinct visitor)) p
+        from traffic_events where created_at >= since and kind = 'visit' and path is not null group by path order by count(*) desc limit 15) x), '[]'::jsonb),
+    'vehicles', coalesce((select jsonb_agg(v) from (
+        select jsonb_build_object(
+          'product_id', pr.id, 'name', pr.name, 'slug', pr.slug, 'price', pr.price, 'status', pr.status,
+          'views', count(*) filter (where e.kind = 'view'),
+          'visitors', count(distinct e.visitor) filter (where e.kind = 'view'),
+          'whatsapp', count(*) filter (where e.kind = 'whatsapp'),
+          'calls', count(*) filter (where e.kind = 'call'),
+          'enquiries', count(*) filter (where e.kind = 'enquiry'),
+          'shares', count(*) filter (where e.kind = 'share'),
+          'from_affiliates', count(distinct e.visitor) filter (where e.ref_code is not null)) v
+        from products pr left join traffic_events e on e.product_id = pr.id and e.created_at >= since
+        where pr.offering_type = 'vehicle' and pr.status in ('published', 'out_of_stock')
+        group by pr.id order by count(*) filter (where e.kind = 'view') desc, pr.created_at desc) x), '[]'::jsonb),
+    'affiliates', coalesce((select jsonb_agg(a) from (
+        select jsonb_build_object('code', ref_code, 'visitors', count(distinct visitor), 'taps', count(*) filter (where kind in ('whatsapp', 'call', 'enquiry'))) a
+        from traffic_events where created_at >= since and ref_code is not null group by ref_code order by count(distinct visitor) desc limit 15) x), '[]'::jsonb)
+  ) into out;
+  return out;
+end $$;
+revoke all on function public.traffic_summary(int) from public;
+grant execute on function public.traffic_summary(int) to authenticated;

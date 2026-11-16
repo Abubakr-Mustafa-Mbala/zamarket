@@ -579,3 +579,22 @@
 .vx-faq li p { color: var(--vx-muted); font-size: .86rem; margin-top: 2px; line-height: 1.45; }
 .vx-faq-steps > summary { color: var(--vx-text); }
 .vx-faq summary, .vx-faq summary span { color: var(--vx-text); }
+/* Visitors dashboard (Nov 16) */
+.vx-traffic { display: flex; flex-direction: column; gap: 14px; }
+.vx-traffic-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.vx-bars { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 6px; }
+.vx-bars span { flex: 1 1 0; min-width: 2px; background: var(--vx-accent); border-radius: 3px 3px 0 0; opacity: .85; }
+.vx-table-wrap { overflow-x: auto; margin: 0 -4px; }
+.vx-table { width: 100%; border-collapse: collapse; font-size: .88rem; min-width: 640px; }
+.vx-table th, .vx-table td { text-align: right; padding: 9px 8px; border-bottom: 1px solid var(--vx-line); white-space: nowrap; }
+.vx-table th:first-child, .vx-table td:first-child { text-align: left; white-space: normal; }
+.vx-table th { color: var(--vx-muted); font-weight: 600; font-size: .78rem; }
+.vx-table td a { color: var(--vx-text); font-weight: 700; text-decoration: none; }
+.vx-table td small { display: block; color: var(--vx-muted); }
+.vx-rank { list-style: none; margin: 0; padding: 0; }
+.vx-rank li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--vx-line); font-size: .9rem; min-width: 0; }
+.vx-rank li span { overflow-wrap: anywhere; color: var(--vx-text); }
+.vx-traffic-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 760px) { .vx-traffic-two { grid-template-columns: minmax(0, 1fr); } .vx-traffic-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.vx-traffic-stats > div:last-child { grid-column: auto !important; }
+.vx-table td:first-child { min-width: 190px; }

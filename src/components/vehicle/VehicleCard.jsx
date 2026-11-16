@@ -4,6 +4,7 @@ import { useSaved } from '../../lib/saved'
 import { vehicleOf, vehicleTitle, km, priceNote } from '../../lib/vehicle'
 import { useVehicleContact, askOnWhatsApp, vehicleLink } from './contact'
 import { VI } from './icons'
+import { track } from '../../lib/traffic'
 import '../../motors.css'
 
 const photosOf = (p) => (Array.isArray(p?.images) ? p.images : []).filter((s) => typeof s === 'string' && /^https?:\/\//i.test(s))
@@ -36,7 +37,7 @@ export default function VehicleCard({ p, onAsk, compact = false }) {
     e.preventDefault()
     if (onAsk) return onAsk(p)
     const url = contact.whatsapp ? askOnWhatsApp(p, { ...contact, link: vehicleLink(p, contact.ref) }, '') : ''
-    if (url) window.open(url, '_blank', 'noopener')
+    if (url) { track('whatsapp', { product: p.id, ref: contact.ref }); window.open(url, '_blank', 'noopener') }
     else nav(`${to}?ask=1`)
   }
 

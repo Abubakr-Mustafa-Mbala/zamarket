@@ -4,6 +4,7 @@ import { sharePicture } from '../lib/shareCard'
 import ProductPhotoPicker from './ProductPhotoPicker'
 import { tagLink } from '../lib/channel'
 import { useAuth } from '../lib/auth'
+import { track } from '../lib/traffic'
 import {
   renderProductPoster, productCaption, recommendedDesign,
   PRODUCT_FORMATS, PRODUCT_DESIGNS, shotsOf, sellingPoints, savingOf,
@@ -103,6 +104,7 @@ export default function ShareProduct({
 
   const share = async () => {
     if (!blob) return
+    if (product?.id) track('share', { product: product.id })
     try {
       const how = await sharePicture(blob, { caption, filename })
       if (how === 'downloaded') {

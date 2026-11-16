@@ -24,6 +24,7 @@ const STAFF_NAV = [
   { to: '/admin/deals', label: 'Enquiries' },
   { to: '/admin/products', label: 'Products' },
   { to: '/admin/vehicles', label: 'Vehicles' },
+  { to: '/admin/traffic', label: 'Visitors' },
   { to: '/admin/lunch', label: 'Lunch plans' },
   { to: '/admin/studio', label: 'Creative Studio' },
   { to: '/admin/customers', label: 'Customers' },

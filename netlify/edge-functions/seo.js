@@ -1,3 +1,4 @@
+import { vehicleOf, vehicleTitle, standoutFeatures, priceNote, km } from '../../src/lib/vehicle.js'
 // Crawlable metadata and initial, truthful page content for JS and non-JS clients.
 // Never publish privileged data or replace search output with unrelated keywords.
 const SITE = 'https://zamarket.shop'
@@ -86,6 +87,56 @@ export function availabilityOf(p) {
   const stock = Number(p.stock_available)
   if (Number.isFinite(stock)) return stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
   return undefined
+}
+
+// A vehicle page as Google wants it: a title people search for ("2017 Toyota
+// Hilux for sale in Lusaka"), a description with the facts and standout
+// features from the listing, and Car structured data. Only what the seller
+// recorded is used.
+export function vehicleSeo(p, url) {
+  const v = vehicleOf(p)
+  const name = vehicleTitle(v, p.name)
+  const where = v.location ? ` in ${v.location}` : ' in Zambia'
+  const price = Number(p.price) > 0 ? money(p.price).replace(/\.00$/, '') : ''
+  const sold = p.status === 'out_of_stock'
+  const facts = [v.mileage_km && km(v.mileage_km), v.transmission && v.transmission.toLowerCase(), v.fuel && v.fuel.toLowerCase(), v.engine, v.drive].filter(Boolean)
+  const feats = standoutFeatures(v, 3)
+  const note = priceNote(v)
+  const description = [
+    `${sold ? 'Sold: ' : ''}${name}${where}${price ? `, ${price}${note ? ` (${note.toLowerCase()})` : ''}` : ''}.`,
+    facts.length ? `${facts.join(', ')}.` : '',
+    feats.length ? `Features ${feats.join(', ')}.` : '',
+    'Photos, full details and enquiries on ZaMarket Motors.',
+  ].filter(Boolean).join(' ')
+  const images = (p.images || []).filter(x => typeof x === 'string' && /^https:\/\//i.test(x))
+  const schema = {
+    '@context': 'https://schema.org', '@type': ['Product', 'Car'], name, url,
+    description: clip(p.description || description, 300),
+    image: images,
+    brand: v.make ? { '@type': 'Brand', name: v.make } : undefined,
+    model: v.model || undefined,
+    vehicleModelDate: v.year ? String(v.year) : undefined,
+    mileageFromOdometer: v.mileage_km ? { '@type': 'QuantitativeValue', value: Number(v.mileage_km), unitCode: 'KMT' } : undefined,
+    vehicleTransmission: v.transmission || undefined,
+    fuelType: v.fuel || undefined,
+    bodyType: v.body || undefined,
+    color: v.colour || undefined,
+    vehicleEngine: v.engine ? { '@type': 'EngineSpecification', name: v.engine } : undefined,
+    driveWheelConfiguration: v.drive || undefined,
+    seatingCapacity: Number(v.seats) > 0 ? Number(v.seats) : undefined,
+    itemCondition: /^new$/i.test(v.condition || '') ? 'https://schema.org/NewCondition' : 'https://schema.org/UsedCondition',
+    offers: Number(p.price) > 0 ? {
+      '@type': 'Offer', url, price: Number(p.price), priceCurrency: 'ZMW',
+      availability: sold ? 'https://schema.org/SoldOut' : 'https://schema.org/InStock',
+      seller: { '@type': 'Organization', name: p.vendor_name || SHOP },
+    } : undefined,
+  }
+  return {
+    heading: `${name} for sale${where}`,
+    title: `${sold ? 'Sold: ' : ''}${name} for sale${where}${price ? ` — ${price}` : ''} | ZaMarket Motors`,
+    description,
+    schema,
+  }
 }
 
 export default async function handler(request, context) {
@@ -253,6 +304,13 @@ export default async function handler(request, context) {
             : undefined,
         }
         initialContent = fallback(p.name, p.description || `${p.name} available from ${p.vendor_name || 'a local seller'} on ZaMarket.`, canonical)
+        if (p.offering_type === 'vehicle') {
+          const car = vehicleSeo(p, canonical)
+          title = p.page?.seo?.title || car.title
+          description = clip(p.page?.seo?.description || car.description)
+          schema = car.schema
+          initialContent = fallback(car.heading, car.description, canonical)
+        }
       }
     } else if (vendorSlug) {
       const { ok, item: v } = await getOne(`public_vendors?slug=eq.${encodeURIComponent(vendorSlug)}&select=business_name,description,about,tagline,category,town,rating,review_count,slug,logo_url,cover_url,opening_hours`, base, key)
@@ -289,7 +347,8 @@ export default async function handler(request, context) {
     }
   }
 
-  const ogType = schema?.['@type'] === 'Article' ? 'article' : schema?.['@type'] === 'Product' ? 'product' : 'website'
+  const types = [].concat(schema?.['@type'] || [])
+  const ogType = types.includes('Article') ? 'article' : types.includes('Product') ? 'product' : 'website'
   const head = `
     <title>${esc(title)}</title>
     <meta name="description" content="${esc(description)}" />

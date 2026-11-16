@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { trackVisit } from './lib/traffic'
 import { PENDING, resumeTarget } from './lib/pendingApplication'
 import { useAuth } from './lib/auth'
 import { configured } from './lib/supabase'
@@ -20,6 +21,7 @@ const resellerPages = () => import('./pages/reseller/Reseller')
 const vendorPages = () => import('./pages/vendor/Vendor')
 
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
+const Traffic = lazy(() => import('./pages/admin/Traffic'))
 const OrdersList = named(adminOrders, 'OrdersList')
 const OrderDetail = named(adminOrders, 'OrderDetail')
 const Products = lazy(() => import('./pages/admin/Products'))
@@ -140,8 +142,15 @@ function useResumeApplication() {
   }, [user, loading, pathname])
 }
 
+// Count public page visits (anonymous; see lib/traffic.js).
+function useCountVisits() {
+  const { pathname } = useLocation()
+  useEffect(() => { trackVisit(pathname) }, [pathname])
+}
+
 export default function App() {
   useResumeApplication()
+  useCountVisits()
   if (!configured) {
     return (
       <div className="auth-wrap">
@@ -208,6 +217,7 @@ export default function App() {
         <Route path="products/:id/page" element={<OfferingBuilder />} />
         <Route path="vehicles" element={<VehicleList />} />
         <Route path="vehicles/:id" element={<VehicleEditor />} />
+        <Route path="traffic" element={<Traffic />} />
         <Route path="lunch" element={<LunchDeals />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />

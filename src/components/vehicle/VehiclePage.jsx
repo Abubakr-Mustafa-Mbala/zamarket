@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { track } from '../../lib/traffic'
 import BuyingFaq from './BuyingFaq'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -69,9 +70,19 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
   const affiliate = role === 'reseller' && profile?.partner?.code
   const sub = [v.variant && !title.includes(v.variant) ? v.variant : null, v.body, v.colour].filter(Boolean).join(' · ')
   const ask = (q) => onAsk?.(q)
+  // Count the view and the taps on WhatsApp and phone links (anonymous).
+  useEffect(() => { if (!preview && p.id) track('view', { product: p.id, ref: contact?.ref }) }, [p.id, preview]) // eslint-disable-line react-hooks/exhaustive-deps
+  const countTap = (e) => {
+    if (preview) return
+    const a = e.target.closest?.('a[href]')
+    if (!a) return
+    const href = a.getAttribute('href') || ''
+    if (/^https:\/\/(wa\.me|api\.whatsapp)/.test(href)) track('whatsapp', { product: p.id, ref: contact?.ref })
+    else if (href.startsWith('tel:')) track('call', { product: p.id, ref: contact?.ref })
+  }
 
   return (
-    <div className={`vx vx-page ${preview ? 'is-preview' : ''}`}>
+    <div className={`vx vx-page ${preview ? 'is-preview' : ''}`} onClickCapture={countTap}>
       <nav className="vx-crumbs" aria-label="Breadcrumb">
         <Link to="/motors">Motors</Link><span aria-hidden>›</span>
         {group ? <Link to={`/motors?type=${encodeURIComponent(group)}`}>{group}</Link> : <span>Vehicles</span>}
@@ -256,6 +267,7 @@ function AskModal({ p, first, onClose, register = false, affiliateCode = null })
     })
     setBusy(false)
     if (error) return toast(error.message, true)
+    track('enquiry', { product: p.id })
     setDone(data)
   }
 

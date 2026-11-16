@@ -35,7 +35,8 @@ export default async function sitemap() {
     { loc: `${SITE}/`, pri: '1.0' },
     { loc: `${SITE}/sellers`, pri: '0.7' },
     { loc: `${SITE}/blog`, pri: '0.8' },
-    { loc: `${SITE}/motors`, pri: '0.8' },
+    { loc: `${SITE}/motors`, pri: '0.9' },
+    { loc: `${SITE}/lunch`, pri: '0.7' },
     { loc: `${SITE}/categories`, pri: '0.6' },
     { loc: `${SITE}/about`, pri: '0.4' },
     { loc: `${SITE}/apply/vendor`, pri: '0.6' },
@@ -49,7 +50,7 @@ export default async function sitemap() {
   if (SB && KEY) {
     try {
       const [products, vendors, articles, giveaways] = await Promise.all([
-        getAll('public_products?select=slug,vendor_slug,created_at&order=created_at.desc'),
+        getAll('public_products?select=slug,vendor_slug,created_at,offering_type&order=created_at.desc'),
         getAll('public_vendors?select=slug'),
         getAll('public_posts?select=slug,published_at&order=published_at.desc'),
         // Only the ones a logged-out visitor can actually open. A draft or
@@ -64,9 +65,13 @@ export default async function sitemap() {
       for (const p of products) {
         if (!validSlug(p.slug)) continue
         const path = validSlug(p.vendor_slug) ? `/${p.vendor_slug}/${p.slug}` : `/p/${p.slug}`
-        urls.push({ loc: SITE + path, pri: '0.8', lastmod: p.created_at })
+        urls.push({ loc: SITE + path, pri: p.offering_type === 'vehicle' ? '0.9' : '0.8', lastmod: p.created_at })
       }
       for (const v of vendors) if (validSlug(v.slug)) urls.push({ loc: `${SITE}/${v.slug}`, pri: '0.7' })
+      // Lunch plans are optional: a missing table must not empty the sitemap.
+      try {
+        for (const d of await getAll('meal_deals?select=slug&status=eq.published')) if (validSlug(d.slug)) urls.push({ loc: `${SITE}/lunch/${d.slug}`, pri: '0.7' })
+      } catch { /* not set up yet */ }
     } catch (err) {
       // A partial / empty sitemap could cause expensive re-crawling churn.
       // Return 503 so search engines try again later rather than trusting it.
