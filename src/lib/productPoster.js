@@ -1,6 +1,6 @@
 import { FORMATS, directionFrom, load, rounded, cover, coverRounded, fit, wrap, tracked, trackedWidth, enhance, grain, vignette, scrim, divider, qrImage, qrMinSize, qrPanel, brandLockup } from './posterKit'
 import { money } from './format'
-import { vehicleOf, factLine } from './vehicle'
+import { vehicleOf, factLine, standoutFeatures, priceNote, vehicleTitle, km } from './vehicle'
 
 // ---------------------------------------------------------------------------
 // Product posters.
@@ -123,13 +123,14 @@ export function sellingPoints(product, want = 4, limit = 0) {
   }
 
   // A vehicle's selling points are its facts: year, mileage, gearbox, fuel.
+  // A vehicle's selling points: the four facts every buyer asks first, then its
+  // standout features (only ones saved on the listing), then where it is.
   if (product?.offering_type === 'vehicle') {
     const v = vehicleOf(product)
-    add(factLine(v, 2))
-    add([v.fuel, v.engine, v.drive].filter(Boolean).join(' · '))
-    add([v.condition, v.papers].filter(Boolean).join(' · '))
+    add(factLine(v, 4))
+    for (const f of standoutFeatures(v, 3)) add(f)
     if (v.location) add(`In ${v.location}`)
-    if (out.length >= want) return out.slice(0, want)
+    return out.slice(0, want)
   }
 
   for (const b of (product?.benefits || [])) {
@@ -202,6 +203,8 @@ export async function renderProductPoster({
   const { w, h } = fmt
   const wide = w > h
   dir._s = w / 1080
+  // Vehicle prices read as whole kwacha: K285,000, not K285,000.00.
+  dir._whole = product?.offering_type === 'vehicle'
 
   const canvas = document.createElement('canvas')
   canvas.width = w; canvas.height = h
@@ -244,6 +247,7 @@ export async function renderProductPoster({
     logo, qr, link, shopName, place, deliveryLine,
     fulfilment: fulfilmentOf(product),
     category: String(product?.category || '').trim(),
+    car: carInfo(product, wide),
   }
 
   // A design that needs something the seller does not have falls back rather
@@ -258,7 +262,6 @@ export async function renderProductPoster({
 
   const draw = {
     hero: drawHero,
-    sheet: drawSheet,
     editorial: drawEditorial,
     detail: drawDetail,
     gallery: drawGallery,
@@ -289,7 +292,7 @@ const TOP = 0.80   // baseline sits this far down a line box
 // How tall the price block will be, before anything is drawn. Needed because
 // the hero layout stacks upwards from the bottom and has to know first.
 function priceHeight(ctx, dir, saving, price, maxW) {
-  const now = money(price)
+  const now = money(price, dir._whole ? { whole: true } : undefined)
   const size = fit(ctx, now, maxW * (saving ? 0.66 : 1), Math.round(dir._s * 104), Math.round(dir._s * 44), 800, dir.body)
   return { size, h: Math.round(size * 1.02) }
 }
@@ -301,7 +304,7 @@ function priceHeight(ctx, dir, saving, price, maxW) {
 // and the whole group — price plus struck-through was-price — is aligned as
 // one unit, so a centred price with a saving stays centred.
 function priceBlock(ctx, dir, x, topY, saving, price, maxW, align = 'left') {
-  const now = money(price)
+  const now = money(price, dir._whole ? { whole: true } : undefined)
   const { size, h } = priceHeight(ctx, dir, saving, price, maxW)
   const base = topY + size * TOP
 
@@ -796,7 +799,7 @@ function measureWith(w, h, draw) {
 // Clean Catalogue, full bleed: the photograph fills the whole poster. A soft
 // shadow at the top carries the shop and product name, a deeper one at the
 // bottom carries the price, and the product stays clear in the middle.
-function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, link, shopName, fulfilment, wide }) {
+function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, link, shopName, fulfilment, wide, car }) {
   const footerH = Math.round(h * (wide ? .19 : .13))
   const bodyH = h - footerH
   const s = dir._s
@@ -804,7 +807,7 @@ function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, lin
   const over = { ...dir, ink: '#FFFFFF', ink2: 'rgba(255,255,255,0.80)', accent: '#FFFFFF' }
 
   cover(ctx, hero, 0, 0, w, bodyH, 0.42)
-  vignette(ctx, w, bodyH, Math.min(0.35, dir.vignette || 0.3))
+  if (!car) vignette(ctx, w, bodyH, Math.min(0.35, dir.vignette || 0.3))
 
   // Top: shop name and product name.
   const tall = h / w > 1.6 ? 1.3 : 1
@@ -815,13 +818,37 @@ function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, lin
     const e = eyebrow(m, over, pad, 0, shopName || 'AVAILABLE ON ZAMARKET')
     return e + s * 10 + nameBlock(m, over, pad, 0, maxW, name, nameSize, nameLines)
   })
-  shade(ctx, 0, 0, w, Math.min(bodyH * .55, top + headH + s * 140), 'down', [[0, .82], [.6, .55], [1, 0]])
-  const eyeH = eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, pad, top, shopName || 'AVAILABLE ON ZAMARKET')
-  nameBlock(ctx, over, pad, top + eyeH + s * 10, maxW, name, nameSize, nameLines)
+  shade(ctx, 0, 0, w, Math.min(bodyH * .55, top + headH + s * 140), 'down', car ? [[0, .6], [.6, .3], [1, 0]] : [[0, .82], [.6, .55], [1, 0]])
+  withGlow(ctx, car ? s : 0, () => {
+    const eyeH = eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, pad, top, shopName || 'AVAILABLE ON ZAMARKET')
+    nameBlock(ctx, over, pad, top + eyeH + s * 10, maxW, name, nameSize, nameLines)
+  })
 
   // Bottom: price, and one fact such as "In stock".
-  const facts = [fulfilment].filter(Boolean)
   const { h: priceH } = priceHeight(ctx, over, saving, price, maxW)
+  if (car) {
+    // A vehicle: the car stays bright. A light shadow only, the words carry
+    // their own soft glow, and the facts sit in a frosted strip.
+    const cols = wide ? 4 : 2
+    const factsH = measureWith(w, 400, (m) => carFacts(m, dir, 0, 0, maxW, car.facts, { cols }))
+    const hiH = car.highlights.length ? measureWith(w, 300, (m) => carHighlights(m, dir, 0, 0, maxW, car.highlights)) : 0
+    const noteH = car.note ? s * 44 : 0
+    const footH = priceH + (noteH ? noteH + s * 12 : 0) + (factsH ? factsH + s * 26 : 0) + (hiH ? hiH + s * 8 : 0)
+    shade(ctx, 0, bodyH - footH - pad - s * 120, w, footH + pad + s * 120, 'down', [[0, 0], [.45, .34], [1, .62]])
+    let y = bodyH - pad * .7 - footH
+    withGlow(ctx, s, () => priceBlock(ctx, over, pad, y, saving, price, maxW))
+    y += priceH + s * 12
+    if (noteH) { glassChips(ctx, dir, pad, y, maxW, [car.note]); y += noteH + s * 12 }
+    if (factsH) {
+      ctx.fillStyle = 'rgba(0,0,0,0.34)'
+      rounded(ctx, pad - s * 14, y - s * 8, maxW + s * 28, factsH + s * 10, s * 16); ctx.fill()
+      carFacts(ctx, dir, pad, y, maxW, car.facts, { cols }); y += factsH + s * 26
+    }
+    if (hiH) withGlow(ctx, s, () => carHighlights(ctx, dir, pad, y, maxW, car.highlights))
+    buyFooter(ctx, dir, 0, bodyH, w, footerH, qr, link)
+    return
+  }
+  const facts = [fulfilment].filter(Boolean)
   const factH = facts.length ? s * 44 : 0
   const footH = priceH + (factH ? factH + s * 16 : 0)
   shade(ctx, 0, bodyH - footH - pad - s * 170, w, footH + pad + s * 170, 'down', [[0, 0], [.4, .62], [1, .9]])
@@ -836,7 +863,7 @@ function drawCatalogue({ ctx, w, h, pad, dir, name, price, saving, hero, qr, lin
 // shadow runs in from the left. The name, up to two of the seller's own
 // selling points and the price sit on that shadow, the product shows on the
 // right. On a tall poster the shadow rises from the bottom instead.
-function drawSplit({ ctx, w, h, pad, dir, name, price, saving, hero, points, qr, link, shopName, fulfilment, wide }) {
+function drawSplit({ ctx, w, h, pad, dir, name, price, saving, hero, points, qr, link, shopName, fulfilment, wide, car }) {
   const footerH = Math.round(h * (wide ? .2 : .13))
   const bodyH = h - footerH
   const s = dir._s
@@ -853,22 +880,56 @@ function drawSplit({ ctx, w, h, pad, dir, name, price, saving, hero, points, qr,
     ctx.drawImage(hero, w - dw + (dw - w) * 0.15, (bodyH - dh) * 0.42, dw, dh)
     ctx.restore()
     const shadeW = Math.round(w * .72)
-    shade(ctx, 0, 0, shadeW, bodyH, 'across', [[0, .86], [.45, .74], [.75, .32], [1, 0]])
+    shade(ctx, 0, 0, shadeW, bodyH, 'across', car ? [[0, .72], [.45, .55], [.75, .2], [1, 0]] : [[0, .86], [.45, .74], [.75, .32], [1, 0]])
 
     const x = pad, copyW = Math.round(w * .5) - pad
     let y = pad * .8
     y += eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.86)' }, x, y, label)
     y += s * 12
-    y += nameBlock(ctx, over, x, y, copyW, name, Math.round(s * 42), 3)
+    y += withGlow(ctx, car ? s : 0, () => nameBlock(ctx, over, x, y, copyW, name, Math.round(s * 42), car ? 2 : 3))
     y += s * 22
     const { h: priceH } = priceHeight(ctx, over, saving, price, copyW)
     const bottom = bodyH - pad * .7
     const room = bottom - priceH - s * 20 - y
-    if (list.length && room > s * 60) {
+    if (car) {
+      const fh = measureWith(w, 400, (m) => carFacts(m, dir, 0, 0, copyW, car.facts, { cols: 2, size: 26 }))
+      if (fh && room > fh) { carFacts(ctx, dir, x, y, copyW, car.facts, { cols: 2, size: 26 }); y += fh + s * 10 }
+      if (car.highlights.length && bottom - priceH - s * 20 - y > s * 44) withGlow(ctx, s, () => carHighlights(ctx, dir, x, y, copyW, car.highlights.slice(0, 2)))
+    } else if (list.length && room > s * 60) {
       const fits = Math.max(0, Math.min(list.length, Math.floor(room / (s * 25 * 1.32 * 2 + s * 16))))
       if (fits) pointList(ctx, over, x, y, copyW, list.slice(0, fits), s * 16)
     }
-    priceBlock(ctx, over, x, bottom - priceH, saving, price, copyW)
+    withGlow(ctx, car ? s : 0, () => priceBlock(ctx, over, x, bottom - priceH, saving, price, copyW))
+  } else if (car) {
+    // A tall vehicle poster: the car fills the top two thirds untouched, the
+    // name, price, facts with icons and highlights sit on a light shadow
+    // underneath. The car is not darkened.
+    cover(ctx, hero, 0, 0, w, bodyH, 0.4)
+    const maxW = w - pad * 2
+    const tall = h / w > 1.6 ? 1.2 : 1
+    const nameSize = Math.round(s * 46 * tall)
+    const nameH = measureWith(w, bodyH, (m) => nameBlock(m, over, pad, 0, maxW, name, nameSize, 2))
+    const { h: priceH } = priceHeight(ctx, over, saving, price, maxW * .62)
+    const factsH = measureWith(w, 400, (m) => carFacts(m, dir, 0, 0, maxW, car.facts, { cols: 2 }))
+    const hiH = car.highlights.length ? measureWith(w, 300, (m) => carHighlights(m, dir, 0, 0, maxW, car.highlights)) : 0
+    const gap = s * 18
+    const blockH = nameH + gap + priceH + (factsH ? gap + factsH : 0) + (hiH ? gap + hiH : 0)
+    const blockTop = bodyH - pad * .7 - blockH
+    shade(ctx, 0, 0, w, Math.max(s * 200, bodyH * .13), 'down', [[0, .55], [.6, .25], [1, 0]])
+    withGlow(ctx, s, () => eyebrow(ctx, { ...over, accent: 'rgba(255,255,255,0.9)' }, pad, pad * .8, label))
+    const sh = bodyH - blockTop + s * 140
+    shade(ctx, 0, bodyH - sh, w, sh, 'down', [[0, 0], [s * 140 / sh, .5], [1, .78]])
+    let y = blockTop
+    y += withGlow(ctx, s, () => nameBlock(ctx, over, pad, y, maxW, name, nameSize, 2)) + gap
+    withGlow(ctx, s, () => priceBlock(ctx, over, pad, y, saving, price, maxW * .62))
+    if (car.note) {
+      ctx.save(); ctx.font = `600 ${Math.round(s * 18)}px ${dir.body}`
+      const bw = ctx.measureText(car.note).width + s * 34; ctx.restore()
+      glassChips(ctx, dir, w - pad - bw, y + (priceH - s * 40) / 2, bw + 1, [car.note])
+    }
+    y += priceH
+    if (factsH) { y += gap; carFacts(ctx, dir, pad, y, maxW, car.facts, { cols: 2 }); y += factsH }
+    if (hiH) { y += gap; withGlow(ctx, s, () => carHighlights(ctx, dir, pad, y, maxW, car.highlights)) }
   } else {
     cover(ctx, hero, 0, 0, w, bodyH, 0.36)
     const maxW = w - pad * 2
@@ -926,219 +987,99 @@ function glassChips(ctx, dir, x, y, maxW, facts) {
   return fh
 }
 
-// A thin gold rule with a small diamond at its centre, as the references use
-// between the headline and the body.
-function ornamentRule(ctx, x, y, width, colour = SHEET.rule) {
-  const mid = x + width / 2
-  const gap = Math.max(10, width * 0.035)
+
+// --- vehicles ---------------------------------------------------------------
+// A vehicle poster shows the four facts every buyer asks first, each with a
+// small drawn icon, then two or three standout features from the listing,
+// and the price wording exactly as the seller gave it. Nothing is guessed.
+function carInfo(product, wide) {
+  if (product?.offering_type !== 'vehicle') return null
+  const v = vehicleOf(product)
+  const facts = [
+    v.year && ['year', String(v.year)],
+    v.mileage_km && ['mileage', km(v.mileage_km)],
+    v.transmission && ['transmission', v.transmission],
+    v.fuel && ['fuel', v.fuel],
+  ].filter(Boolean)
+  return { facts, highlights: standoutFeatures(v, wide ? 2 : 3), note: priceNote(v) }
+}
+
+const ICON_PATHS = {
+  year: 'M4 6.5h16V20H4zM4 10.5h16M8.5 3.5v5M15.5 3.5v5',
+  mileage: 'M3.5 16.5a8.5 8.5 0 1 1 17 0M12 16.5l4.2-4.8M7 16.5h.01M17 16.5h.01',
+  transmission: 'M6 5v14M12 5v14M18 5v7M6 12h12',
+  fuel: 'M5 20V5.5A1.5 1.5 0 0 1 6.5 4h6A1.5 1.5 0 0 1 14 5.5V20M3.5 20h12M5 10h9M14 8.5l3 2.5v6a1.5 1.5 0 0 0 3 0V9l-3-3',
+  check: 'M5 12.5l4.5 4.5L19 7.5',
+}
+
+function drawIcon(ctx, key, x, y, size, colour) {
+  if (typeof Path2D === 'undefined' || !ICON_PATHS[key]) return
   ctx.save()
+  ctx.translate(x, y)
+  ctx.scale(size / 24, size / 24)
   ctx.strokeStyle = colour
-  ctx.lineWidth = Math.max(1, width * 0.0015)
-  ctx.beginPath()
-  ctx.moveTo(x, y); ctx.lineTo(mid - gap, y)
-  ctx.moveTo(mid + gap, y); ctx.lineTo(x + width, y)
-  ctx.stroke()
-  const d = gap * 0.32
-  ctx.fillStyle = colour
-  ctx.beginPath()
-  ctx.moveTo(mid, y - d); ctx.lineTo(mid + d, y); ctx.lineTo(mid, y + d); ctx.lineTo(mid - d, y)
-  ctx.closePath(); ctx.fill()
+  ctx.lineWidth = 2.1
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  ctx.stroke(new Path2D(ICON_PATHS[key]))
   ctx.restore()
 }
 
-// A hairline box with a centred cap-height header sitting on its top edge,
-// like "DOSAGE & DIRECTIONS" in the reference.
-function captionedBox(ctx, x, y, width, height, header, s) {
-  ctx.save()
-  ctx.strokeStyle = SHEET.rule
-  ctx.lineWidth = Math.max(1, s * 1.5)
-  rounded(ctx, x, y, width, height, Math.round(s * 10))
-  ctx.stroke()
-  if (header) {
-    const size = Math.round(s * 19)
-    ctx.font = `700 ${size}px Instrument Sans, system-ui, sans-serif`
-    ctx.textAlign = 'center'
-    const label = header.toUpperCase()
-    const pad = Math.round(s * 12)
-    const tw = ctx.measureText(label).width + pad * 2
-    ctx.fillStyle = SHEET.ground
-    ctx.fillRect(x + width / 2 - tw / 2, y - size * 0.55, tw, size * 1.1)
-    ctx.fillStyle = SHEET.ink
-    ctx.textBaseline = 'middle'
-    ctx.fillText(label, x + width / 2, y)
-  }
-  ctx.restore()
-  ctx.textAlign = 'left'
-  ctx.textBaseline = 'alphabetic'
-}
-
-// The saving, as the reference draws it: a filled pill, not a crossed-out
-// number. Only ever drawn from a saving the product really has.
-function saveBadge(ctx, x, y, text, sub, s) {
-  const size = Math.round(s * 30)
-  const subSize = Math.round(s * 19)
-  ctx.font = `800 ${size}px Instrument Sans, system-ui, sans-serif`
-  const w1 = ctx.measureText(text).width
-  ctx.font = `600 ${subSize}px Instrument Sans, system-ui, sans-serif`
-  const w2 = sub ? ctx.measureText(sub).width : 0
-  const padX = Math.round(s * 26)
-  const width = Math.max(w1, w2) + padX * 2
-  const height = Math.round(s * (sub ? 92 : 62))
-  ctx.save()
-  ctx.fillStyle = SHEET.ink
-  rounded(ctx, x - width, y, width, height, Math.round(s * 14)); ctx.fill()
-  ctx.strokeStyle = SHEET.gold
-  ctx.lineWidth = Math.max(1, s * 2)
-  rounded(ctx, x - width + s * 5, y + s * 5, width - s * 10, height - s * 10, Math.round(s * 10))
-  ctx.stroke()
-  ctx.textAlign = 'center'
-  const cx = x - width / 2
-  ctx.fillStyle = '#FFFFFF'
-  ctx.font = `800 ${size}px Instrument Sans, system-ui, sans-serif`
-  ctx.fillText(text, cx, y + (sub ? s * 46 : s * 42))
-  if (sub) {
-    ctx.fillStyle = 'rgba(255,255,255,0.86)'
-    ctx.font = `600 ${subSize}px Instrument Sans, system-ui, sans-serif`
-    ctx.fillText(sub, cx, y + s * 74)
-  }
-  ctx.restore()
-  ctx.textAlign = 'left'
-  return height
-}
-
-
-function drawSheet({ ctx, w, h, pad, dir, name, price, saving, points, hero, shots,
-  logo, qr, link, shopName, place, fulfilment, deliveryLine, category, wide }) {
+// The facts as a grid of icon + text, `cols` across. Returns the height used.
+function carFacts(ctx, dir, x, y, maxW, facts, { cols = 2, colour = '#FFFFFF', size = 30 } = {}) {
+  if (!facts?.length) return 0
   const s = dir._s
-  ctx.fillStyle = SHEET.ground
-  ctx.fillRect(0, 0, w, h)
+  const rowH = Math.round(s * (size + 22))
+  const colW = maxW / cols
+  const icon = Math.round(s * size)
+  ctx.save()
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = colour
+  facts.forEach(([key, text], i) => {
+    const cx = x + (i % cols) * colW
+    const cy = y + Math.floor(i / cols) * rowH
+    drawIcon(ctx, key, cx, cy + (rowH - icon) / 2 - s * 4, icon, colour)
+    ctx.font = `700 ${Math.round(s * size * .82)}px ${dir.body}`
+    const room = colW - icon - s * 26
+    let t = String(text)
+    while (t.length > 3 && ctx.measureText(t).width > room) t = t.slice(0, -2)
+    if (t !== String(text)) t = `${t.trim()}…`
+    ctx.fillText(t, cx + icon + s * 12, cy + rowH / 2 - s * 4)
+  })
+  ctx.restore()
+  return Math.ceil(facts.length / cols) * rowH
+}
 
-  const footH = Math.round(h * (wide ? 0.17 : 0.125))
-  const body = h - footH
-  const maxW = w - pad * 2
-  let y = Math.round(pad * 0.9)
-
-  // The seller's mark, centred and large. It was small enough to miss before.
-  if (logo) {
-    const lw = Math.min(Math.round(w * 0.30), Math.round(s * 300))
-    const lh = Math.round(lw * (logo.height / logo.width || 1))
-    const capped = Math.min(lh, Math.round(h * 0.13))
-    const drawW = capped === lh ? lw : Math.round(capped * (logo.width / logo.height || 1))
-    ctx.drawImage(logo, Math.round(w / 2 - drawW / 2), y, drawW, capped)
-    y += capped + Math.round(s * 18)
-  } else if (shopName) {
-    ctx.textAlign = 'center'
-    ctx.fillStyle = SHEET.ink
-    ctx.font = `800 ${Math.round(s * 30)}px Instrument Sans, system-ui, sans-serif`
-    ctx.fillText(shopName.toUpperCase(), w / 2, y + s * 30)
-    y += Math.round(s * 54)
-    ctx.textAlign = 'left'
+// Standout features as one line of ticks, as many as fit.
+function carHighlights(ctx, dir, x, y, maxW, list, colour = '#FFFFFF') {
+  if (!list?.length) return 0
+  const s = dir._s
+  const size = Math.round(s * 23)
+  const lineH = Math.round(s * 40)
+  ctx.save()
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = colour
+  ctx.font = `600 ${size}px ${dir.body}`
+  let cx = x, cy = y, lines = 1
+  for (const f of list) {
+    const tw = ctx.measureText(f).width + s * 34
+    if (cx + tw > x + maxW && cx > x) { if (lines === 2) break; cx = x; cy += lineH; lines++ }
+    drawIcon(ctx, 'check', cx, cy + lineH / 2 - s * 11, s * 22, colour)
+    ctx.fillText(f, cx + s * 28, cy + lineH / 2)
+    cx += tw + s * 18
   }
+  ctx.restore()
+  return lines * lineH
+}
 
-  // The saving, as a badge in the top corner. Only ever drawn from a saving
-  // the product really has: savingOf returns null unless the normal price is
-  // genuinely higher than the current one. The headline starts below it, so
-  // the two can never overlap however long the name is.
-  if (saving?.off > 0) {
-    const badgeH = saveBadge(ctx, w - pad, Math.round(pad * 0.9),
-      `Save ${money(saving.off)}`, `was ${money(saving.was)}`, s)
-    y = Math.max(y, Math.round(pad * 0.9) + badgeH + Math.round(s * 16))
-  }
-
-  // Headline, in a serif, centred.
-  ctx.textAlign = 'center'
-  ctx.fillStyle = SHEET.ink
-  const titleSize = Math.round(s * (name.length > 40 ? 52 : 64))
-  ctx.font = `700 ${titleSize}px Playfair Display, Georgia, serif`
-  const rows = wrap(ctx, name, maxW, 2)
-  for (const row of rows) { y += titleSize; ctx.fillText(row, w / 2, y); y += Math.round(titleSize * 0.16) }
-
-  if (category) {
-    y += Math.round(s * 10)
-    ctx.fillStyle = SHEET.ink2
-    ctx.font = `italic 400 ${Math.round(s * 30)}px Playfair Display, Georgia, serif`
-    ctx.fillText(category, w / 2, y + s * 24)
-    y += Math.round(s * 42)
-  }
-  y += Math.round(s * 20)
-  ornamentRule(ctx, pad, y, maxW)
-  y += Math.round(s * 34)
-  ctx.textAlign = 'left'
-
-  // The product whole, beside its benefits. The photograph takes every bit of
-  // room the words do not need, so the sheet never ends on an empty band.
-  const colGap = Math.round(s * 30)
-  const hasPoints = points.length > 0
-  const picW = hasPoints ? Math.round(maxW * 0.54) : maxW
-  const factsForBox = [fulfilment, deliveryLine].filter(Boolean)
-  const priceBoxH = Math.round(s * (factsForBox.length ? 150 : 110))
-  const picH = Math.round(body - y - priceBoxH - Math.round(s * 50))
-  if (picH > s * 120) {
-    const picX = hasPoints ? pad : Math.round(w / 2 - picW / 2)
-    if (hero) containRounded(ctx, hero, picX, y, picW, picH, Math.round(s * 14), SHEET.ground)
-    else placeholder(ctx, dir, picX, y, picW, picH, name)
-
-    if (hasPoints) {
-      const bx = pad + picW + colGap
-      const bw = maxW - picW - colGap
-      let by = y + Math.round(s * 10)
-      const size = Math.round(s * 26)
-      ctx.font = `700 ${size}px Instrument Sans, system-ui, sans-serif`
-      for (const point of points.slice(0, 6)) {
-        const lines = wrap(ctx, point, bw - s * 34, 2)
-        const d = Math.round(s * 7)
-        ctx.fillStyle = SHEET.gold
-        ctx.beginPath()
-        ctx.moveTo(pad + picW + colGap + d, by + size * 0.35 - d)
-        ctx.lineTo(pad + picW + colGap + d * 2, by + size * 0.35)
-        ctx.lineTo(pad + picW + colGap + d, by + size * 0.35 + d)
-        ctx.lineTo(pad + picW + colGap, by + size * 0.35)
-        ctx.closePath(); ctx.fill()
-        ctx.fillStyle = SHEET.ink
-        for (const line of lines) { ctx.fillText(line, bx + s * 30, by + size * 0.8); by += Math.round(size * 1.22) }
-        by += Math.round(s * 12)
-      }
-    }
-    y += picH + Math.round(s * 30)
-  }
-
-  // Price and the practical facts, in a hairline box, sitting on the foot.
-  const facts = factsForBox
-  const boxH = priceBoxH
-  y = Math.max(y, body - boxH - Math.round(s * 20))
-  if (body - y >= boxH) {
-    captionedBox(ctx, pad, y, maxW, boxH, 'Price', s)
-    ctx.textAlign = 'center'
-    ctx.fillStyle = SHEET.ink
-    ctx.font = `800 ${Math.round(s * 56)}px Instrument Sans, system-ui, sans-serif`
-    ctx.fillText(money(price), w / 2, y + s * 76)
-    if (facts.length) {
-      ctx.fillStyle = SHEET.ink2
-      ctx.font = `600 ${Math.round(s * 24)}px Instrument Sans, system-ui, sans-serif`
-      ctx.fillText(facts.join('   •   '), w / 2, y + s * 120)
-    }
-    ctx.textAlign = 'left'
-    y += boxH + Math.round(s * 20)
-  }
-
-  // Where to find the seller, along the foot.
-  ctx.fillStyle = SHEET.foot
-  ctx.fillRect(0, body, w, footH)
-  const line = [shopName, place].filter(Boolean).join(' · ')
-  ctx.fillStyle = '#F3EEE2'
-  ctx.font = `700 ${Math.round(s * 26)}px Instrument Sans, system-ui, sans-serif`
-  ctx.fillText(line || 'Available on ZaMarket', pad, body + Math.round(footH * 0.42))
-  ctx.fillStyle = 'rgba(243,238,226,0.75)'
-  ctx.font = `500 ${Math.round(s * 22)}px Instrument Sans, system-ui, sans-serif`
-  ctx.fillText(String(link || 'zamarket.shop').replace(/^https?:\/\//, ''), pad, body + Math.round(footH * 0.70))
-  if (qr) {
-    const qs = Math.round(footH * 0.72)
-    const qx = w - pad - qs
-    const qy = body + Math.round((footH - qs) / 2)
-    ctx.fillStyle = '#FFFFFF'
-    rounded(ctx, qx - s * 8, qy - s * 8, qs + s * 16, qs + s * 16, Math.round(s * 8)); ctx.fill()
-    ctx.drawImage(qr, qx, qy, qs, qs)
-  }
+// Readable white text on a lighter shadow: a soft glow behind the letters.
+function withGlow(ctx, s, fn) {
+  ctx.save()
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'
+  ctx.shadowBlur = Math.round(s * 18)
+  ctx.shadowOffsetY = Math.round(s * 2)
+  const out = fn()
+  ctx.restore()
+  return out
 }
 
 // Smaller angle shots should show the whole photograph, not crop off an end
@@ -1161,35 +1102,37 @@ function containRounded(ctx, img, x, y, width, height, radius, ground) {
 // 4. Several angles. One large photograph of the item and the rest beside it.
 //    Only offered when the seller has photographed the thing more than once.
 function drawGallery({ ctx, w, h, pad, dir, name, price, saving, shots, logo, qr,
-  link, shopName, place, fulfilment, deliveryLine, category, wide }) {
+  link, shopName, place, fulfilment, deliveryLine, category, wide, car }) {
   const footerH = Math.round(h * (wide ? 0.2 : 0.125))
   const body = h - footerH
   const maxW = w - pad * 2
   const r = Math.round(dir._s * 16)
-  const gap = Math.round(dir._s * 12)
+  const tight = Math.round(dir._s * 8)
 
-  const textH = Math.round(dir._s * (wide ? 230 : 300))
+  const textH = Math.round(dir._s * (car ? (wide ? 250 : 330) : wide ? 230 : 300))
   const gridH = body - textH - pad
 
+  // The other angles fill their tiles edge to edge, a narrow gap from the
+  // main photo, and take a third of the width so they read as real photos.
   const extras = shots.slice(1, wide ? 3 : 4)
   if (extras.length) {
-    const sideW = Math.round(maxW * (wide ? 0.26 : 0.3))
-    const bigW = maxW - sideW - gap
+    const sideW = Math.round(maxW * (wide ? 0.3 : 0.34))
+    const bigW = maxW - sideW - tight
     coverRounded(ctx, shots[0], pad, pad, bigW, gridH, r, 0.42)
-    const cellH = Math.round((gridH - gap * (extras.length - 1)) / extras.length)
+    const cellH = Math.round((gridH - tight * (extras.length - 1)) / extras.length)
     extras.forEach((img, i) => {
-      containRounded(ctx, img, pad + bigW + gap, pad + i * (cellH + gap), sideW, cellH, r, dir.panel)
+      coverRounded(ctx, img, pad + bigW + tight, pad + i * (cellH + tight), sideW, cellH, r, 0.5)
     })
   } else {
     coverRounded(ctx, shots[0], pad, pad, maxW, gridH, r, 0.42)
   }
 
-  let y = pad + gridH + Math.round(dir._s * 36)
+  let y = pad + gridH + Math.round(dir._s * (car ? 26 : 36))
 
   // The price sits on the right of the name block, so the two read as one line.
   const priceW = Math.round(maxW * 0.40)
   const nameW = maxW - priceW - Math.round(dir._s * 20)
-  y += eyebrow(ctx, dir, pad, y, category)
+  y += eyebrow(ctx, dir, pad, y, car ? (car.note || category) : category)
   y += Math.round(dir._s * 4)
 
   const nSize = Math.round(dir._s * (wide ? 36 : 44))
@@ -1197,8 +1140,15 @@ function drawGallery({ ctx, w, h, pad, dir, name, price, saving, shots, logo, qr
   priceBlock(ctx, dir, w - pad, y, saving, price, priceW, 'right')
   y += Math.max(nameH, Math.round(dir._s * 54)) + Math.round(dir._s * 22)
 
-  const facts = [fulfilment, deliveryLine].filter(Boolean)
-  if (facts.length) factRow(ctx, dir, pad, y, maxW, facts)
+  if (car) {
+    // Year, mileage, gearbox and fuel with their icons on one row, then the
+    // standout features, in the poster's own ink colour.
+    y += carFacts(ctx, dir, pad, y, maxW, car.facts, { cols: Math.max(2, Math.min(4, car.facts.length)), colour: dir.ink, size: 24 })
+    if (car.highlights.length && y < body - Math.round(dir._s * 110)) carHighlights(ctx, dir, pad, y + Math.round(dir._s * 4), maxW, car.highlights, dir.ink2 || dir.ink)
+  } else {
+    const facts = [fulfilment, deliveryLine].filter(Boolean)
+    if (facts.length) factRow(ctx, dir, pad, y, maxW, facts)
+  }
 
   sellerLine(ctx, dir, pad, body - Math.round(dir._s * 30), logo, shopName, place, maxW)
   buyFooter(ctx, dir, 0, body, w, footerH, qr, link)
@@ -1272,7 +1222,26 @@ function drawStatement({ ctx, w, h, pad, dir, name, price, saving, hero, logo, q
 // Same rule as the poster: only what is true. The caption is what most people
 // actually read, so an invented line here does more damage than one on the
 // picture.
+// A vehicle caption: what it is, the price as the seller words it, the facts,
+// up to five standout features from the listing, where it is and the link.
+function vehicleCaption({ product, store, link }) {
+  const v = vehicleOf(product)
+  const note = priceNote(v)
+  const out = [`🚗 ${vehicleTitle(v, product?.name)}`]
+  if (n(product?.price) > 0) out.push(`💰 ${money(n(product?.price), { whole: true })}${note ? ` · ${note}` : ''}`)
+  const specs = [v.year, v.mileage_km && km(v.mileage_km), v.transmission, v.fuel, v.engine].filter(Boolean)
+  if (specs.length) out.push(`📋 ${specs.join(' · ')}`)
+  const feats = standoutFeatures(v, 5)
+  if (feats.length) { out.push(''); out.push('✨ Highlights'); for (const f of feats) out.push(`• ${f}`) }
+  const seller = tidy(store?.business_name || product?.vendor_name)
+  const place = [v.location, seller].filter(Boolean).join(' · ')
+  if (place) { out.push(''); out.push(`📍 ${place}`) }
+  if (link) { out.push(''); out.push(`Photos, details and enquiries: ${link}`) }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 export function productCaption({ product, store = null, settings = {}, link }) {
+  if (product?.offering_type === 'vehicle') return vehicleCaption({ product, store, link })
   const name = tidy(product?.name) || 'This item'
   const saving = savingOf(product)
   // No length limit here. A caption is read, not laid out, so the seller's

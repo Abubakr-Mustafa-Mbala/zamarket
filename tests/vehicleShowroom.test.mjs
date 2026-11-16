@@ -44,7 +44,7 @@ test('a listing needs photos, make, model, year, price, mileage, gearbox, fuel a
 
 test('saving keeps only filled fields and strips mileage to digits', () => {
   const out = normaliseVehicle({ make: ' Toyota ', model: '', mileage_km: '98,000 km', features: ['A', 'A', ' '], negotiable: false })
-  assert.deepEqual(out, { make: 'Toyota', mileage_km: '98000', features: ['A'], negotiable: false })
+  assert.deepEqual(out, { make: 'Toyota', mileage_km: '98000', features: ['A'], price_note: '', negotiable: false })
 })
 
 test('body types fall into the showroom groups', () => {
@@ -202,4 +202,32 @@ test('an expired sign-in is renewed and the request repeated, instead of showing
   assert.match(s, /jwt expired/i)
   assert.match(s, /supabase\.auth\.refreshSession\(\)/)
   assert.match(s, /if \(target\.includes\('\/auth\/v1\/'\)\) return res/)
+})
+
+// ---- Price wording and standout features (Nov 16) ----
+import { priceNote, standoutFeatures, rankFeatures } from '../src/lib/vehicle.js'
+
+test('price wording is the seller\'s own, and nothing at all when they said nothing', () => {
+  assert.equal(priceNote({ price_note: 'Slightly negotiable' }), 'Slightly negotiable')
+  assert.equal(priceNote({ price_note: '' }), '')
+  assert.equal(priceNote({ negotiable: false }), '')
+  assert.equal(priceNote({}), 'Negotiable')
+  for (const f of ['src/components/vehicle/VehiclePage.jsx', 'src/components/vehicle/VehicleCard.jsx', 'src/pages/shared/VehicleEditor.jsx', 'src/lib/vehicle.js']) {
+    assert.ok(!/Fixed price|, fixed\./.test(read(f)), `${f} never says fixed price`)
+  }
+})
+
+test('standout features follow the priority list and use only what is recorded', () => {
+  const jag = { features: ['Air conditioning', 'Cruise control', 'Electric windows', 'Alloy wheels', 'Paddle Shifters', 'Adaptive cruise control', 'Heated seats', 'Lane departure alert', 'Automatic'] }
+  const picks = standoutFeatures(jag, 5)
+  for (const f of ['Adaptive cruise control', 'Heated seats', 'Paddle shifters', 'Lane departure alert', 'Alloy wheels']) assert.ok(picks.includes(f), f)
+  assert.ok(!picks.includes('Air conditioning') && !picks.some((f) => /^automatic$/i.test(f)))
+  const fort = { features: ['Push start', 'Push-button start', 'Full leather interior', 'Power rear tailgate', 'Reverse camera', 'Paddle shifters', 'Bluetooth'] }
+  const f2 = standoutFeatures(fort, 5)
+  assert.equal(f2.length, 5)
+  assert.equal(f2.filter((x) => /push/i.test(x)).length, 1, 'synonyms merged')
+  assert.ok(!f2.includes('Bluetooth'))
+  assert.deepEqual(standoutFeatures({ features: [] }, 5), [])
+  assert.deepEqual(standoutFeatures({ features: ['Air conditioning', 'Power steering'] }, 5).length, 2)
+  assert.ok(rankFeatures(['A', 'a', ' ']).length === 1)
 })

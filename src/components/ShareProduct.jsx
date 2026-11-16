@@ -3,6 +3,7 @@ import { Modal, useToast } from './ui'
 import { sharePicture } from '../lib/shareCard'
 import ProductPhotoPicker from './ProductPhotoPicker'
 import { tagLink } from '../lib/channel'
+import { useAuth } from '../lib/auth'
 import {
   renderProductPoster, productCaption, recommendedDesign,
   PRODUCT_FORMATS, PRODUCT_DESIGNS, shotsOf, sellingPoints, savingOf,
@@ -31,15 +32,31 @@ const POST_TO = [
   ['qr', 'Printing it'],
 ]
 
+// Who is sharing decides what they see. A customer gets the poster and the
+// buttons, nothing else: no seller tips, no tracking explanation, no notes
+// about what the listing is missing. An affiliate also picks where they are
+// posting (so their sales can be traced to the platform). The seller and
+// ZaMarket staff see everything, including what would make the poster better.
+export function shareAudience(role) {
+  if (role === 'reseller') return 'affiliate'
+  if (role === 'vendor' || ['founder', 'ops', 'finance', 'delivery'].includes(role)) return 'seller'
+  return 'customer'
+}
+
 export default function ShareProduct({
   product, store = null, settings = {}, link,
-  label = 'Share this', className = 'btn',
+  label = 'Share this', className = 'btn', audience: forced = null, children = null,
 }) {
   const toast = useToast()
+  const auth = useAuth() || {}
+  const audience = forced || shareAudience(auth.role)
+  const isCustomer = audience === 'customer'
+  const isSeller = audience === 'seller'
+  const isVehicle = product?.offering_type === 'vehicle'
   const [open, setOpen] = useState(false)
   const [design, setDesign] = useState(null)
   const [format, setFormat] = useState('portrait')
-  const [postTo, setPostTo] = useState('status')
+  const [postTo, setPostTo] = useState(isCustomer ? 'share' : 'status')
   const [selectedPhoto, setSelectedPhoto] = useState(null)
   const [img, setImg] = useState(null)
   const [blob, setBlob] = useState(null)
@@ -107,7 +124,7 @@ export default function ShareProduct({
     catch { toast('Could not copy', true) }
   }
   const copyLink = async () => {
-    try { await navigator.clipboard.writeText(shareLink || ''); toast('Product link copied') }
+    try { await navigator.clipboard.writeText(shareLink || ''); toast('Link copied') }
     catch { toast('Could not copy', true) }
   }
   const another = () => {
@@ -133,9 +150,9 @@ export default function ShareProduct({
 
   return (
     <>
-      <button type="button" className={className} onClick={() => setOpen(true)}>{label}</button>
+      <button type="button" className={className} onClick={() => setOpen(true)}>{children}{label}</button>
       {open && (
-        <Modal title="Share this product" onClose={() => setOpen(false)}>
+        <Modal title={isVehicle ? 'Share this vehicle' : 'Share this product'} onClose={() => setOpen(false)}>
           <div className="stack share-store">
             <div className="ss-preview">
               {busy || !img
@@ -159,12 +176,12 @@ export default function ShareProduct({
                 ))}
               </div>
             </div>
-            <p className="tiny muted">
+            {isSeller && <p className="tiny muted">
               {PRODUCT_DESIGNS[chosen]?.note}
               {chosen === recommended && ' ★ suits what you have for this product.'}
-            </p>
+            </p>}
 
-            <div className="ss-row">
+            {!isCustomer && <div className="ss-row">
               <span className="ss-label">Posting to</span>
               <div className="ss-chips">
                 {POST_TO.map(([key, label]) => (
@@ -173,12 +190,12 @@ export default function ShareProduct({
                     onClick={() => setPostTo(key)}>{label}</button>
                 ))}
               </div>
-            </div>
-            <p className="tiny muted">
+            </div>}
+            {isSeller && <p className="tiny muted">
               The link and the QR code carry this, so when an order comes in you
               can see which platform it came from. Nothing about the person is
               recorded &mdash; only where the link was posted.
-            </p>
+            </p>}
 
             <div className="ss-row">
               <span className="ss-label">Size</span>
@@ -191,7 +208,7 @@ export default function ShareProduct({
               </div>
             </div>
 
-            {thin.length > 0 && (
+            {isSeller && thin.length > 0 && (
               <div className="ss-thin">
                 <strong>The poster is working with {thin.join(', ')}.</strong> It will
                 still look finished, but one clear photograph and a line about what
@@ -202,23 +219,23 @@ export default function ShareProduct({
             <div className="btn-row">
               <button className="btn primary" onClick={share} disabled={!blob}>{canShareFiles ? 'Share poster' : 'Save poster & caption'}</button>
               <button className="btn buy" onClick={download} disabled={!blob}>Download</button>
-              <button className="btn" onClick={another}>Another design</button>
-              <button className="btn ghost" onClick={copyCaption}>Copy caption</button>
-              <button className="btn ghost" onClick={copyLink}>Copy {shareLink.includes('/r/') ? 'affiliate' : 'product'} link</button>
+              {!isCustomer && <button className="btn" onClick={another}>Another design</button>}
+              {!isCustomer && <button className="btn ghost" onClick={copyCaption}>Copy caption</button>}
+              <button className="btn ghost" onClick={copyLink}>Copy {shareLink.includes('/r/') ? 'your' : isVehicle ? 'vehicle' : 'product'} link</button>
             </div>
 
-            <details className="ss-caption">
+            {!isCustomer && <details className="ss-caption">
               <summary className="small">The caption that goes with it</summary>
               <div className="share-box">{caption}</div>
-            </details>
+            </details>}
 
-            <p className="tiny muted">
+            {isSeller && <p className="tiny muted">
               Everything here comes from the product itself — its name, its price,
               its photographs, your own words. No review, no discount and no
               &ldquo;only a few left&rdquo; is ever added.
               {saving && ' The crossed-out price is the normal price you entered.'}
               {' '}The QR code opens this product&rsquo;s real page.
-            </p>
+            </p>}
           </div>
         </Modal>
       )}

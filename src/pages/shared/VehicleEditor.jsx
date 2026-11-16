@@ -11,9 +11,10 @@ import VehicleCard from '../../components/vehicle/VehicleCard'
 import { VI } from '../../components/vehicle/icons'
 import {
   MAKES, BODY_TYPES, TRANSMISSIONS, FUELS, DRIVES, CONDITIONS, PAPERS, SERVICE, TOWNS, FEATURES,
-  vehicleOf, vehicleTitle, specsFrom, normaliseVehicle, listingChecks,
+  vehicleOf, vehicleTitle, specsFrom, normaliseVehicle, listingChecks, PRICE_NOTES, priceNote,
 } from '../../lib/vehicle'
 import { PRODUCT_WORD } from '../../lib/statuses'
+import ShareProduct from '../../components/ShareProduct'
 import '../../motors.css'
 
 const SHOTS = ['Front', 'Back', 'Left side', 'Right side', 'Front seats', 'Back seats', 'Dashboard with mileage', 'Engine', 'Boot', 'Tyres']
@@ -65,7 +66,7 @@ export default function VehicleEditor() {
   const base = vendorId ? '/vendor/vehicles' : '/admin/vehicles'
 
   const [row, setRow] = useState(isNew ? { status: 'draft', images: [], page: {}, price: '' } : null)
-  const [v, setV] = useState(isNew ? { negotiable: true, features: [] } : null)
+  const [v, setV] = useState(isNew ? { price_note: 'Negotiable', features: [] } : null)
   const [error, setError] = useState('')
   const [tab, setTab] = useState('edit')
   const [busy, setBusy] = useState('')
@@ -75,7 +76,7 @@ export default function VehicleEditor() {
   useEffect(() => {
     if (isNew) return
     let alive = true
-    supabase.from('products').select('*,vendor:vendors(business_name,slug)').eq('id', id).single().then(({ data, error: e }) => {
+    supabase.from('products').select('*,vendor:vendors(business_name,slug,logo_url,location,category)').eq('id', id).single().then(({ data, error: e }) => {
       if (!alive) return
       if (e || !data) { setError(e?.message || 'This vehicle could not be found'); return }
       setRow(data)
@@ -213,6 +214,7 @@ export default function VehicleEditor() {
         </div>
         <div className="stack-sm" style={{ alignItems: 'flex-end' }}>
           {!isNew && <Badge status={row.status}>{PRODUCT_WORD[row.status]}</Badge>}
+          {!isNew && ['published', 'out_of_stock'].includes(row.status) && <ShareVehicle r={{ ...row, page: { ...(row.page || {}), vehicle: v } }} label="Share this vehicle" />}
           {['suspended', 'rejected'].includes(row.status) && row.rejection_reason && <span className="tiny bad" style={{ maxWidth: 320, textAlign: 'right' }}>{row.rejection_reason}</span>}
           <div className="vx-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === 'edit'} className={tab === 'edit' ? 'on' : ''} onClick={() => setTab('edit')}>Details</button>
@@ -315,7 +317,11 @@ export default function VehicleEditor() {
                 <input inputMode="decimal" value={row.price ?? ''} onChange={(e) => setR('price')(e.target.value.replace(/[^\d.]/g, ''))} placeholder="185000" />
               </F>
               <div className="vx-field" style={{ justifyContent: 'center' }}>
-                <label className="vx-toggle"><input type="checkbox" checked={v.negotiable !== false} onChange={(e) => set('negotiable')(e.target.checked)} />Price is negotiable</label>
+                <span className="vx-field-label">Next to the price</span>
+                <div className="vx-choices">
+                  {[...PRICE_NOTES, ''].map((x) => <button key={x || 'none'} type="button" className={priceNote(v) === x ? 'on' : ''} aria-pressed={priceNote(v) === x} onClick={() => set('price_note')(x)}>{x || 'Nothing'}</button>)}
+                </div>
+                <input aria-label="Or the seller's own words" value={priceNote(v)} maxLength={40} onChange={(e) => set('price_note')(e.target.value)} placeholder="Or the seller's own words" />
               </div>
               <F label="Town where the vehicle is">
                 <input list="vx-towns" value={v.location || ''} onChange={(e) => set('location')(e.target.value)} placeholder="Lusaka" autoComplete="off" />
@@ -326,7 +332,7 @@ export default function VehicleEditor() {
                 <textarea value={row.description || ''} onChange={(e) => setR('description')(e.target.value)} placeholder="e.g. One owner since new. Serviced at Toyota. Selling because we are moving." />
               </F>
             </div>
-            {Number(row.price) > 0 && <p className="vx-muted">Buyers see <strong style={{ color: 'var(--vx-text)' }}>{money(row.price, { whole: true })}</strong>{v.negotiable !== false ? ', negotiable.' : ', fixed.'}</p>}
+            {Number(row.price) > 0 && <p className="vx-muted">Buyers see <strong style={{ color: 'var(--vx-text)' }}>{money(row.price, { whole: true })}</strong>{priceNote(v) ? ` · ${priceNote(v)}` : ''}</p>}
           </Step>
 
           {isStaff && (
@@ -369,6 +375,15 @@ export default function VehicleEditor() {
 }
 
 // Every vehicle listing in one place.
+// Staff and the seller share a vehicle from here with the same poster and
+// caption the showroom uses. The link is the public vehicle page.
+const storeOf = (r) => (r?.vendor?.business_name ? { business_name: r.vendor.business_name, logo_url: r.vendor.logo_url, location: r.vendor.location, category: r.vendor.category } : null)
+const pageLink = (r) => `${typeof window !== 'undefined' ? window.location.origin : 'https://zamarket.shop'}/p/${r.slug || r.id}`
+function ShareVehicle({ r, label = 'Share', className = 'vx-btn ghost' }) {
+  const v = vehicleOf(r)
+  return <ShareProduct product={{ ...r, offering_type: 'vehicle', name: vehicleTitle(v, r.name) }} store={storeOf(r)} link={pageLink(r)} className={className} label={label}>{VI.share}</ShareProduct>
+}
+
 export function VehicleList() {
   const { profile } = useAuth()
   const vendorId = profile?.role === 'vendor' ? profile?.partner?.id : null
@@ -378,7 +393,7 @@ export function VehicleList() {
   const [show, setShow] = useState('all')
 
   useEffect(() => {
-    let q = supabase.from('products').select('id,name,slug,price,images,status,page,created_at,vendor:vendors(business_name)').eq('offering_type', 'vehicle').order('created_at', { ascending: false })
+    let q = supabase.from('products').select('id,name,slug,price,images,status,page,offering_type,created_at,vendor:vendors(business_name,logo_url,location,category)').eq('offering_type', 'vehicle').order('created_at', { ascending: false })
     if (vendorId) q = q.eq('vendor_id', vendorId)
     q.then(({ data, error: e }) => { if (e) setError(e.message); else setRows(data || []) })
   }, [vendorId])
@@ -404,14 +419,17 @@ export function VehicleList() {
               {list.map((r) => {
                 const v = vehicleOf(r)
                 return (
-                  <Link key={r.id} to={`${base}/${r.id}`} className="vx-admin-row">
-                    <span className="vx-admin-photo">{r.images?.[0] ? <img src={r.images[0]} alt="" loading="lazy" /> : VI.camera}</span>
-                    <span className="vx-admin-main">
-                      <strong>{vehicleTitle(v, r.name)}</strong>
-                      <span>{money(r.price, { whole: true })} · {(r.images || []).length} photos · {v.location || 'No town yet'}{r.vendor?.business_name ? ` · ${r.vendor.business_name}` : ''}</span>
-                    </span>
-                    <Badge status={r.status} />
-                  </Link>
+                  <div key={r.id} className="vx-admin-item">
+                    <Link to={`${base}/${r.id}`} className="vx-admin-row">
+                      <span className="vx-admin-photo">{r.images?.[0] ? <img src={r.images[0]} alt="" loading="lazy" /> : VI.camera}</span>
+                      <span className="vx-admin-main">
+                        <strong>{vehicleTitle(v, r.name)}</strong>
+                        <span>{money(r.price, { whole: true })} · {(r.images || []).length} photos · {v.location || 'No town yet'}{r.vendor?.business_name ? ` · ${r.vendor.business_name}` : ''}</span>
+                      </span>
+                      <Badge status={r.status} />
+                    </Link>
+                    {r.status === 'published' && <ShareVehicle r={r} className="vx-btn ghost vx-admin-share" />}
+                  </div>
                 )
               })}
             </div>

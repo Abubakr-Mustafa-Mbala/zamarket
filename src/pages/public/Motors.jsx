@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import BuyingFaq from '../../components/vehicle/BuyingFaq'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useSeo } from '../../lib/seo'
@@ -109,14 +110,7 @@ export default function Motors() {
           )}
 
       {cars && cars.length > 0 && (
-        <section className="vx-how">
-          <h2>How buying works</h2>
-          <ol>
-            <li><span>1</span><div><strong>Ask</strong><p>Tap Ask on WhatsApp. Ask anything: price, papers, more photos.</p></div></li>
-            <li><span>2</span><div><strong>See it</strong><p>We arrange a viewing with the seller. Bring a mechanic if you like.</p></div></li>
-            <li><span>3</span><div><strong>Agree</strong><p>Agree the price, check the papers, and only then pay.</p></div></li>
-          </ol>
-        </section>
+        <BuyingFaq />
       )}
 
       {more && (

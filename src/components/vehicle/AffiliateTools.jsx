@@ -4,6 +4,7 @@ import { money } from '../../lib/format'
 import { Modal, useToast } from '../ui'
 import { vehicleOf, vehiclePostText } from '../../lib/vehicle'
 import { VI } from './icons'
+import ShareProduct from '../ShareProduct'
 
 const photosOf = (p) => (Array.isArray(p?.images) ? p.images : []).filter((s) => typeof s === 'string' && /^https?:\/\//i.test(s))
 const fileName = (title, i) => `${String(title || 'vehicle').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}-${i + 1}.jpg`
@@ -73,9 +74,11 @@ export function PhotoSaver({ p, title, onClose }) {
   )
 }
 
-// What an affiliate sees on a vehicle page: what they could earn, their link,
-// the photos, a ready post, and a way to register a buyer who contacted them.
-export default function AffiliateTools({ p, title, link, onRegister }) {
+// What an affiliate sees on a vehicle page, in the order they use it: what
+// they could earn (an estimate), one big button for the poster, the quick
+// tools (photos, ready post, link, WhatsApp), then registering a buyer who
+// contacted them directly.
+export default function AffiliateTools({ p, title, link, store = null, settings = {}, onRegister }) {
   const toast = useToast()
   const [reward, setReward] = useState(null)
   const [photos, setPhotos] = useState(false)
@@ -91,28 +94,41 @@ export default function AffiliateTools({ p, title, link, onRegister }) {
   }, [p.id])
 
   const post = vehiclePostText(p, vehicleOf(p), link)
-  const copy = async () => {
-    try { await navigator.clipboard.writeText(post); toast('Post copied. Paste it with the photos.') } catch { toast('Copy did not work on this phone. Press and hold the text to copy it.', true) }
+  const copy = async (text, done) => {
+    try { await navigator.clipboard.writeText(text); toast(done) } catch { toast('Copy did not work on this phone. Press and hold the text to copy it.', true) }
   }
 
   return (
     <div className="vx-aff">
-      <div className="vx-aff-head">
-        <strong>Promote this vehicle</strong>
-        {reward > 0
-          ? <p>If a buyer you bring buys it at the asking price, you earn about <b>{money(reward, { whole: true })}</b>. The final amount is worked out on the agreed price, and paid once the sale is complete.</p>
-          : <p>When a buyer you bring buys it, you earn your share of ZaMarket's fee on the sale.</p>}
+      <div className="vx-aff-top">
+        <div>
+          <strong>Promote this vehicle</strong>
+          <span>Buyers who use your link or poster are credited to you.</span>
+        </div>
+        {reward > 0 && <div className="vx-aff-est"><small>Estimated reward</small><b>≈ {money(reward, { whole: true })}</b></div>}
       </div>
-      <div className="vx-aff-link"><span>Your link</span><code>{link}</code></div>
+
+      <ShareProduct product={{ ...p, name: title }} store={store} settings={settings} link={link} audience="affiliate"
+        className="vx-btn primary big vx-aff-main" label="Make a poster to share">{VI.share}</ShareProduct>
+
       <div className="vx-aff-grid">
         <button type="button" className="vx-btn ghost" onClick={() => setPhotos(true)}>{VI.camera}Photos</button>
-        <button type="button" className="vx-btn ghost" onClick={copy}>{VI.chat}Copy post</button>
-        {typeof navigator !== 'undefined' && navigator.share
-          ? <button type="button" className="vx-btn ghost" onClick={() => navigator.share({ title, text: post }).catch(() => {})}>{VI.share}Share</button>
-          : <a className="vx-btn ghost" href={`https://wa.me/?text=${encodeURIComponent(post)}`} target="_blank" rel="noreferrer">{VI.share}Share</a>}
-        <button type="button" className="vx-btn primary" onClick={onRegister}>Register a buyer</button>
+        <button type="button" className="vx-btn ghost" onClick={() => copy(post, 'Post copied. Paste it with the photos.')}>{VI.chat}Copy post</button>
+        <button type="button" className="vx-btn ghost" onClick={() => copy(link, 'Your link is copied')}>{VI.link || VI.share}Copy link</button>
+        <a className="vx-btn ghost" href={`https://wa.me/?text=${encodeURIComponent(post)}`} target="_blank" rel="noreferrer">{VI.whatsapp}WhatsApp</a>
       </div>
-      <p className="vx-aff-note">Someone contacted you directly? Tap <b>Register a buyer</b> and enter their name and number. They are credited to you and you can follow them in Vehicles → My buyers.</p>
+
+      <div className="vx-aff-buyer">
+        <span>A buyer contacted you directly?</span>
+        <button type="button" className="vx-btn outline" onClick={onRegister}>Register a buyer</button>
+      </div>
+
+      <p className="vx-aff-note">
+        {reward > 0
+          ? 'The reward shown is an estimate at the asking price. Your final reward is worked out on the price the buyer actually pays, and paid once the deal is closed.'
+          : 'You earn your share of ZaMarket\'s fee when a buyer you bring closes the deal. The final amount is worked out on the agreed price.'}
+        {' '}Follow your buyers in Vehicles → My buyers.
+      </p>
       {photos && <PhotoSaver p={p} title={title} onClose={() => setPhotos(false)} />}
     </div>
   )

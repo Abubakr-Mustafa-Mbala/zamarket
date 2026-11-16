@@ -134,8 +134,18 @@ export function normaliseVehicle(v) {
     if (val) out[key] = val
   }
   out.features = [...new Set((v?.features || []).map(clean).filter(Boolean))]
-  out.negotiable = v?.negotiable !== false
+  out.price_note = priceNote(v)
+  out.negotiable = out.price_note !== ''
   return out
+}
+
+// How the seller describes the price, in their words: "Negotiable",
+// "Slightly negotiable", or nothing at all when they said nothing.
+// Older listings only have negotiable true/false.
+export const PRICE_NOTES = ['Negotiable', 'Slightly negotiable']
+export function priceNote(v) {
+  if (v && typeof v.price_note === 'string') return clean(v.price_note).slice(0, 40)
+  return v?.negotiable === false ? '' : 'Negotiable'
 }
 
 // Which group of the showroom a body type belongs to.
@@ -206,17 +216,106 @@ export function sortVehicles(list, sort) {
 // seller's own facts, the asking price and the link.
 export function vehiclePostText(p, v, link) {
   const title = vehicleTitle(v, p?.name)
-  const price = Number(p?.price) > 0 ? `K${Math.round(Number(p.price)).toLocaleString('en-ZM')}${v?.negotiable === false ? '' : ' (negotiable)'}` : ''
+  const note = priceNote(v)
+  const price = Number(p?.price) > 0 ? `K${Math.round(Number(p.price)).toLocaleString('en-ZM')}${note ? ` (${note.toLowerCase()})` : ''}` : ''
   const lines = [
     `🚗 ${title} for sale`,
     price && `💰 ${price}`,
     factLine(v, 4) && `📋 ${factLine(v, 4)}`,
     [v?.engine, v?.drive, v?.body].filter(Boolean).join(' · ') && `⚙️ ${[v?.engine, v?.drive, v?.body].filter(Boolean).join(' · ')}`,
-    v?.features?.length ? `✅ ${v.features.slice(0, 5).join(', ')}` : '',
+    standoutFeatures(v, 5).length ? `✅ ${standoutFeatures(v, 5).join(', ')}` : '',
     v?.location && `📍 ${v.location}`,
     '',
     'All the photos and details, and ask on WhatsApp:',
     link || '',
   ]
   return lines.filter((l) => l !== false && l !== undefined && l !== null).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+// ---------------------------------------------------------------------------
+// Standout features, for captions and posters.
+//
+// Only features saved on the listing are ever used: nothing is added because
+// of the make, model or version. Equivalent names are merged ("Push start" and
+// "Push-button start"), features that repeat a spec already shown (Automatic,
+// Diesel, 4x4) are left out, and the pick is spread across kinds of feature
+// before falling back to plain priority.
+const FEATURE_RULES = [
+  // [pattern, label, priority (1 best), group]
+  [/adaptive cruise/, 'Adaptive cruise control', 1, 'safety'],
+  [/panoram/, 'Panoramic sunroof', 1, 'comfort'],
+  [/(full )?leather/, null, 1, 'comfort'],
+  [/heated seat|seat heat/, 'Heated seats', 1, 'comfort'],
+  [/ventilated seat|cooled seat/, 'Ventilated seats', 1, 'comfort'],
+  [/memory seat/, 'Memory seats', 1, 'comfort'],
+  [/360|surround view|bird.?s.?eye/, '360° camera', 1, 'safety'],
+  [/power(ed)? (rear )?tail ?gate|electric tail ?gate|power boot/, 'Power tailgate', 1, 'convenience'],
+  [/keyless|smart key/, 'Keyless entry', 1, 'convenience'],
+  [/push.?(button )?start|start.?stop button|engine start button/, 'Push-button start', 1, 'convenience'],
+  [/paddle/, 'Paddle shifters', 1, 'driving'],
+  [/lane (departure|keep|assist)/, null, 1, 'safety'],
+  [/blind.?spot/, 'Blind-spot monitoring', 1, 'safety'],
+  [/head.?up/, 'Head-up display', 1, 'tech'],
+  [/collision|autonomous emergency|pre.?crash|driver assist/, null, 1, 'safety'],
+  [/premium (sound|audio)|harman|bose|jbl|meridian/, null, 1, 'tech'],
+  [/sun ?roof|moon ?roof/, 'Sunroof', 2, 'comfort'],
+  [/revers(e|ing) cam|rear (view )?cam|back.?up cam/, 'Reverse camera', 2, 'safety'],
+  [/^cruise|cruise control/, 'Cruise control', 2, 'driving'],
+  [/park(ing)? (sensor|assist)|pdc/, 'Parking sensors', 2, 'safety'],
+  [/navigation|gps|sat ?nav/, 'Navigation', 2, 'tech'],
+  [/touch ?screen|infotainment|carplay|android auto/, null, 2, 'tech'],
+  [/climate control|dual.?zone/, 'Climate control', 2, 'comfort'],
+  [/bluetooth/, 'Bluetooth', 2, 'tech'],
+  [/alloy/, 'Alloy wheels', 2, 'exterior'],
+  [/tow ?bar|tow hitch/, 'Tow bar', 2, 'driving'],
+  [/side ?steps|running boards/, 'Side steps', 2, 'exterior'],
+  [/diff(erential)? lock/, 'Diff lock', 2, 'driving'],
+  [/roof rails/, 'Roof rails', 2, 'exterior'],
+  [/canopy/, 'Canopy', 2, 'exterior'],
+  [/bull ?bar|nudge bar/, 'Bull bar', 2, 'exterior'],
+  [/fog/, 'Fog lights', 2, 'exterior'],
+  [/led|xenon|hid/, null, 2, 'exterior'],
+  [/new tyres|new tires/, null, 2, 'exterior'],
+  [/spare key/, 'Spare key', 3, 'convenience'],
+  [/air ?con|a\/c|aircon/, 'Air conditioning', 3, 'comfort'],
+  [/electric windows|power windows/, 'Electric windows', 3, 'comfort'],
+  [/power steering/, 'Power steering', 3, 'driving'],
+  [/central lock/, 'Central locking', 3, 'convenience'],
+  [/airbag|abs/, null, 3, 'safety'],
+]
+const REPEATS_SPEC = /^(automatic|manual|diesel|petrol|hybrid|electric|4x4|4wd|awd|2wd)$/i
+
+export function rankFeatures(features) {
+  const seen = new Set()
+  const out = []
+  for (const raw of features || []) {
+    const name = clean(raw)
+    if (!name || REPEATS_SPEC.test(name)) continue
+    const low = name.toLowerCase()
+    const rule = FEATURE_RULES.find(([re]) => re.test(low))
+    const label = rule?.[1] || name
+    const key = label.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ label, priority: rule ? rule[2] : 2.5, group: rule ? rule[3] : 'other', order: out.length })
+  }
+  return out.sort((a, b) => a.priority - b.priority || a.order - b.order)
+}
+
+// Up to `want` features, best first. Within each level (premium, desirable,
+// common) one of each kind comes before a second of the same kind.
+export function standoutFeatures(v, want = 5) {
+  const ranked = rankFeatures(v?.features)
+  const picked = []
+  const groups = new Set()
+  for (const level of [...new Set(ranked.map((f) => f.priority))]) {
+    const tier = ranked.filter((f) => f.priority === level)
+    const fresh = tier.filter((f) => !groups.has(f.group))
+    const firstOfKind = fresh.filter((f, i) => fresh.findIndex((x) => x.group === f.group) === i)
+    for (const f of [...firstOfKind, ...tier.filter((f) => !firstOfKind.includes(f))]) {
+      if (picked.length >= want) break
+      picked.push(f); groups.add(f.group)
+    }
+  }
+  return picked.map((f) => f.label)
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import BuyingFaq from './BuyingFaq'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { money } from '../../lib/format'
@@ -11,7 +12,7 @@ import VehicleCard from './VehicleCard'
 import { useVehicleContact, askOnWhatsApp } from './contact'
 import AffiliateTools, { PhotoSaver } from './AffiliateTools'
 import { VI, FACT_ICON } from './icons'
-import { vehicleOf, vehicleTitle, vehicleFacts, bodyGroup, QUICK_QUESTIONS } from '../../lib/vehicle'
+import { vehicleOf, vehicleTitle, vehicleFacts, bodyGroup, QUICK_QUESTIONS, priceNote } from '../../lib/vehicle'
 import '../../motors.css'
 
 const photosOf = (p) => (Array.isArray(p?.images) ? p.images : []).filter((s) => typeof s === 'string' && /^https?:\/\//i.test(s))
@@ -87,7 +88,7 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
           <div className="vx-price-box">
             <span className="vx-price-label">Asking price</span>
             <strong className="vx-price">{money(p.price, { whole: true })}</strong>
-            <span className={`vx-tag ${v.negotiable === false ? '' : 'on'}`}>{v.negotiable === false ? 'Fixed price' : 'Negotiable'}</span>
+            {priceNote(v) && <span className="vx-tag on">{priceNote(v)}</span>}
           </div>
 
           {top.length > 0 && (
@@ -121,11 +122,12 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
           )}
 
           {!preview && (affiliate
-            ? <AffiliateTools p={p} title={title} link={contact?.link} onRegister={() => onRegister?.()} />
+            ? <AffiliateTools p={p} title={title} link={contact?.link} settings={settings} onRegister={() => onRegister?.()}
+                store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null} />
             : (
               <div className="vx-share">
                 <ShareProduct product={{ ...p, name: title }} store={p.vendor_name ? { business_name: p.vendor_name, logo_url: p.vendor_logo, location: p.vendor_location, category: p.vendor_category } : null}
-                  settings={settings} link={contact?.link} className="vx-btn ghost" label="Share this vehicle" />
+                  settings={settings} link={contact?.link} className="vx-btn ghost" label="Share this vehicle">{VI.share}</ShareProduct>
                 {isStaff && <button type="button" className="vx-btn ghost" onClick={() => setSaving(true)}>{VI.camera}Photos to post</button>}
                 {saving && <PhotoSaver p={p} title={title} onClose={() => setSaving(false)} />}
               </div>
@@ -168,15 +170,7 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
           {!sold && <button type="button" className="vx-btn ghost" onClick={() => ask('Can I come and see it? When?')}>Arrange a viewing</button>}
         </section>
 
-        <section className="vx-card-block vx-safe">
-          <h2>Buying safely</h2>
-          <ul>
-            <li>{VI.check}See the vehicle in person before you pay anything.</li>
-            <li>{VI.check}Check the registration book or import papers match the vehicle and the seller.</li>
-            <li>{VI.check}A mechanic's inspection is worth it. Ask us and we will pass the request to the seller.</li>
-            <li>{VI.check}Details on this page come from the seller. Confirm anything important before you agree.</li>
-          </ul>
-        </section>
+        <BuyingFaq compact />
       </div>
 
       {similar.length > 0 && (
@@ -286,7 +280,7 @@ function AskModal({ p, first, onClose, register = false, affiliateCode = null })
             </div>
           </div>
           <label className="field"><span>Anything else? (optional)</span><textarea className="input" rows={2} value={f.note} onChange={(e) => setF({ ...f, note: e.target.value })} /></label>
-          {v.negotiable !== false && (
+          {priceNote(v) && (
             <label className="field"><span>{register ? "Buyer's offer (optional)" : 'Your offer (optional)'}</span><input className="input" inputMode="numeric" value={f.offer} onChange={(e) => setF({ ...f, offer: e.target.value.replace(/[^0-9.]/g, '') })} placeholder={`Asking ${money(p.price, { whole: true })}`} /></label>
           )}
           <label className="field"><span>{register ? "Buyer's name" : 'Your name'}</span><input className="input" required value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} autoComplete={register ? 'off' : 'name'} /></label>

@@ -1,7 +1,7 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { money } from '../../lib/format'
 import { useSaved } from '../../lib/saved'
-import { vehicleOf, vehicleTitle, km } from '../../lib/vehicle'
+import { vehicleOf, vehicleTitle, km, priceNote } from '../../lib/vehicle'
 import { useVehicleContact, askOnWhatsApp, vehicleLink } from './contact'
 import { VI } from './icons'
 import '../../motors.css'
@@ -52,7 +52,7 @@ export default function VehicleCard({ p, onAsk, compact = false }) {
         </span>
         <span className="vx-card-main">
           <span className="vx-card-title">{title}</span>
-          <span className="vx-card-price"><b>{money(p.price, { whole: true })}</b>{v.negotiable !== false && <em>Negotiable</em>}</span>
+          <span className="vx-card-price"><b>{money(p.price, { whole: true })}</b>{priceNote(v) && <em>{priceNote(v)}</em>}</span>
           {facts.length > 0 && <span className="vx-card-facts">{facts.map((f) => <span key={f.key}>{f.icon}<i>{f.text}</i></span>)}</span>}
           <span className="vx-card-loc">{VI.pin}<span>{v.location || 'Location on enquiry'}</span><span className="dot" aria-hidden>•</span><span className="who">{seller}</span></span>
         </span>

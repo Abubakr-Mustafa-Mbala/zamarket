@@ -546,3 +546,36 @@
   .vx-btn.wa svg { width: 20px; height: 20px; }
 }
 @media (max-width: 375px) { .vx-card-facts { gap: 6px 8px; } .vx-card-facts > span { font-size: .74rem; gap: 3px; } .vx-card-facts svg { width: 14px; height: 14px; } }
+.vx-field-label { font-size: .85rem; font-weight: 700; }
+/* Affiliate panel (Nov 16): estimate, one big poster button, quick tools, register a buyer */
+.vx-aff-top { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.vx-aff-top strong { display: block; font-size: 1.02rem; }
+.vx-aff-top span { display: block; font-size: .84rem; color: var(--vx-muted); margin-top: 2px; line-height: 1.4; }
+.vx-aff-est { flex: 0 0 auto; text-align: right; background: var(--vx-bg); border: 1px solid var(--vx-line); border-radius: 12px; padding: 6px 10px; }
+.vx-aff-est small { display: block; font-size: .7rem; color: var(--vx-muted); font-weight: 600; }
+.vx-aff-est b { color: var(--vx-ok); font-size: 1.05rem; white-space: nowrap; }
+.vx-aff .vx-aff-main { width: 100%; }
+.vx-aff .vx-aff-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.vx-aff-buyer { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--vx-line); padding-top: 12px; font-size: .88rem; font-weight: 600; }
+.vx-aff-buyer .vx-btn { min-height: 40px; }
+.vx-btn svg, .vx-aff .vx-btn svg { width: 18px; height: 18px; flex: 0 0 auto; }
+.vx-admin-item { display: flex; flex-direction: column; gap: 0; background: var(--vx-panel); border: 1px solid var(--vx-line); border-radius: 14px; overflow: hidden; }
+.vx-admin-item .vx-admin-row { border: 0; border-radius: 0; }
+.vx-admin-item .vx-admin-share { border: 0; border-top: 1px solid var(--vx-line); border-radius: 0; min-height: 42px; width: 100%; justify-content: center; }
+/* How buying works, as tap-to-open questions (Nov 16) */
+.vx-faq { background: var(--vx-panel); border: 1px solid var(--vx-line); border-radius: 16px; overflow: hidden; }
+.vx-faq details { border-top: 1px solid var(--vx-line); }
+.vx-faq details:first-child { border-top: 0; }
+.vx-faq summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 16px; font-weight: 700; font-size: .95rem; }
+.vx-faq summary::-webkit-details-marker { display: none; }
+.vx-faq summary::after { content: '+'; font-size: 1.2rem; color: var(--vx-muted); font-weight: 600; flex: 0 0 auto; }
+.vx-faq details[open] > summary::after { content: '–'; }
+.vx-faq summary em { font-style: normal; font-size: .75rem; color: var(--vx-muted); font-weight: 600; margin-left: auto; }
+.vx-faq details > p { padding: 0 16px 14px; color: var(--vx-muted); font-size: .9rem; line-height: 1.5; }
+.vx-faq ol { list-style: none; margin: 0; padding: 0 16px 14px; display: grid; gap: 10px; }
+.vx-faq li { display: flex; gap: 10px; align-items: flex-start; }
+.vx-faq li > span { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--vx-accent); color: var(--vx-accent-ink); font-weight: 800; font-size: .82rem; }
+.vx-faq li strong { font-size: .92rem; }
+.vx-faq li p { color: var(--vx-muted); font-size: .86rem; margin-top: 2px; line-height: 1.45; }
+.vx-faq-steps > summary { color: var(--vx-text); }
+.vx-faq summary, .vx-faq summary span { color: var(--vx-text); }
