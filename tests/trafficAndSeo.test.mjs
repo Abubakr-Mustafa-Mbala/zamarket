@@ -34,12 +34,11 @@ test('the visitor counting is section 26 of the one-file SQL update', () => {
   assert.match(read('supabase/run-in-supabase.sql'), /SECTION 26 of \d+ — 20261116_traffic_tracking_REVIEW\.sql/)
 })
 
-test('the shop lunch section lets people pick days and see the total, and books through the same sheet', () => {
+test('the shop shows the weekly lunch board with real plan prices and one order button', () => {
   const s = read('src/components/LunchShop.jsx')
-  assert.match(s, /Choose your days/)
-  assert.match(s, /Whole week/)
-  assert.match(s, /planTotals\(picks, menu, deal.group_discounts\)/)
-  assert.match(s, /<BookSheet /)
+  assert.match(s, /Weekly <span>Office Lunches<\/span>/)
+  assert.match(s, /packagePrice\(weeks, wi, 'week', menu, deal\)/)
+  assert.match(s, /Order your weekly lunch today/)
   assert.match(read('src/pages/public/Marketplace.jsx'), /<LunchShop vendorId=\{store\.id\}/)
 })
 
@@ -52,9 +51,47 @@ test('team discounts follow the best tier per delivery day and match what the da
   assert.equal(L.groupPct([{ min: 5, pct: 5 }, { min: 10, pct: 8 }], 12), 8)
   const menu = [{ date: 'a', dishes: [{ id: 'x', price: 133 }] }, { date: 'b', dishes: [{ id: 'x', price: 133 }] }]
   const t = L.planTotals({ a: { x: 10 }, b: { x: 1 } }, menu, [{ min: 5, pct: 5 }, { min: 10, pct: 8 }])
-  assert.deepEqual(t, { lunches: 11, total: 1356.6, days: 2, subtotal: 1463, discount: 106.4 })
+  assert.deepEqual({ ...t, byDate: undefined }, { lunches: 11, total: 1356.6, days: 2, subtotal: 1463, discount: 106.4, byDate: undefined })
   const sql = read('supabase/migrations/20261116_lunch_team_discounts_REVIEW.sql')
   assert.match(sql, /Only ZaMarket can set team discounts/)
   assert.match(sql, /> 10 then raise exception/)
   assert.match(sql, /request text check \(request is null or length\(request\) <= 300\)/)
+})
+
+
+test('weekly packages: full week, Monday to Thursday, two weeks, and removing a day lowers the price', async () => {
+  const L = await import('../src/lib/lunch.js')
+  const deal = { cutoff_hour: 18, dishes: [{ product_id: 'a' }, { product_id: 'b' }], day_discounts: [{ min: 5, pct: 5 }] }
+  const products = [{ id: 'a', price: 83, order_days: [1, 3, 5] }, { id: 'b', price: 90, order_days: [2, 4] }]
+  const menu = L.upcomingMenu({ deal, products, days: 21, now: new Date('2026-11-17T15:00:00Z') })
+  const weeks = L.workingWeeks(menu)
+  assert.equal(weeks[0].start, '2026-11-16')
+  assert.deepEqual(weeks[0].days.map((d) => d.open), [false, false, true, true, true])
+  const full = L.packagePrice(weeks, 1, 'week', menu, deal)
+  assert.equal(full.dates.length, 5)
+  assert.equal(full.before, 83 * 3 + 90 * 2)
+  assert.equal(full.total, Math.round(full.before * 95) / 100)
+  const four = L.packagePrice(weeks, 1, 'monthu', menu, deal)
+  assert.equal(four.dates.length, 4)
+  assert.equal(four.discount, 0, 'four days is below the 5-day package discount')
+  assert.equal(L.packagePrice(weeks, 1, 'two', menu, deal).dates.length, 10)
+  const less = L.planTotals(L.picksFromDates(full.dates.slice(0, 4), menu), menu, [], deal.day_discounts)
+  assert.ok(less.total < full.total)
+  assert.equal(L.matchPackage(weeks, 1, full.dates.slice(0, 4)), 'monthu')
+  assert.equal(L.matchPackage(weeks, 1, [full.dates[0], full.dates[2]]), 'custom')
+})
+
+test('lunch-only dishes stay out of the shop, can only be ordered through a plan, and bookings are not duplicated', () => {
+  const sql = read('supabase/migrations/20261117_weekly_lunch_REVIEW.sql')
+  assert.match(sql, /and not coalesce\(p\.lunch_only, false\);/)
+  assert.match(sql, /create or replace view public_lunch_dishes/)
+  assert.match(sql, /This dish is ordered through the weekly lunch page/)
+  assert.match(sql, /perform set_config\('zamarket\.meal_plan', 'on', true\)/)
+  assert.match(sql, /select \* into old from meal_plans where client_ref = v_ref/)
+  assert.match(sql, /Paying after the first lunch is for first orders/)
+  assert.match(sql, /Only ZaMarket can set lunch discounts/)
+  const page = read('src/pages/public/Lunch.jsx')
+  assert.match(page, /client_ref: ref/)
+  assert.match(page, /Nothing is charged on this page/)
+  assert.match(read('src/lib/lunchData.js'), /public_lunch_dishes/)
 })

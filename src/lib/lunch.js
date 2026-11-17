@@ -75,23 +75,29 @@ export function groupPct(tiers, qty) {
 }
 
 // picks: { [date]: { [productId]: quantity } }. Totals match what the
-// database charges: each day's subtotal less that day's team discount.
-export function planTotals(picks, menu, tiers = []) {
-  let lunches = 0, subtotal = 0, discount = 0, days = 0
-  for (const day of menu) {
+// database charges: each day's subtotal less that day's discount, the larger
+// of the team discount (lunches that day) and the package discount (number
+// of days booked). Never both.
+export function planTotals(picks, menu, tiers = [], dayTiers = []) {
+  const counts = menu.map((day) => {
     const chosen = picks?.[day.date] || {}
     let q = 0, sub = 0
     for (const dish of day.dishes) {
       const n = Number(chosen[dish.id] || 0)
       if (n > 0) { q += n; sub += n * Number(dish.price || 0) }
     }
-    if (q > 0) {
-      days++; lunches += q; subtotal += sub
-      discount += Math.round(sub * groupPct(tiers, q)) / 100
-    }
+    return { date: day.date, q, sub }
+  }).filter((d) => d.q > 0)
+  const days = counts.length
+  let lunches = 0, subtotal = 0, discount = 0
+  const byDate = {}
+  for (const { date, q, sub } of counts) {
+    const off = Math.round(sub * Math.max(groupPct(tiers, q), groupPct(dayTiers, days))) / 100
+    lunches += q; subtotal += sub; discount += off
+    byDate[date] = Math.round((sub - off) * 100) / 100
   }
   discount = Math.round(discount * 100) / 100
-  return { lunches, total: Math.round((subtotal - discount) * 100) / 100, days, subtotal, discount }
+  return { lunches, total: Math.round((subtotal - discount) * 100) / 100, days, subtotal, discount, byDate }
 }
 
 export function planPayloadDays(picks) {
@@ -147,3 +153,88 @@ export function lunchShareProduct({ deal, vendorName, dishes = [], from = 0, lin
     share_caption: lunchPostText({ deal, vendorName, from, link }),
   }
 }
+
+// ---- Weekly packages ------------------------------------------------------
+// The menu grouped into working weeks (Monday to Friday). Each weekday says
+// whether it can be booked and, if so, the dishes that day. Days that have
+// passed, are past the cut-off, or have no dish are shown as closed.
+export function workingWeeks(menu, count = 3) {
+  const byDate = new Map((menu || []).map((d) => [d.date, d]))
+  if (!byDate.size) return []
+  const first = [...byDate.keys()].sort()[0]
+  const monday = addDays(first, -((dow(first) + 6) % 7))
+  const out = []
+  for (let w = 0; w < count; w++) {
+    const start = addDays(monday, w * 7)
+    const days = [0, 1, 2, 3, 4].map((i) => {
+      const date = addDays(start, i)
+      const day = byDate.get(date) || null
+      const open = !!day && day.dishes.some((x) => !x.soldOut)
+      return { date, weekday: i + 1, label: dayLabel(date), day, open }
+    })
+    if (days.some((d) => d.open)) out.push({ start, end: addDays(start, 4), days, open: days.filter((d) => d.open).length })
+  }
+  return out
+}
+
+export const PACKAGES = [
+  { id: 'week', title: 'Full working week', sub: 'Monday to Friday' },
+  { id: 'monthu', title: 'Monday to Thursday', sub: 'Four days, Friday off' },
+  { id: 'two', title: 'Two weeks', sub: 'Monday to Friday, both weeks' },
+  { id: 'custom', title: 'Choose my days', sub: 'Any days you like' },
+]
+
+// The dates a package covers, starting from week index w (open days only).
+export function packageDates(weeks, w, pkg) {
+  const take = (week, max) => (week ? week.days.filter((d) => d.open && d.weekday <= max).map((d) => d.date) : [])
+  if (pkg === 'monthu') return take(weeks[w], 4)
+  if (pkg === 'two') return [...take(weeks[w], 5), ...take(weeks[w + 1], 5)]
+  return take(weeks[w], 5)
+}
+
+// The first open dish of a day: what a customer gets unless they choose.
+export const defaultDish = (day) => day?.dishes.find((x) => !x.soldOut) || null
+
+// Turn chosen dates (+ optional dish choices and lunches a day) into picks.
+export function picksFromDates(dates, menu, choice = {}, perDay = 1) {
+  const byDate = new Map((menu || []).map((d) => [d.date, d]))
+  const out = {}
+  for (const date of dates) {
+    const day = byDate.get(date)
+    if (!day) continue
+    const chosen = day.dishes.find((x) => x.id === choice[date] && !x.soldOut) || defaultDish(day)
+    if (!chosen) continue
+    const max = chosen.remaining == null ? 50 : chosen.remaining
+    out[date] = { [chosen.id]: Math.max(1, Math.min(Number(perDay) || 1, max)) }
+  }
+  return out
+}
+
+// Which package a set of dates matches, or 'custom'.
+export function matchPackage(weeks, w, dates) {
+  const key = (list) => [...list].sort().join(',')
+  const k = key(dates)
+  for (const p of ['week', 'monthu', 'two']) {
+    const pd = packageDates(weeks, w, p)
+    if (pd.length && key(pd) === k) return p
+  }
+  return 'custom'
+}
+
+// "Mon 23 – Fri 27 Nov" for a list of dates.
+export function dateRange(dates) {
+  const s = [...dates].sort()
+  if (!s.length) return ''
+  if (s.length === 1) return dayLabel(s[0])
+  return `${dayLabel(s[0]).replace(/ \w+$/, '')} – ${dayLabel(s[s.length - 1])}`
+}
+
+// The price of a package: the default dish each open day, one lunch a day.
+export function packagePrice(weeks, w, pkg, menu, deal = null) {
+  const dates = packageDates(weeks, w, pkg)
+  const t = planTotals(picksFromDates(dates, menu), menu, [], deal?.day_discounts || [])
+  return { dates, total: t.total, before: t.subtotal, discount: t.discount }
+}
+
+// The package discount a number of days earns, as a percentage (0 if none).
+export const dayPct = (deal, days) => groupPct(deal?.day_discounts || [], days)

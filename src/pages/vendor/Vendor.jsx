@@ -141,7 +141,7 @@ export function VendorProducts() {
   const v = useVendor()
   const toast = useToast()
   const [edit, setEdit] = useState(null)
-  const { data, loading, reload } = useData(() => v ? q(supabase.from('products').select('*').eq('vendor_id', v.id).order('created_at', { ascending: false })) : Promise.resolve([]), [v?.id])
+  const { data, loading, reload } = useData(() => v ? q(supabase.from('products').select('*').eq('vendor_id', v.id).order('created_at', { ascending: false })).then((rows) => (rows || []).filter((p) => !p.lunch_only)) : Promise.resolve([]), [v?.id])
   // How many are there? A seller who counts gets the listing taken down by
   // itself when the last one goes, instead of having to remember.
   const setStock = async (p) => {

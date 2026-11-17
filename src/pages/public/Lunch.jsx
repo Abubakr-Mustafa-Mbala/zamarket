@@ -8,19 +8,14 @@ import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import PhotoViewer from '../../components/PhotoViewer'
 import { PhotoSaver } from '../../components/vehicle/AffiliateTools'
-import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct, cleanTiers } from '../../lib/lunch'
+import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct, cleanTiers, workingWeeks, PACKAGES, packageDates, packagePrice, picksFromDates, matchPackage, dateRange, defaultDish } from '../../lib/lunch'
+import { loadDealDishes } from '../../lib/lunchData'
 import ShareProduct from '../../components/ShareProduct'
 import { whatsappLink } from '../../lib/vehicle'
 import '../../lunch.css'
 
-const DEAL_COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,group_discounts'
-const KINDS = [
-  ['trial', 'Try one lunch', 'One lunch, one day. See if you love it.'],
-  ['week', 'My lunches', 'Pick your days. Lunch is sorted.'],
-  ['team', 'For my team', 'Several lunches a day, one delivery.'],
-]
-
-function useDeliveryIncluded() {
+export const DEAL_COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,group_discounts,trial_first,day_discounts'
+export function useDeliveryIncluded() {
   const [inc, setInc] = useState(false)
   useEffect(() => {
     supabase.from('settings').select('key,value').eq('key', 'delivery_included').then(({ data }) => {
@@ -48,7 +43,7 @@ export function LunchIndex() {
       <header className="ln-index-head">
         <span className="ln-eyebrow">Lunch at work</span>
         <h1>Homemade lunch, delivered to your office</h1>
-        <p>Order by the evening before. Delivered at lunchtime. Try one lunch first.</p>
+        <p>Choose your days once. Fresh homemade lunch arrives every working day you picked.</p>
       </header>
       {deals === null ? <Loading /> : deals.length === 0 ? (
         <div className="ln-empty"><h2>No lunch plans right now</h2><p>New lunch plans appear here as soon as we list them.</p></div>
@@ -61,7 +56,7 @@ export function LunchIndex() {
                 <small>{vendors[d.vendor_id]?.business_name || ''}</small>
                 <strong>{d.title}</strong>
                 {d.tagline && <span>{d.tagline}</span>}
-                <em>See the menu →</em>
+                <em>Order weekly lunch →</em>
               </span>
             </Link>
           ))}
@@ -89,9 +84,9 @@ export default function LunchPage() {
       setDeal(data)
       const ids = (data.dishes || []).map((d) => d.product_id)
       const [p, v, a, r] = await Promise.all([
-        ids.length ? supabase.from('public_products').select('*').in('id', ids) : { data: [] },
+        loadDealDishes(data).then((list) => ({ data: list })),
         supabase.from('public_vendors').select('id,business_name,slug,logo_url,town,cover_url').eq('id', data.vendor_id).maybeSingle(),
-        supabase.rpc('meal_availability', { p_deal: data.id, p_days: 16 }),
+        supabase.rpc('meal_availability', { p_deal: data.id, p_days: 24 }),
         ids.length ? supabase.from('reviews').select('id,product_rating,comment,customer_name,verified,photo_url,created_at,product_id').in('product_id', ids).eq('approved', true).order('created_at', { ascending: false }).limit(12) : { data: [] },
       ])
       if (!alive) return
@@ -113,38 +108,17 @@ export default function LunchPage() {
 export function LunchView({ deal, products, vendor, availability, reviews = [], preview = false, onBooked }) {
   const { role, profile, settings } = useAuth()
   const deliveryIncluded = useDeliveryIncluded()
-  const menu = useMemo(() => upcomingMenu({ deal, products, availability, days: 10 }).slice(0, 8), [deal, products, availability])
-  // Each dish once, with the weekdays it is cooked.
-  const dishList = useMemo(() => {
-    const m = new Map()
-    for (const day of menu) for (const dish of day.dishes) {
-      const short = day.label.split(' ')[0]
-      const cur = m.get(dish.id) || { ...dish, days: [] }
-      if (!cur.days.includes(short)) cur.days.push(short)
-      m.set(dish.id, cur)
-    }
-    return [...m.values()]
-  }, [menu])
+  const menu = useMemo(() => upcomingMenu({ deal, products, availability, days: 21 }), [deal, products, availability])
+  const allDishes = useMemo(() => [...new Map(menu.flatMap((d) => d.dishes).map((x) => [x.id, x])).values()], [menu])
   const from = fromPrice(products, deal)
-  const [kind, setKind] = useState('week')
-  const [picks, setPicks] = useState({})
+  const [order, setOrder] = useState(null)
   const [viewer, setViewer] = useState(null)
-  const [booking, setBooking] = useState(false)
-  const totals = planTotals(picks, menu, deal.group_discounts)
   const proofs = (deal.proof_images || []).filter(Boolean)
-  const rating = reviews.length ? reviews.reduce((t, r) => t + Number(r.product_rating || 0), 0) / reviews.filter((r) => r.product_rating).length : 0
+  const rated = reviews.filter((r) => r.product_rating)
+  const rating = rated.length ? rated.reduce((t, r) => t + Number(r.product_rating || 0), 0) / rated.length : 0
   const affiliate = role === 'reseller' && profile?.partner?.code
-
-  const choose = (date, id, qty) => setPicks((cur) => {
-    if (kind === 'trial') return qty > 0 ? { [date]: { [id]: 1 } } : {}
-    const day = { ...(cur[date] || {}) }
-    if (kind === 'week') { for (const k of Object.keys(day)) delete day[k] }
-    if (qty > 0) day[id] = qty; else delete day[id]
-    const next = { ...cur, [date]: day }
-    if (!Object.keys(day).length) delete next[date]
-    return next
-  })
-  const switchKind = (k) => { setKind(k); setPicks({}) }
+  const windows = deal.delivery_windows || []
+  const link = `${window.location.origin}/lunch/${deal.slug}`
 
   return (
     <div className={`ln ln-page ${preview ? 'is-preview' : ''}`}>
@@ -152,53 +126,30 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
         {deal.cover_url && <img className="ln-hero-img" src={deal.cover_url} alt="" />}
         <div className="ln-hero-shade" />
         <div className="ln-hero-copy">
-          {vendor && <span className="ln-eyebrow">{vendor.business_name}{vendor.town ? ` · ${vendor.town}` : ''}</span>}
-          <h1>{deal.title}</h1>
-          {deal.tagline && <p>{deal.tagline}</p>}
+          <span className="ln-eyebrow">{vendor ? `${vendor.business_name} · ` : ''}Weekly lunch</span>
+          <h1>Your lunch is sorted for the week.</h1>
+          <p>{deal.tagline || 'Choose your weekly lunch package and enjoy freshly prepared homemade meals delivered to your workplace or preferred delivery address.'}</p>
           <ul className="ln-hero-facts">
-            {from > 0 && <li><strong>{money(from, { whole: true })}</strong> a lunch</li>}
+            {from > 0 && <li>From <strong>{money(from, { whole: true })}</strong> a lunch</li>}
             <li>Order by <strong>{deal.cutoff_hour}:00</strong> the day before</li>
-            <li>Delivered <strong>{(deal.delivery_windows || [])[0]?.split('–')[0]}–{(deal.delivery_windows || []).slice(-1)[0]?.split('–')[1]}</strong></li>
+            {windows.length > 0 && <li>Delivered <strong>{windows[0].split('–')[0]}–{windows[windows.length - 1].split('–')[1]}</strong></li>}
           </ul>
           <div className="ln-hero-cta">
-            <a href="#book" className="ln-btn primary" onClick={() => switchKind('trial')}>Try one lunch</a>
-            <a href="#book" className="ln-btn ghost" onClick={() => switchKind('week')}>Book my lunches</a>
-            {!preview && !affiliate && <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: dishList, from, link: `${window.location.origin}/lunch/${deal.slug}` })}
-              link={`${window.location.origin}/lunch/${deal.slug}`} store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn ghost" label="Share" />}
+            <a href="#order" className="ln-btn primary">Order weekly lunch</a>
+            {!preview && !affiliate && <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: allDishes, from, link })}
+              link={link} store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn ghost" label="Share" />}
           </div>
         </div>
       </section>
 
-      <ul className="ln-trust">
-        {deal.guarantee && <li><b>Late or not as described?</b><span>Tell us the same day and that lunch is free.</span></li>}
-        <li><b>Made fresh to order</b><span>Cooked for the day you booked.</span></li>
-        <li><b>Delivered by ZaMarket</b><span>{deliveryIncluded ? 'Delivery is included in the price.' : 'Delivery confirmed when we call you.'}</span></li>
-        <li><b>Pay once we call you</b><span>We confirm your order, you pay by mobile money.</span></li>
-      </ul>
+      <WeeklyOrder deal={deal} menu={menu} preview={preview} deliveryIncluded={deliveryIncluded} onOrder={(o) => setOrder(o)} onPhoto={setViewer} />
 
-      <section className="ln-section" id="menu">
-        <div className="ln-head"><h2>The menu</h2><p>Every dish, and the days it is cooked. Tap a photo to see it close up.</p></div>
-        {dishList.length === 0 ? <p className="ln-muted">No lunch days are open in the next two weeks. Please check back soon.</p> : (
-          <div className="ln-dishes">
-            {dishList.map((dish) => (
-              <div key={dish.id} className="ln-dish">
-                <button type="button" className="ln-dish-photo" onClick={() => dish.images?.length && setViewer({ images: dish.images, alt: dish.name })} aria-label={`See ${dish.name} close up`}>
-                  {dish.images?.[0] ? <img src={dish.images[0]} alt={dish.name} loading="lazy" /> : <span>Photo coming</span>}
-                  {dish.kind === 'tray' && <em>Sharing tray{dish.serves ? ` · serves ${dish.serves}` : ''}</em>}
-                </button>
-                <div className="ln-dish-body">
-                  <strong>{dish.name}</strong>
-                  {dish.benefits?.length > 0 && <span className="ln-dish-sides">{dish.benefits.slice(0, 3).join(' · ')}</span>}
-                  <div className="ln-dish-foot">
-                    <b>{money(dish.price, { whole: true })}</b>
-                    <span className="ln-dish-days">{dish.days.join(' · ')}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <ul className="ln-trust">
+        <li><b>Homemade, fresh each day</b><span>Cooked for the day you booked, never the day before.</span></li>
+        <li><b>Delivered to you</b><span>{deliveryIncluded ? 'To your office or doorstep. Delivery is included.' : 'To your office or doorstep. We confirm delivery on the call.'}</span></li>
+        <li><b>One order for the week</b><span>Pick your days once. No need to order every morning.</span></li>
+        {deal.guarantee && <li><b>Late or not as described?</b><span>Tell us the same day and that lunch is free.</span></li>}
+      </ul>
 
       {deal.in_the_box && (
         <section className="ln-section ln-box">
@@ -222,12 +173,12 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
         </section>
       )}
 
-      <section className="ln-section">
-        <div className="ln-head">
-          <h2>What people say</h2>
-          {reviews.length > 0 && rating > 0 && <p><strong>{rating.toFixed(1)} out of 5</strong> from {reviews.length} review{reviews.length === 1 ? '' : 's'} by people who ordered</p>}
-        </div>
-        {reviews.length ? (
+      {reviews.length > 0 && (
+        <section className="ln-section">
+          <div className="ln-head">
+            <h2>What people say</h2>
+            {rating > 0 && <p><strong>{rating.toFixed(1)} out of 5</strong> from {reviews.length} review{reviews.length === 1 ? '' : 's'} by people who ordered</p>}
+          </div>
           <div className="ln-reviews">
             {reviews.slice(0, 6).map((r) => (
               <figure key={r.id} className="ln-review">
@@ -238,82 +189,170 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
               </figure>
             ))}
           </div>
-        ) : <p className="ln-muted">New on ZaMarket. Reviews appear here from people who have ordered. Start with one lunch and be among the first.</p>}
-      </section>
+        </section>
+      )}
 
       <section className="ln-section ln-how">
         <div className="ln-head"><h2>How it works</h2></div>
         <ol>
-          <li><span>1</span><div><strong>Choose</strong><p>Pick your days and your dish for each day. Or try one lunch first.</p></div></li>
-          <li><span>2</span><div><strong>Confirm</strong><p>We call you to confirm and you pay by mobile money. Order by {deal.cutoff_hour}:00 the day before.</p></div></li>
-          <li><span>3</span><div><strong>Enjoy</strong><p>Your lunch arrives at your workplace in the time you chose.</p></div></li>
+          <li><span>1</span><div><strong>Choose your days</strong><p>The full week, Monday to Thursday, two weeks, or the days you want.</p></div></li>
+          <li><span>2</span><div><strong>Confirm and pay</strong><p>We call you to confirm, then you pay by mobile money. Your lunches are confirmed once paid.</p></div></li>
+          <li><span>3</span><div><strong>Enjoy lunch</strong><p>Fresh lunch arrives at your office or door each day you chose.</p></div></li>
         </ol>
       </section>
 
       {affiliate && !preview && <LunchAffiliate deal={deal} vendor={vendor} menu={menu} from={from} code={profile.partner.code} />}
 
-      <section className="ln-section ln-book" id="book">
-        <div className="ln-head"><h2>Book</h2><p>Three quick steps. Nothing is charged until we call you.</p></div>
-        <div className="ln-kinds" role="tablist" aria-label="What would you like">
-          {KINDS.map(([k, t, s]) => (
-            <button key={k} type="button" role="tab" aria-selected={kind === k} className={kind === k ? 'on' : ''} onClick={() => switchKind(k)}><strong>{t}</strong><span>{s}</span></button>
-          ))}
-        </div>
-
-        <div className="ln-step"><b>1</b><span>{kind === 'trial' ? 'Pick your day and dish' : kind === 'team' ? 'Pick days, dishes and how many' : 'Pick your days and a dish for each'}</span></div>
-        <div className="ln-picker">
-          {menu.map((day) => (
-            <div key={day.date} className={`ln-pick-day ${picks[day.date] ? 'on' : ''}`}>
-              <div className="ln-pick-date">{day.label}</div>
-              <div className="ln-pick-dishes">
-                {day.dishes.map((dish) => {
-                  const q = Number(picks[day.date]?.[dish.id] || 0)
-                  const max = dish.remaining == null ? 50 : dish.remaining
-                  return (
-                    <div key={dish.id} className={`ln-pick ${q ? 'on' : ''} ${dish.soldOut ? 'is-out' : ''}`}>
-                      <button type="button" className="ln-pick-main" disabled={dish.soldOut} onClick={() => choose(day.date, dish.id, q ? 0 : 1)} aria-pressed={q > 0}>
-                        <span className="ln-pick-tick" aria-hidden>{q ? '✓' : ''}</span>
-                        <span className="ln-pick-name">{dish.name}</span>
-                        <span className="ln-pick-price">{dish.soldOut ? 'Fully booked' : money(dish.price, { whole: true })}{!dish.soldOut && dish.remaining != null && dish.remaining <= 5 && <small>{dish.remaining} left</small>}</span>
-                      </button>
-                      {kind === 'team' && q > 0 && (
-                        <span className="ln-qty">
-                          <button type="button" onClick={() => choose(day.date, dish.id, q - 1)} aria-label="One less">−</button>
-                          <b>{q}</b>
-                          <button type="button" disabled={q >= max} onClick={() => choose(day.date, dish.id, q + 1)} aria-label="One more">+</button>
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <TeamDiscounts tiers={deal.group_discounts} />
-        <div className="ln-summary" aria-live="polite">
-          <div><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'} · {totals.days} day{totals.days === 1 ? '' : 's'}{totals.discount > 0 ? ` · ${money(totals.discount)} off` : ''}</span><strong>{money(totals.total, { whole: totals.discount === 0 })}</strong></div>
-          <button type="button" className="ln-btn primary" disabled={!totals.lunches || preview} onClick={() => setBooking(true)}>Continue</button>
-        </div>
-      </section>
-
       <section className="ln-section ln-faq">
         <div className="ln-head"><h2>Questions</h2></div>
-        <details><summary>When do I pay?</summary><p>After you book, we call you to confirm. You pay by mobile money for all the lunches you booked, and they are confirmed once paid.</p></details>
-        <details><summary>When must I order?</summary><p>By {deal.cutoff_hour}:00 the day before. Lunch is cooked fresh for the day you booked.</p></details>
-        <details><summary>Where do you deliver?</summary><p>{deal.delivery_area || 'Workplaces in Lusaka.'} Tell us your building and floor or the reception desk when you book.</p></details>
+        <details><summary>Can I remove a day?</summary><p>Yes. Tap any day to take it out of your order, or add it back. The total changes straight away.</p></details>
+        <details><summary>When do I pay?</summary><p>After you order, we call you to confirm. You pay by mobile money, and your lunches are confirmed once the payment is received.{deal.trial_first ? ' Ordering for the first time? You can choose to pay for your first lunch, and the other days after you have tasted it.' : ''}</p></details>
+        <details><summary>When must I order?</summary><p>By {deal.cutoff_hour}:00 the day before. Lunch is cooked fresh for each day you booked.</p></details>
+        <details><summary>Where do you deliver?</summary><p>{deal.delivery_area || 'Offices and homes in Lusaka.'} Tell us the building, floor or a landmark when you order.</p></details>
         {deal.guarantee && <details><summary>What if my lunch is late or wrong?</summary><p>If it arrives after the time you chose, or is not what you ordered, tell us the same day and that lunch is free.</p></details>}
-        <details><summary>Can I order for my office?</summary><p>Yes. Choose "For my team", pick how many lunches each day, and we deliver them together.</p></details>
+        <details><summary>Can I order for my office?</summary><p>Yes. Set how many lunches each day and they come together.{cleanTiers(deal.group_discounts).length ? ' Bigger orders get the team discount shown above.' : ''}</p></details>
         {settings?.company_whatsapp && <a className="ln-link" href={whatsappLink(settings.company_whatsapp, `Hello ZaMarket, I have a question about ${deal.title}.`)} target="_blank" rel="noreferrer">Ask us on WhatsApp →</a>}
       </section>
 
-      {totals.lunches > 0 && !booking && !preview && (
-        <div className="ln-sticky"><div><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'}</span><strong>{money(totals.total, { whole: true })}</strong></div><button type="button" className="ln-btn primary" onClick={() => setBooking(true)}>Continue</button></div>
-      )}
-      {booking && <BookSheet deal={deal} kind={kind} picks={picks} menu={menu} totals={totals} onClose={() => setBooking(false)} onDone={() => { setPicks({}); onBooked?.() }} />}
+      {order && <BookSheet deal={deal} picks={order.picks} menu={menu} totals={order.totals} deliveryIncluded={deliveryIncluded} onClose={() => setOrder(null)} onDone={() => onBooked?.()} />}
       {viewer && <PhotoViewer images={viewer.images} start={viewer.start || 0} alt={viewer.alt} onClose={() => setViewer(null)} />}
     </div>
+  )
+}
+
+// The order card: package, week, days, lunches a day, the week's menu and
+// the total. Every price is the dish's own price for that day.
+export function WeeklyOrder({ deal, menu, preview = false, deliveryIncluded = false, onOrder, onPhoto, compact = false }) {
+  const weeks = useMemo(() => workingWeeks(menu, 3), [menu])
+  const firstFull = Math.max(0, weeks.findIndex((w) => w.open === 5))
+  const [w, setW] = useState(firstFull)
+  const [pkg, setPkg] = useState(() => {
+    try { const q = new URLSearchParams(window.location.search).get('plan'); return PACKAGES.some((p) => p.id === q) ? q : 'week' } catch { return 'week' }
+  })
+  const [custom, setCustom] = useState(null)
+  const [choice, setChoice] = useState({})
+  const [perDay, setPerDay] = useState(1)
+  useEffect(() => { setW(firstFull) }, [firstFull])
+  // Arriving from the shop's lunch board (…#order): bring the order card into view.
+  useEffect(() => {
+    if (weeks.length && window.location.hash === '#order') document.getElementById('order')?.scrollIntoView({ block: 'start' })
+  }, [weeks.length])
+
+  const dates = pkg === 'custom' ? (custom || packageDates(weeks, w, 'week')) : packageDates(weeks, w, pkg)
+  const picks = picksFromDates(dates, menu, choice, perDay)
+  const totals = planTotals(picks, menu, deal.group_discounts, deal.day_discounts)
+  const shownWeeks = pkg === 'two' ? weeks.slice(w, w + 2) : weeks.slice(w, w + 1)
+  const today = new Date().toISOString().slice(0, 10)
+  const weekName = (wk, i) => (wk.start <= today ? 'This week' : i === 0 || (weeks[0].start <= today && i === 1) ? 'Next week' : `Week of ${wk.days[0].label}`)
+
+  const choosePkg = (id) => { setPkg(id); setCustom(id === 'custom' ? packageDates(weeks, w, 'week') : null) }
+  const chooseWeek = (i) => { setW(i); if (pkg === 'custom') setCustom(packageDates(weeks, i, 'week')) }
+  const toggle = (date) => {
+    const next = dates.includes(date) ? dates.filter((d) => d !== date) : [...dates, date].sort()
+    const m = matchPackage(weeks, w, next)
+    setPkg(m); setCustom(m === 'custom' ? next : null)
+  }
+  const maxPerDay = Math.min(50, ...dates.map((d) => {
+    const day = menu.find((x) => x.date === d)
+    const dish = day?.dishes.find((x) => x.id === choice[d]) || defaultDish(day)
+    return dish?.remaining == null ? 50 : dish.remaining
+  }))
+
+  if (!weeks.length) return <section className="ln-section ln-order" id="order"><p className="ln-muted">No lunch days are open in the next few weeks. Please check back soon.</p></section>
+
+  return (
+    <section className={`ln-section ln-order ${compact ? 'is-compact' : ''}`} id="order">
+      <div className="ln-head"><h2>Choose your lunch package</h2><p>Your days, one order. Tap a day to remove it or add it back.</p></div>
+
+      {weeks.length > 1 && (
+        <div className="ln-weeks" role="tablist" aria-label="Which week">
+          {weeks.map((wk, i) => (
+            <button key={wk.start} type="button" role="tab" aria-selected={w === i} className={w === i ? 'on' : ''} onClick={() => chooseWeek(i)}>
+              <strong>{weekName(wk, i)}</strong><span>{dateRange(wk.days.filter((d) => d.open).map((d) => d.date))}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="ln-packages" role="radiogroup" aria-label="Package">
+        {PACKAGES.map((p) => {
+          const price = p.id === 'custom' ? null : packagePrice(weeks, w, p.id, menu, deal)
+          const disabled = p.id === 'two' ? !weeks[w + 1] : p.id !== 'custom' && !price?.dates.length
+          if (p.id === 'two' && !weeks[w + 1]) return null
+          return (
+            <button key={p.id} type="button" role="radio" aria-checked={pkg === p.id} disabled={disabled} className={`ln-package ${pkg === p.id ? 'on' : ''}`} onClick={() => choosePkg(p.id)}>
+              <span className="ln-radio" aria-hidden />
+              <span className="ln-package-text"><strong>{p.title}</strong><small>{p.id === 'custom' ? p.sub : `${p.sub} · ${price.dates.length} lunch${price.dates.length === 1 ? '' : 'es'}`}</small></span>
+              {price && price.total > 0 && <span className="ln-plan-price">{price.discount > 0 && <em className="ln-best">Save {money(price.discount, { whole: true })}</em>}<b>{money(price.total, { whole: true })}</b>{price.discount > 0 && <s>{money(price.before, { whole: true })}</s>}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {shownWeeks.map((wk) => (
+        <div key={wk.start} className="ln-weekdays" role="group" aria-label={`Days, ${dateRange(wk.days.map((d) => d.date))}`}>
+          {wk.days.map((d) => {
+            const on = dates.includes(d.date)
+            const dish = d.day ? (d.day.dishes.find((x) => x.id === choice[d.date]) || defaultDish(d.day)) : null
+            const [name, num] = d.label.split(' ')
+            return (
+              <button key={d.date} type="button" className={on ? 'on' : ''} disabled={!d.open} aria-pressed={on} onClick={() => toggle(d.date)}>
+                <small>{name}</small><b>{num}</b>
+                <span>{!d.open ? (d.day ? 'Full' : 'Closed') : on ? '✓' : 'Add'}</span>
+                {dish && d.open && <em>{dish.name}</em>}
+              </button>
+            )
+          })}
+        </div>
+      ))}
+
+      <div className="ln-perday">
+        <div><strong>Lunches each day</strong><small>Ordering for colleagues too? Add more.</small></div>
+        <span className="ln-qty">
+          <button type="button" disabled={perDay <= 1} onClick={() => setPerDay((n) => Math.max(1, n - 1))} aria-label="One less">−</button>
+          <b>{perDay}</b>
+          <button type="button" disabled={perDay >= maxPerDay} onClick={() => setPerDay((n) => Math.min(maxPerDay, n + 1))} aria-label="One more">+</button>
+        </span>
+      </div>
+      <TeamDiscounts tiers={deal.group_discounts} />
+
+      <details className="ln-menu-week">
+        <summary><span>See this week&rsquo;s menu</span><em>{shownWeeks.reduce((n, wk) => n + wk.open, 0)} days</em></summary>
+        <ul>
+          {shownWeeks.flatMap((wk) => wk.days).filter((d) => d.day).map((d) => {
+            const on = dates.includes(d.date)
+            const sel = d.day.dishes.find((x) => x.id === choice[d.date]) || defaultDish(d.day)
+            return (
+              <li key={d.date} className={on ? '' : 'off'}>
+                <div className="ln-menu-day">{d.day.long}{!on && <small>Not in your order</small>}</div>
+                {d.day.dishes.map((x) => (
+                  <label key={x.id} className={`ln-menu-dish ${sel?.id === x.id ? 'on' : ''} ${x.soldOut ? 'is-out' : ''}`}>
+                    {d.day.dishes.length > 1 && <input type="radio" name={`dish-${d.date}`} checked={sel?.id === x.id} disabled={x.soldOut} onChange={() => setChoice((c) => ({ ...c, [d.date]: x.id }))} />}
+                    <button type="button" className="ln-menu-photo" onClick={() => x.images?.length && onPhoto?.({ images: x.images, alt: x.name })} aria-label={`See ${x.name} close up`}>
+                      {x.images?.[0] ? <img src={x.images[0]} alt={x.name} loading="lazy" /> : <span>Photo coming</span>}
+                    </button>
+                    <span className="ln-menu-text">
+                      <strong>{x.name}</strong>
+                      {x.description && <span>{x.description}</span>}
+                      <b>{x.soldOut ? 'Fully booked' : money(x.price, { whole: true })}</b>
+                    </span>
+                  </label>
+                ))}
+              </li>
+            )
+          })}
+        </ul>
+      </details>
+
+      <div className="ln-order-total" aria-live="polite">
+        <div>
+          <span>{totals.lunches ? `${totals.lunches} lunch${totals.lunches === 1 ? '' : 'es'} · ${dateRange(Object.keys(picks))}` : 'Tap the days you want lunch'}</span>
+          <strong>{money(totals.total, { whole: totals.discount === 0 })}</strong>
+          <small>{totals.discount > 0 ? `You save ${money(totals.discount)} · ` : ''}{deliveryIncluded ? 'Delivery included' : 'Delivery confirmed on the call'}</small>
+        </div>
+        <button type="button" className="ln-btn primary big" disabled={!totals.lunches || preview} onClick={() => onOrder?.({ picks, totals })}>Order weekly lunch</button>
+      </div>
+    </section>
   )
 }
 
@@ -365,23 +404,37 @@ export function TeamDiscounts({ tiers }) {
   )
 }
 
-export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) {
+const METHODS = [['mtn_money', 'MTN MoMo'], ['airtel_money', 'Airtel Money'], ['zamtel_kwacha', 'Zamtel Kwacha']]
+const newRef = () => { try { return crypto.randomUUID() } catch { return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}` } }
+
+// Checkout: what you ordered, where it goes, how you pay, who you are, and
+// the full summary before you confirm. Sent once even if tapped twice.
+export function BookSheet({ deal, picks, menu, totals, deliveryIncluded = false, onClose, onDone }) {
   const toast = useToast()
   const { attribution } = useCart()
-  const [f, setF] = useState({ window: (deal.delivery_windows || [])[1] || (deal.delivery_windows || [])[0] || '', company: '', address: '', area: '', instructions: '', name: '', phone: '', request: '' })
+  const [ref] = useState(newRef)
+  const [f, setF] = useState({ place: 'office', window: (deal.delivery_windows || [])[1] || (deal.delivery_windows || [])[0] || '', company: '', address: '', area: '', landmark: '', instructions: '', name: '', phone: '', request: '', method: '', payMode: 'upfront' })
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(null)
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value })
-  const chosen = menu.filter((d) => picks[d.date]).map((d) => ({ label: d.label, items: d.dishes.filter((x) => picks[d.date]?.[x.id]).map((x) => `${picks[d.date][x.id]} × ${x.name}`) }))
+  const chosen = menu.filter((d) => picks[d.date]).map((d) => ({ date: d.date, label: d.label, items: d.dishes.filter((x) => picks[d.date]?.[x.id]).map((x) => ({ name: x.name, q: picks[d.date][x.id], price: x.price })) }))
+  const kind = totals.lunches === 1 ? 'trial' : Object.values(picks).some((d) => Object.values(d).some((q) => q > 1)) ? 'team' : 'week'
+  const canTryFirst = deal.trial_first && chosen.length > 1
+  const first = chosen[0] ? Number(totals.byDate?.[chosen[0].date] || 0) : 0
+  const payNow = f.payMode === 'after_first' && canTryFirst ? first : totals.total
+  const methodName = METHODS.find(([k]) => k === f.method)?.[1] || 'mobile money'
 
   const send = async (e) => {
     e.preventDefault()
+    if (busy) return
+    if (!f.method) return toast('Choose how you will pay', true)
     setBusy(true)
     const a = attribution ? attribution() : {}
     const { data, error } = await supabase.rpc('place_meal_plan', {
       payload: {
-        deal_id: deal.id, kind, window: f.window,
-        workplace: { company: f.company, address: f.address, area: f.area, instructions: f.instructions },
+        deal_id: deal.id, kind, window: f.window, client_ref: ref,
+        pay_mode: canTryFirst ? f.payMode : 'upfront', payment_method: f.method,
+        workplace: { place: f.place, company: f.place === 'office' ? f.company : '', address: f.address, area: f.area, landmark: f.landmark, instructions: f.instructions },
         customer: { full_name: f.name, phone: f.phone },
         days: planPayloadDays(picks), request: f.request.trim() || null,
         referral_code: a.referral_code, campaign_code: a.campaign_code, invite_code: a.invite_code, store_ref: a.store_ref,
@@ -394,41 +447,64 @@ export function BookSheet({ deal, kind, picks, menu, totals, onClose, onDone }) 
   }
 
   return (
-    <div className="ln-sheet" role="dialog" aria-modal="true" aria-label="Book your lunches">
+    <div className="ln-sheet" role="dialog" aria-modal="true" aria-label="Order your weekly lunch">
       <div className="ln-sheet-card">
         <button type="button" className="ln-sheet-x" onClick={onClose} aria-label="Close">✕</button>
         {done ? (
           <div className="ln-done">
             <div className="ln-done-tick" aria-hidden>✓</div>
-            <h2>Booked. Reference {done.reference}</h2>
-            <p>{done.lunches} lunch{done.lunches === 1 ? '' : 'es'} over {done.days} day{done.days === 1 ? '' : 's'}, {money(done.total)} in total{Number(done.saved) > 0 ? `, ${money(done.saved)} saved with the team discount` : ''}.</p>{f.request.trim() && <p>Your request is with the kitchen. We will tell you when we call if it can be done.</p>}
-            <p><strong>What happens next:</strong> we call you on {f.phone} to confirm, and you pay by mobile money. Your lunches are confirmed once paid.</p>
+            <h2>Order received. Reference {done.reference}</h2>
+            <p>{done.lunches} lunch{done.lunches === 1 ? '' : 'es'} over {done.days} day{done.days === 1 ? '' : 's'}, {money(done.total)} in total{Number(done.saved) > 0 ? `, ${money(done.saved)} saved` : ''}.</p>
+            <p><strong>What happens next:</strong> we call you on {f.phone} to confirm. Then you pay {money(done.pay_mode === 'after_first' ? done.first_total : done.total)} by {methodName}{done.pay_mode === 'after_first' ? ' for your first lunch. After you have tasted it, we ask if you want the other days; they go ahead once paid' : ''}. Your lunches are confirmed once ZaMarket receives the payment.</p>
+            {f.request.trim() && <p>Your request is with the kitchen. We tell you on the call if it can be done.</p>}
             <button type="button" className="ln-btn primary" onClick={onClose}>Done</button>
           </div>
         ) : (
           <form onSubmit={send} className="ln-form">
-            <h2>{kind === 'trial' ? 'Your trial lunch' : kind === 'team' ? "Your team's lunches" : 'Your lunches'}</h2>
-            <ul className="ln-chosen">{chosen.map((c) => <li key={c.label}><b>{c.label}</b><span>{c.items.join(', ')}</span></li>)}</ul>
+            <h2>Your weekly lunch</h2>
+            <ul className="ln-chosen">{chosen.map((c) => <li key={c.date}><b>{c.label}</b><span>{c.items.map((x) => `${x.q} × ${x.name}`).join(', ')}</span></li>)}</ul>
+            <button type="button" className="ln-link ln-edit" onClick={onClose}>Change days</button>
 
-            <div className="ln-step"><b>2</b><span>When and where</span></div>
+            <div className="ln-step"><b>1</b><span>Where we deliver</span></div>
+            <div className="ln-seg" role="radiogroup" aria-label="Deliver to">
+              <button type="button" role="radio" aria-checked={f.place === 'office'} className={f.place === 'office' ? 'on' : ''} onClick={() => setF({ ...f, place: 'office' })}>My office</button>
+              <button type="button" role="radio" aria-checked={f.place === 'home'} className={f.place === 'home' ? 'on' : ''} onClick={() => setF({ ...f, place: 'home' })}>My home</button>
+            </div>
+            {f.place === 'office' && <label><span>Workplace</span><input required value={f.company} onChange={set('company')} placeholder="e.g. Zanaco Head Office" /></label>}
+            <label><span>{f.place === 'office' ? 'Building, floor or reception' : 'House number and street'}</span><input required value={f.address} onChange={set('address')} placeholder={f.place === 'office' ? 'e.g. 3rd floor, ask at reception' : 'e.g. Plot 12, Lukasu Road'} /></label>
+            <label><span>Area</span><input value={f.area} onChange={set('area')} placeholder="e.g. Cairo Road, Longacres, Ibex Hill" /></label>
+            <label><span>Nearby landmark</span><input value={f.landmark} onChange={set('landmark')} maxLength={160} placeholder="e.g. Opposite the Total filling station" /></label>
+            <label><span>Note for the rider (optional)</span><input value={f.instructions} onChange={set('instructions')} placeholder="e.g. Call when at the gate" /></label>
+            <span className="ln-label">Delivery time</span>
             <div className="ln-windows" role="radiogroup" aria-label="Delivery time">
               {(deal.delivery_windows || []).map((w) => <button type="button" key={w} role="radio" aria-checked={f.window === w} className={f.window === w ? 'on' : ''} onClick={() => setF({ ...f, window: w })}>{w}</button>)}
             </div>
-            <label><span>Workplace</span><input required value={f.company} onChange={set('company')} placeholder="e.g. Zanaco Head Office" /></label>
-            <label><span>Where exactly</span><input required value={f.address} onChange={set('address')} placeholder="Street, building, floor or reception" /></label>
-            <label><span>Area</span><input value={f.area} onChange={set('area')} placeholder="e.g. Cairo Road, Longacres" /></label>
-            <label><span>Note for the rider (optional)</span><input value={f.instructions} onChange={set('instructions')} placeholder="e.g. Call when at the gate" /></label>
 
-            <label><span>Any request? (optional)</span><textarea rows={2} maxLength={300} value={f.request} onChange={set('request')} placeholder="e.g. No pepper on two of them, extra rice, one vegetarian if possible" /><small className="ln-hint">The kitchen sees it. We confirm with you if it can be done.</small></label>
+            <div className="ln-step"><b>2</b><span>How you pay</span></div>
+            <div className="ln-seg three" role="radiogroup" aria-label="Payment method">
+              {METHODS.map(([k, l]) => <button type="button" key={k} role="radio" aria-checked={f.method === k} className={f.method === k ? 'on' : ''} onClick={() => setF({ ...f, method: k })}>{l}</button>)}
+            </div>
+            {canTryFirst && (
+              <div className="ln-paymode" role="radiogroup" aria-label="When you pay">
+                <label className={f.payMode === 'upfront' ? 'on' : ''}><input type="radio" name="paymode" checked={f.payMode === 'upfront'} onChange={() => setF({ ...f, payMode: 'upfront' })} /><span><strong>Pay for the whole order</strong><small>{money(totals.total)} once we confirm</small></span></label>
+                <label className={f.payMode === 'after_first' ? 'on' : ''}><input type="radio" name="paymode" checked={f.payMode === 'after_first'} onChange={() => setF({ ...f, payMode: 'after_first' })} /><span><strong>First order? Taste it first</strong><small>Pay {money(first)} for your first lunch. The other days go ahead once you pay for them after tasting it.</small></span></label>
+              </div>
+            )}
 
             <div className="ln-step"><b>3</b><span>Your details</span></div>
             <label><span>Your name</span><input required value={f.name} onChange={set('name')} autoComplete="name" /></label>
             <label><span>Phone (we call to confirm)</span><input required type="tel" value={f.phone} onChange={set('phone')} autoComplete="tel" placeholder="0977 123 456" /></label>
+            <label><span>Any request? (optional)</span><textarea rows={2} maxLength={300} value={f.request} onChange={set('request')} placeholder="e.g. No pepper, extra rice, one vegetarian if possible" /><small className="ln-hint">The kitchen sees it. We confirm with you if it can be done.</small></label>
 
-            {totals.discount > 0 && <div className="ln-form-save"><span>Team discount</span><b>−{money(totals.discount)}</b></div>}
-            <div className="ln-form-total"><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'}</span><strong>{money(totals.total, { whole: totals.discount === 0 })}</strong></div>
-            <button className="ln-btn primary big" disabled={busy}>{busy ? 'Booking…' : 'Book my lunch' + (totals.lunches > 1 ? 'es' : '')}</button>
-            <p className="ln-fine">Nothing is charged now. We call you to confirm and you pay by mobile money.</p>
+            <div className="ln-summary-box">
+              <div><span>{totals.lunches} lunch{totals.lunches === 1 ? '' : 'es'} · {chosen.length} day{chosen.length === 1 ? '' : 's'}</span><b>{money(totals.subtotal)}</b></div>
+              {totals.discount > 0 && <div className="save"><span>Discount</span><b>−{money(totals.discount)}</b></div>}
+              <div><span>Delivery</span><b>{deliveryIncluded ? 'Included' : 'Confirmed on the call'}</b></div>
+              <div className="total"><span>Total</span><strong>{money(totals.total)}</strong></div>
+              {payNow !== totals.total && <div><span>To pay first</span><b>{money(payNow)}</b></div>}
+            </div>
+            <button className="ln-btn primary big" disabled={busy}>{busy ? 'Sending…' : 'Confirm order'}</button>
+            <p className="ln-fine">Nothing is charged on this page. We call you to confirm, then you pay by {methodName}. Your lunches are confirmed once ZaMarket receives the payment.</p>
           </form>
         )}
       </div>

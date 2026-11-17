@@ -25,7 +25,7 @@ export default function Products() {
   const { advanced, settings, isStaff, isFounder } = useAuth()
   const [edit, setEdit] = useState(null)
   const [tab, setTab] = useState('founder')
-  const { data, loading, error, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })), [])
+  const { data, loading, error, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })).then((rows) => (rows || []).filter((p) => !p.lunch_only)), [])
   const rows = (data || []).filter((p) => (tab === 'founder' ? p.owner_type === 'founder' : tab === 'vendor' ? p.owner_type === 'vendor' && p.status !== 'submitted' : p.status === 'submitted'))
   const submitted = (data || []).filter((p) => p.status === 'submitted').length
   const needsContent = (data || []).filter(p => !p.name?.trim() || !p.description?.trim() || !(Array.isArray(p.images) && p.images.length) || !(Number(p.price) > 0))

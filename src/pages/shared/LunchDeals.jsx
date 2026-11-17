@@ -10,7 +10,7 @@ import { firstBookable, dayLabel, addDays, cleanTiers } from '../../lib/lunch'
 import { LunchView } from '../public/Lunch'
 import '../../lunch.css'
 
-const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,rejection_reason,created_at,group_discounts'
+const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,rejection_reason,created_at,group_discounts,trial_first,day_discounts'
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const WINDOW_CHOICES = ['11:00–11:30', '11:30–12:00', '12:00–12:30', '12:30–13:00', '13:00–13:30', '13:30–14:00']
 const rand = () => Math.random().toString(36).slice(2, 6)
@@ -103,11 +103,13 @@ function DealEditor({ deal, vendorId, onSaved }) {
   const [uploading, setUploading] = useState(0)
   const [pct, setPct] = useState('')
   const [cap, setCap] = useState(null)
+  const [editDish, setEditDish] = useState(null)
   const set = (k) => (v) => setD((x) => ({ ...x, [k]: v }))
 
+  const loadProducts = () => supabase.from('products').select('id,name,price,vendor_price,images,order_days,daily_limit,lead_time_days,fulfilment,status,benefits,vendor_id,slug,description,lunch_only').eq('vendor_id', vendorId).order('name')
+    .then(({ data }) => setProducts(data || []))
   useEffect(() => {
-    supabase.from('products').select('id,name,price,images,order_days,daily_limit,lead_time_days,fulfilment,status,benefits,vendor_id,slug,description').eq('vendor_id', vendorId).order('name')
-      .then(({ data }) => setProducts(data || []))
+    loadProducts()
     supabase.from('public_vendors').select('id,business_name,slug,logo_url,town').eq('id', vendorId).maybeSingle().then(({ data }) => setVendor(data || { business_name: profile?.partner?.business_name }))
     if (isStaff) {
       supabase.from('settings').select('key,value').in('key', ['commission_allowance_pct', 'default_commission_pct']).then(({ data }) => {
@@ -155,9 +157,10 @@ function DealEditor({ deal, vendorId, onSaved }) {
       title: d.title.trim(), tagline: d.tagline?.trim() || null, about_cook: d.about_cook?.trim() || null, in_the_box: d.in_the_box?.trim() || null,
       cover_url: d.cover_url || null, proof_images: d.proof_images || [], dishes: d.dishes, delivery_windows: d.delivery_windows,
       delivery_area: d.delivery_area?.trim() || null, cutoff_hour: Number(d.cutoff_hour) || 18, guarantee: !!d.guarantee,
+      trial_first: !!d.trial_first,
     }
     // Team discounts are ZaMarket's to set (they come out of ZaMarket's share).
-    if (isStaff) row.group_discounts = cleanTiers(d.group_discounts)
+    if (isStaff) { row.group_discounts = cleanTiers(d.group_discounts); row.day_discounts = cleanTiers(d.day_discounts).map((t) => ({ min: Math.min(14, t.min), pct: t.pct })) }
     if (status) row.status = status
     // A seller's change to a live plan goes back to ZaMarket for a quick check.
     if (!isStaff && !status && !['draft', 'submitted'].includes(d.status)) {
@@ -230,17 +233,21 @@ function DealEditor({ deal, vendorId, onSaved }) {
           </section>
 
           <section className="ln-section">
-            <div className="ln-head"><h2>2. The dishes</h2><p>Each dish is one of your products, made to order. Its price, photo, cooking days and daily limit come from the product. <Link className="ln-link" to={vendorId && profile?.role === 'vendor' ? '/vendor/products' : '/admin/products'}>Add or edit a dish →</Link></p></div>
+            <div className="ln-head"><h2>2. The dishes</h2><p>Add each lunch dish here: its photo, price, the weekday it is cooked and how many you can make. Lunch dishes are not shown in your shop; customers get them only through this lunch plan. You can also add a made-to-order product you already sell.</p></div>
+            <button type="button" className="ln-btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setEditDish({})}>Add a lunch dish</button>
+            {editDish && <LunchDishForm dish={editDish} vendorId={vendorId} live={deal.status === 'published'} isStaff={isStaff}
+              onClose={() => setEditDish(null)} onSaved={(id) => { setEditDish(null); loadProducts(); if (id && !picked.has(id)) set('dishes')([...(d.dishes || []), { product_id: id, kind: 'box' }]) }} />}
             <div className="ln-dish-pick">
               {dishes.length === 0 && <p className="ln-muted">No made-to-order products yet. Add each dish as a product, set it to "Made to order", choose the days you cook it, and set how many you can make a day.</p>}
               {dishes.map((p) => {
                 const on = picked.has(p.id)
-                const problems = [!p.images?.length && 'no photo', !p.order_days?.length && 'no cooking days', !p.daily_limit && 'no daily limit', p.status !== 'published' && 'not live yet'].filter(Boolean)
+                const problems = [!p.images?.length && 'no photo', !p.order_days?.length && 'no cooking days', !p.daily_limit && 'no daily limit', p.status !== 'published' && !p.lunch_only && 'not live yet'].filter(Boolean)
                 return (
                   <div key={p.id} className={`ln-dish-row ${on ? 'on' : ''}`}>
                     {p.images?.[0] ? <img src={p.images[0]} alt="" /> : <span className="ph" />}
                     <span>
-                      <strong>{p.name}</strong>
+                      <strong>{p.name}{p.lunch_only && <em className="ln-tag">Lunch only</em>}</strong>
+                      {p.lunch_only && <button type="button" className="ln-link ln-edit" onClick={() => setEditDish(p)}>Edit dish</button>}
                       <small>{Number(p.price) > 0 ? money(p.price, { whole: true }) : 'Price set when approved'} · {p.order_days?.length ? p.order_days.map((n) => DAYS[n]).join(', ') : 'Mon–Fri'} · {p.daily_limit ? `${p.daily_limit} a day` : 'no limit'}</small>
                       {problems.length > 0 && <small className="bad"> · {problems.join(', ')}</small>}
                       {on && (
@@ -270,6 +277,11 @@ function DealEditor({ deal, vendorId, onSaved }) {
               <F label="Orders close the day before at"><select value={d.cutoff_hour} onChange={(e) => set('cutoff_hour')(Number(e.target.value))}>{[14, 15, 16, 17, 18, 19, 20, 21].map((h) => <option key={h} value={h}>{h}:00</option>)}</select></F>
               <F label="Where we deliver" optional hint="e.g. Offices in central Lusaka: Cairo Road, Longacres, Rhodes Park"><input value={d.delivery_area || ''} onChange={(e) => set('delivery_area')(e.target.value)} maxLength={300} /></F>
             </div>
+            <label className="ln-field" style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10 }}>
+              <input type="checkbox" checked={!!d.trial_first} onChange={(e) => set('trial_first')(e.target.checked)} style={{ width: 22, height: 22, minHeight: 0 }} />
+              <span>Let first-time customers taste first: they pay for the first lunch, then for the other days after tasting it. <small className="ln-hint">Only someone who has never booked with you can choose this. The other days are cooked only once paid.</small></span>
+            </label>
+            {isStaff && <TierEditor title="Package discount (ZaMarket pays for it)" unit="days" max={3} limit={14} hint="Counted on the number of days booked: e.g. 5 days (a full week) 5% off. A day gets the package or the team discount, whichever is bigger, never both." tiers={d.day_discounts || []} onChange={set('day_discounts')} />}
             {isStaff && <TierEditor tiers={d.group_discounts || []} onChange={set('group_discounts')} />}
             <label className="ln-field" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <input type="checkbox" checked={!!d.guarantee} onChange={(e) => set('guarantee')(e.target.checked)} style={{ width: 22, height: 22, minHeight: 0 }} />
@@ -316,21 +328,91 @@ function DealEditor({ deal, vendorId, onSaved }) {
 // The morning view: how many of each dish, and where each lunch goes.
 // Staff only: discount levels for team orders. ZaMarket pays for them from
 // its share, so the seller is still paid in full for every lunch.
-function TierEditor({ tiers, onChange }) {
+function TierEditor({ tiers, onChange, title = 'Team discount (ZaMarket pays for it)', unit = 'lunches', max = 4, limit = 100, hint = 'Counted per delivery day: a manager ordering 10 lunches for Monday gets the 10+ level on Monday. At most 10%.' }) {
   const rows = tiers.length ? tiers : []
   const put = (i, k, v) => onChange(rows.map((t, j) => (j === i ? { ...t, [k]: v } : t)))
   return (
     <div className="ln-field">
-      <span>Team discount (ZaMarket pays for it)</span>
+      <span>{title}</span>
       {rows.map((t, i) => (
         <div key={i} className="ln-tier-row">
-          <label>From <input type="number" min={2} max={100} value={t.min} onChange={(e) => put(i, 'min', e.target.value)} /> lunches</label>
+          <label>From <input type="number" min={2} max={limit} value={t.min} onChange={(e) => put(i, 'min', e.target.value)} /> {unit}</label>
           <label><input type="number" min={1} max={10} step={0.5} value={t.pct} onChange={(e) => put(i, 'pct', e.target.value)} />% off</label>
           <button type="button" className="ln-mini" onClick={() => onChange(rows.filter((_, j) => j !== i))}>Remove</button>
         </div>
       ))}
-      {rows.length < 4 && <button type="button" className="ln-mini" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...rows, rows.length ? { min: Number(rows[rows.length - 1].min) * 2 || 10, pct: Math.min(10, Number(rows[rows.length - 1].pct) + 3) } : { min: 5, pct: 5 }])}>Add a level</button>}
-      <small className="ln-hint">Counted per delivery day: a manager ordering 10 lunches for Monday gets the 10+ level on Monday. At most 10%.</small>
+      {rows.length < max && <button type="button" className="ln-mini" style={{ alignSelf: 'flex-start' }} onClick={() => onChange([...rows, rows.length ? { min: Number(rows[rows.length - 1].min) * 2 || 10, pct: Math.min(10, Number(rows[rows.length - 1].pct) + 3) } : { min: 5, pct: 5 }])}>Add a level</button>}
+      <small className="ln-hint">{hint}</small>
+    </div>
+  )
+}
+
+// A dish that exists only for the lunch plan: never listed in the shop.
+// The seller types what she wants to receive; the shop price is worked out
+// the same way as for every product. It goes live with the lunch plan.
+const WEEKDAYS = [[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat']]
+function LunchDishForm({ dish, vendorId, live, isStaff, onClose, onSaved }) {
+  const toast = useToast()
+  const { user } = useAuth()
+  const isNew = !dish.id
+  const [f, setF] = useState({ name: dish.name || '', description: dish.description || '', take: dish.vendor_price ?? '', images: dish.images || [], days: dish.order_days || [], limit: dish.daily_limit || '' })
+  const [busy, setBusy] = useState(false)
+  const [up, setUp] = useState(false)
+  const lockedName = !isStaff && dish.status === 'published'
+  const addPhoto = async (files) => {
+    setUp(true)
+    for (const file of [...files].filter((x) => x.type?.startsWith('image/'))) {
+      try { const url = await uploadVehiclePhoto(file); setF((x) => ({ ...x, images: [...x.images, url] })) } catch (e) { toast(e.message, true) }
+    }
+    setUp(false)
+  }
+  const save = async () => {
+    if (f.name.trim().length < 3) return toast('Give the dish a name', true)
+    if (!(Number(f.take) > 0)) return toast('Enter what you want to receive for one lunch', true)
+    if (!f.images.length) return toast('Add a real photo of the dish', true)
+    if (!f.days.length) return toast('Choose the day or days you cook it', true)
+    if (!(Number(f.limit) > 0)) return toast('How many can you make that day?', true)
+    setBusy(true)
+    const row = {
+      description: f.description.trim() || null, images: f.images, order_days: [...f.days].sort(), daily_limit: Math.round(Number(f.limit)),
+      fulfilment: 'made_to_order', lead_time_days: 0, category: 'Lunch', lunch_only: true,
+    }
+    if (!lockedName) { row.name = f.name.trim(); row.vendor_price = Number(f.take) }
+    let res
+    if (isNew) {
+      res = await supabase.from('products').insert({ ...row, slug: `${slugify(f.name).slice(0, 50) || 'lunch'}-${Math.random().toString(36).slice(2, 7)}`, vendor_id: vendorId, owner_type: 'vendor', created_by: user?.id,
+        status: isStaff && live ? 'published' : 'draft' }).select('id').single()
+    } else {
+      if (!isStaff) row.status = dish.status === 'published' ? 'submitted' : dish.status
+      res = await supabase.from('products').update(row).eq('id', dish.id).select('id').single()
+    }
+    setBusy(false)
+    if (res.error) return toast(/only be changed by the marketplace team/i.test(res.error.message) ? 'This dish is live. Message ZaMarket to change its name or price.' : res.error.message, true)
+    toast(isNew ? 'Dish added to the lunch plan. Save the plan to keep it.' : 'Dish saved')
+    onSaved?.(res.data?.id)
+  }
+  return (
+    <div className="ln-dish-form">
+      <div className="ln-fields">
+        <label className="ln-field"><span>Dish name</span><input value={f.name} disabled={lockedName} maxLength={80} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Grilled chicken and rice" /></label>
+        <label className="ln-field"><span>What you receive for one lunch (K)</span><input inputMode="decimal" value={f.take} disabled={lockedName} onChange={(e) => setF({ ...f, take: e.target.value.replace(/[^\d.]/g, '') })} placeholder="e.g. 60" /><small className="ln-hint">Customers see the shop price, worked out the same way as your other products.</small></label>
+      </div>
+      <label className="ln-field"><span>What is in it (optional)</span><textarea maxLength={400} value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} placeholder="e.g. Grilled chicken quarter, savoury rice, coleslaw" /></label>
+      <div className="ln-field"><span>Cooked on</span>
+        <div className="ln-chips">{WEEKDAYS.map(([n, l]) => <button key={n} type="button" className={f.days.includes(n) ? 'on' : ''} onClick={() => setF({ ...f, days: f.days.includes(n) ? f.days.filter((x) => x !== n) : [...f.days, n] })}>{l}</button>)}</div>
+      </div>
+      <label className="ln-field"><span>Most you can make that day</span><input inputMode="numeric" value={f.limit} onChange={(e) => setF({ ...f, limit: e.target.value.replace(/\D/g, '') })} placeholder="e.g. 20" /></label>
+      <div className="ln-field"><span>Photo of the real dish</span>
+        <div className="ln-thumbs">
+          {f.images.map((src, i) => <div key={`${src}-${i}`}><img src={src} alt="" /><button type="button" onClick={() => setF({ ...f, images: f.images.filter((_, k) => k !== i) })} aria-label="Remove">✕</button></div>)}
+          <label>{up ? 'Uploading…' : 'Add photo'}<input type="file" accept="image/*" multiple hidden onChange={(e) => { addPhoto(e.target.files); e.target.value = '' }} /></label>
+        </div>
+      </div>
+      {lockedName && <p className="ln-hint">This dish is live, so its name and price are changed by ZaMarket. You can still change its photo, days and how many you make.</p>}
+      <div className="ln-row">
+        <button type="button" className="ln-btn primary" disabled={busy || up} onClick={save}>{busy ? 'Saving…' : isNew ? 'Add dish' : 'Save dish'}</button>
+        <button type="button" className="ln-btn ghost" onClick={onClose}>Cancel</button>
+      </div>
     </div>
   )
 }
@@ -340,20 +422,42 @@ function Kitchen({ deals, vendorId }) {
   const [vendor, setVendor] = useState(vendorId || deals[0]?.vendor_id || '')
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
+  const [counts, setCounts] = useState({})
+  const [tick, setTick] = useState(0)
+  const toast = useToast()
+  const { isStaff } = useAuth()
   const vendors = [...new Set(deals.map((d) => d.vendor_id))]
   useEffect(() => { if (!vendor && deals[0]) setVendor(deals[0].vendor_id) }, [deals]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!vendor) return
     setData(null); setError('')
     supabase.rpc('meal_kitchen', { p_date: date, p_vendor: vendor }).then(({ data: k, error: e }) => { if (e) setError(e.message); else setData(k) })
-  }, [date, vendor])
+  }, [date, vendor, tick])
+  useEffect(() => {
+    if (!vendor) return
+    supabase.rpc('meal_kitchen_days', { p_vendor: vendor, p_days: 14 }).then(({ data: k }) => setCounts(Object.fromEntries((k || []).map((x) => [x.date, x]))), () => {})
+  }, [vendor, tick])
+  // The kitchen marks each drop-off as cooking, then ready for the rider.
+  const step = async (x, status) => {
+    for (const id of x.item_ids || []) {
+      const { error: e } = await supabase.rpc('vendor_set_item_status', { p_item: id, p_status: status })
+      if (e) return toast(e.message, true)
+    }
+    toast(status === 'ready' ? 'Ready. The rider collects it.' : 'Marked as cooking')
+    setTick((n) => n + 1)
+  }
+  const move = async (x, status) => {
+    const { error: e } = await supabase.rpc('set_order_status', { p_order: x.order_id, p_status: status })
+    if (e) return toast(e.message, true)
+    toast(status === 'delivered' ? 'Delivered' : 'On the way'); setTick((n) => n + 1)
+  }
   const total = (data?.dishes || []).reduce((t, x) => t + x.quantity, 0)
   const paid = (data?.drops || []).filter((x) => x.paid).length
-  const days = Array.from({ length: 7 }, (_, i) => addDays(firstBookable(23), i - 1))
+  const days = Array.from({ length: 10 }, (_, i) => addDays(firstBookable(23), i - 1))
   return (
     <section className="ln-section">
       <div className="ln-head"><h2>Kitchen</h2><p>Everything to cook and pack for the day, added up for you.</p></div>
-      <div className="ln-chips">{days.map((x) => <button key={x} type="button" className={date === x ? 'on' : ''} onClick={() => setDate(x)}>{dayLabel(x)}</button>)}</div>
+      <div className="ln-kdays">{days.map((x) => <button key={x} type="button" className={date === x ? 'on' : ''} onClick={() => setDate(x)}><span>{dayLabel(x)}</span><b>{counts[x]?.lunches ?? 0}</b><small>{counts[x]?.lunches ? `${counts[x].paid} paid` : 'lunches'}</small></button>)}</div>
       {!vendorId && vendors.length > 1 && (
         <F label="Seller"><select value={vendor} onChange={(e) => setVendor(e.target.value)}>{vendors.map((v) => <option key={v} value={v}>{deals.find((d) => d.vendor_id === v)?.title || v}</option>)}</select></F>
       )}
@@ -373,7 +477,17 @@ function Kitchen({ deals, vendorId }) {
                   <div className="ln-drop-top"><strong>{x.window} · {x.name}</strong><span className={`ln-pill ${x.paid ? '' : 'wait'}`}>{x.paid ? 'Paid' : 'Awaiting payment'}</span></div>
                   <span>{x.items}</span>
                   {x.request && <span className="ln-request"><b>Request:</b> {x.request}</span>}
-                  <small>{x.workplace} · {x.plan} · order #{x.order_number}</small>
+                  <small>{x.workplace}{x.landmark ? ` · near ${x.landmark}` : ''} · {x.plan} · order #{x.order_number}</small>
+                  {x.paid && !['delivered', 'completed'].includes(x.status) && (
+                    <div className="ln-row">
+                      {x.kitchen !== 'ready' && x.kitchen !== 'preparing' && <button type="button" className="ln-mini" onClick={() => step(x, 'preparing')}>Cooking</button>}
+                      {x.kitchen !== 'ready' && <button type="button" className="ln-mini" onClick={() => step(x, 'ready')}>Ready for pickup</button>}
+                      {x.kitchen === 'ready' && <span className="ln-pill">Ready for pickup</span>}
+                      {isStaff && ['paid', 'processing', 'ready_for_dispatch'].includes(x.status) && <button type="button" className="ln-mini" onClick={() => move(x, 'out_for_delivery')}>On the way</button>}
+                      {isStaff && x.status === 'out_for_delivery' && <button type="button" className="ln-mini" onClick={() => move(x, 'delivered')}>Delivered</button>}
+                    </div>
+                  )}
+                  {['delivered', 'completed'].includes(x.status) && <span className="ln-pill">Delivered</span>}
                 </div>
               ))}
               <p className="ln-hint">Cook only paid lunches. Unpaid ones are confirmed by ZaMarket before the cut-off.</p>
@@ -397,31 +511,44 @@ function Bookings({ deals }) {
     supabase.from('meal_plans').select('*').order('created_at', { ascending: false }).limit(200).then(({ data }) => setPlans(data || []))
   }, [reload])
   const titles = useMemo(() => Object.fromEntries(deals.map((d) => [d.id, d.title])), [deals])
-  const list = (plans || []).filter((p) => show === 'all' || p.status === show)
+  const list = (plans || []).filter((p) => show === 'all' || p.status === show || (show === 'awaiting_payment' && p.status === 'first_paid'))
+  const endTrial = async (p) => {
+    if (!window.confirm(`End LP${p.plan_number} after the first lunch? Its unpaid days are cancelled.`)) return
+    const { error } = await supabase.rpc('end_meal_plan_after_first', { p_plan: p.id, p_reason: null })
+    if (error) return toast(error.message, true)
+    toast('Unpaid days cancelled'); setReload((n) => n + 1)
+  }
+  const METHOD = { mtn_money: 'MTN MoMo', airtel_money: 'Airtel Money', zamtel_kwacha: 'Zamtel Kwacha' }
   const confirm = async (p) => {
     const { error } = await supabase.rpc('confirm_meal_plan_payment', { p_plan: p.id, p_method: pay.method, p_reference: pay.reference || null })
     if (error) return toast(error.message, true)
-    toast(`LP${p.plan_number} paid. All its lunches are confirmed.`)
+    toast(p.pay_mode === 'after_first' && p.status === 'awaiting_payment' ? `LP${p.plan_number}: first lunch paid and confirmed.` : `LP${p.plan_number} paid. All its lunches are confirmed.`)
     setPaying(null); setPay({ method: 'mtn_money', reference: '' }); setReload((n) => n + 1)
   }
   return (
     <section className="ln-section">
       <div className="ln-head"><h2>Bookings</h2><p>Call the customer, take the mobile money payment, then record it here once for the whole booking.</p></div>
-      <div className="ln-chips">{[['awaiting_payment', 'To call and confirm'], ['paid', 'Paid'], ['all', 'All']].map(([k, l]) => <button key={k} type="button" className={show === k ? 'on' : ''} onClick={() => setShow(k)}>{l}</button>)}</div>
+      <div className="ln-chips">{[['awaiting_payment', 'To call and confirm'], ['paid', 'Paid'], ['trial_ended', 'Stopped after first'], ['all', 'All']].map(([k, l]) => <button key={k} type="button" className={show === k ? 'on' : ''} onClick={() => setShow(k)}>{l}</button>)}</div>
       {plans === null ? <Loading /> : list.length === 0 ? <p className="ln-muted">Nothing here.</p> : list.map((p) => (
         <div key={p.id} className="ln-plan">
-          <div className="ln-plan-top"><strong>LP{p.plan_number} · {p.customer_name}</strong><span className={`ln-pill ${p.status === 'paid' ? '' : 'wait'}`}>{p.status === 'paid' ? 'Paid' : p.status === 'cancelled' ? 'Cancelled' : 'Awaiting payment'}</span></div>
+          <div className="ln-plan-top"><strong>LP{p.plan_number} · {p.customer_name}</strong><span className={`ln-pill ${p.status === 'paid' ? '' : 'wait'}`}>{{ paid: 'Paid', cancelled: 'Cancelled', first_paid: 'First lunch paid', trial_ended: 'Stopped after first lunch' }[p.status] || 'Awaiting payment'}</span></div>
           <span>{p.lunches} lunch{p.lunches === 1 ? '' : 'es'} · {money(p.total, { whole: true })} · {{ trial: 'Trial', week: 'Own lunches', team: 'Team' }[p.kind]} · {titles[p.deal_id] || ''}</span>
           {p.request && <span className="ln-request"><b>Request:</b> {p.request} <em>Confirm with the customer and the kitchen.</em></span>}
-          <small className="ln-muted"><a className="ln-link" href={`tel:${p.customer_phone}`}>{p.customer_phone}</a> · {p.workplace} · {p.delivery_window}{p.referral_code ? ` · via ${p.referral_code}` : ''}</small>
-          {p.status === 'awaiting_payment' && (paying === p.id ? (
+          <small className="ln-muted"><a className="ln-link" href={`tel:${p.customer_phone}`}>{p.customer_phone}</a> · {p.place === 'home' ? 'Home: ' : ''}{p.workplace}{p.landmark ? ` (near ${p.landmark})` : ''} · {p.delivery_window}{p.payment_method ? ` · pays by ${METHOD[p.payment_method]}` : ''}{p.referral_code ? ` · via ${p.referral_code}` : ''}</small>
+          {p.pay_mode === 'after_first' && <span className="ln-request"><b>Tastes first:</b> {p.status === 'awaiting_payment' ? 'take payment for the first lunch only.' : p.status === 'first_paid' ? 'after the first lunch, ask if they want the other days. Record the rest when paid, or end the plan.' : 'done.'}</span>}
+          {['awaiting_payment', 'first_paid'].includes(p.status) && (paying === p.id ? (
             <div className="ln-fields">
-              <F label="Paid by"><select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}><option value="mtn_money">MTN Money</option><option value="airtel_money">Airtel Money</option><option value="bank">Bank</option><option value="cash">Cash</option></select></F>
+              <F label="Paid by"><select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}><option value="mtn_money">MTN Money</option><option value="airtel_money">Airtel Money</option><option value="zamtel_kwacha">Zamtel Kwacha</option><option value="bank">Bank</option><option value="cash">Cash</option></select></F>
               <F label="Transaction reference" optional><input value={pay.reference} onChange={(e) => setPay({ ...pay, reference: e.target.value })} /></F>
-              <div className="ln-field"><button type="button" className="ln-btn primary" onClick={() => confirm(p)}>Record {money(p.total, { whole: true })} paid</button></div>
+              <div className="ln-field"><button type="button" className="ln-btn primary" onClick={() => confirm(p)}>{p.pay_mode === 'after_first' && p.status === 'awaiting_payment' ? 'Record the first lunch paid' : p.status === 'first_paid' ? 'Record the other days paid' : `Record ${money(p.total, { whole: true })} paid`}</button></div>
               <div className="ln-field"><button type="button" className="ln-btn ghost" onClick={() => setPaying(null)}>Cancel</button></div>
             </div>
-          ) : <button type="button" className="ln-btn ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setPaying(p.id)}>Customer has paid</button>)}
+          ) : (
+            <div className="ln-row">
+              <button type="button" className="ln-btn ghost" onClick={() => { setPaying(p.id); setPay({ method: p.payment_method || 'mtn_money', reference: '' }) }}>Customer has paid</button>
+              {p.status === 'first_paid' && <button type="button" className="ln-btn ghost" onClick={() => endTrial(p)}>Didn&rsquo;t continue</button>}
+            </div>
+          ))}
         </div>
       ))}
     </section>
