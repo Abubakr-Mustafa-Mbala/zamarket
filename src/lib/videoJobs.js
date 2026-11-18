@@ -86,7 +86,7 @@ export async function startVideo(spec) {
 // build videos frame by frame: kept in the same list.
 export async function keepVideo({ title, slug, kind, caption, blob }) {
   await loadVideos()
-  const job = { id: `v${Date.now().toString(36)}`, title, slug, kind, caption, createdAt: Date.now(), status: 'ready', progress: 1, seen: false, blob }
+  const job = { id: `v${Date.now().toString(36)}`, title, slug, kind, caption, createdAt: Date.now(), status: 'ready', progress: 1, seen: false, blob, size: blob.size, ext: 'mp4' }
   jobs = [job, ...jobs]
   await save(job)
   emit(true)
@@ -131,7 +131,13 @@ async function pump() {
     console.warn('[video] making failed', e)
     // Stopped because the phone put the page away: carry on when back.
     if (typeof document !== 'undefined' && document.hidden) job.status = 'waiting'
-    else { job.status = 'failed'; job.error = String(e?.message || e) }
+    else {
+      job.status = 'failed'
+      job.error = /NO_FAST|encod|codec/i.test(String(e?.message || e))
+        ? 'This phone cannot build it quickly. Open the listing and tap Make video again; it will record it the slower way.'
+        : String(e?.message || e)
+      job.slow = /NO_FAST|encod|codec/i.test(String(e?.message || e))
+    }
     await save(job)
   } finally {
     try { await lock?.release() } catch { /* ignore */ }

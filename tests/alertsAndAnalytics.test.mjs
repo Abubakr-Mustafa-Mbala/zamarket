@@ -160,3 +160,13 @@ test('video maker: built frame by frame in the background, kept in My videos', (
   assert.match(ui, /await startVideo\(\{ \.\.\.spec\(\), audio, marks, duration \}\)/)
   assert.match(read('src/components/Shell.jsx'), /<VideoJobsChip \/>/)
 })
+
+test('video maker: budget phones build sideways with a rotate mark, else record the slower way', () => {
+  const f = read('src/lib/fastEncoder.js')
+  const r = read('src/lib/videoRender.js')
+  assert.match(f, /\{ w: 1280, h: 720, rot: 90 \}/)
+  assert.match(f, /enc\.flush\(\)/) // really encodes a few frames before trusting it
+  assert.match(r, /rotation: rot/)
+  assert.match(r, /ctx\.setTransform\(0, -scale, scale, 0, 0, portraitW\)/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /fastEncoder\(\)\.then\(setFastWay/)
+})

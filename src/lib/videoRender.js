@@ -1,5 +1,6 @@
 import { drawFrame, videoLength, heldTime, setPace, setMotion, loadPhotos, endCard, W, H } from './listingVideo'
 import { tools } from './videoFinish'
+import { fastEncoder, fastFailed } from './fastEncoder'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
 // of recording the screen in real time. A 30-second video takes seconds, and
@@ -43,35 +44,46 @@ export async function renderJob(spec, onProgress) {
     timeAt = (t) => t
   }
 
-  // Full HD when the phone can encode it, otherwise 720p.
-  let w = 1080; let h = 1920
-  if (!(await mb.canEncodeVideo('avc', { width: w, height: h }).catch(() => false))) { w = 720; h = 1280 }
-  if (!(await mb.canEncodeVideo('avc', { width: w, height: h }).catch(() => false))) throw new Error('This phone cannot make MP4 videos here. Try Chrome.')
-
+  // Full HD when the phone can encode it; on phones whose encoder only takes
+  // landscape, the frames are stored sideways with a "rotate 90°" mark.
+  const shape = await fastEncoder()
+  if (!shape) throw new Error('NO_FAST')
+  const { w, h, rot, codec } = shape
   const canvas = document.createElement('canvas')
   canvas.width = w; canvas.height = h
   const ctx = canvas.getContext('2d')
-  const scale = w / W
+  const portraitW = rot ? h : w
+  const scale = portraitW / W
+  const place = rot
+    ? () => ctx.setTransform(0, -scale, scale, 0, 0, portraitW) // portrait (x, y) → stored (y, width − x)
+    : () => ctx.setTransform(scale, 0, 0, scale, 0, 0)
 
   const target = new mb.BufferTarget()
   const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), target })
-  const video = new mb.CanvasSource(canvas, { codec: 'avc', bitrate: w > 720 ? 8_000_000 : 5_000_000, keyFrameInterval: 2 })
-  output.addVideoTrack(video, { frameRate: FPS })
+  const video = new mb.CanvasSource(canvas, { codec: 'avc', fullCodecString: codec, bitrate: Math.max(w, h) > 1280 ? 8_000_000 : 5_000_000, keyFrameInterval: 2 })
+  output.addVideoTrack(video, { frameRate: FPS, ...(rot ? { rotation: rot } : {}) })
   let sound = null
   if (voice) { sound = new mb.AudioBufferSource({ codec: 'aac', bitrate: 128000 }); output.addAudioTrack(sound) }
   await output.start()
   if (sound) { await sound.add(voice); sound.close() }
 
   const frames = Math.ceil(length * FPS)
+  try {
   for (let i = 0; i < frames; i += 1) {
     apply()
-    ctx.setTransform(scale, 0, 0, scale, 0, 0)
+    place()
     drawFrame(ctx, timeAt(i / FPS), slides, imgs, end)
     await video.add(i / FPS, 1 / FPS)
     if (i % 6 === 0) { onProgress?.(i / frames); await breathe() }
   }
   video.close()
   await output.finalize()
+  } catch (e) {
+    // The encoder broke while the page was on screen: this phone records the
+    // slower way from now on.
+    if (typeof document !== 'undefined' && !document.hidden) fastFailed()
+    throw e
+  }
   onProgress?.(1)
   return { blob: new Blob([target.buffer], { type: 'video/mp4' }), width: w, height: h, seconds: length }
 }

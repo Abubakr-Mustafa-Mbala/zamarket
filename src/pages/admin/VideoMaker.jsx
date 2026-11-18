@@ -8,6 +8,7 @@ import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
+import { fastEncoder } from '../../lib/fastEncoder'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -36,7 +37,6 @@ const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).p
 const shareFile = async (file) => { try { await navigator.share({ files: [file], title: 'ZaMarket video' }) } catch { /* closed */ } }
 // Phones that can build a video frame by frame (fast, and it carries on when
 // you leave the page). Others record in real time, as before.
-const fast = () => typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined'
 const pickAudio = () => ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'].find((m) => { try { return MediaRecorder.isTypeSupported(m) } catch { return false } }) || ''
 
 export default function VideoMaker() {
@@ -55,6 +55,10 @@ export default function VideoMaker() {
   const [elapsed, setElapsed] = useState(0)
   const ctrl = useRef(null)
   const [videos, setVideos] = useState([])
+  // Whether this phone can build videos quickly (checked once, remembered).
+  const [fastWay, setFastWay] = useState(undefined)
+  useEffect(() => { fastEncoder().then(setFastWay, () => setFastWay(null)) }, [videos.some((v) => v.slow)])
+  const fast = () => !!fastWay
   useEffect(() => subscribeVideos(setVideos), [])
   useEffect(() => { if (!document.hidden) markSeen() }, [videos])
   const canvas = useRef(null)
@@ -375,7 +379,7 @@ function MyVideos({ videos, copy }) {
               <div className="vx-myvideo-actions">
                 {v.status === 'ready' && <button type="button" className="vx-btn primary" onClick={() => save(v)}>Save or share</button>}
                 {v.status === 'ready' && v.caption && <button type="button" className="vx-btn outline" onClick={() => copy(v.caption, 'Caption')}>Copy caption</button>}
-                {v.status === 'failed' && v.spec && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
+                {v.status === 'failed' && v.spec && !v.slow && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
                 {v.status !== 'making' && <button type="button" className="vx-btn ghost" onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
               </div>
             </div>
