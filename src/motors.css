@@ -648,3 +648,36 @@
 .vx-pace { display: flex; flex-direction: column; gap: 6px; }
 .vx-pace > span { font-weight: 700; font-size: .9rem; }
 .vx-pace .vx-tabs { align-self: flex-start; }
+/* Scene editor (Nov 18) */
+.vx-scenes { display: flex; flex-direction: column; gap: 10px; }
+.vx-scene-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.vx-scene-list > li { border: 1px solid var(--vx-line); border-radius: 14px; background: var(--vx-bg); overflow: hidden; }
+.vx-scene-list > li.on { border-color: var(--vx-accent); }
+.vx-scene-row { display: flex; align-items: center; gap: 6px; }
+.vx-scene-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 8px; background: none; border: 0; color: var(--vx-text); font: inherit; text-align: left; cursor: pointer; }
+.vx-scene-n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--vx-accent); color: var(--vx-accent-ink); font-weight: 800; font-size: .78rem; }
+.vx-scene-main img, .vx-scene-nophoto { flex: none; width: 46px; height: 62px; border-radius: 8px; object-fit: cover; background: var(--vx-line); display: grid; place-items: center; font-size: .62rem; color: var(--vx-muted); text-align: center; }
+.vx-scene-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.vx-scene-text strong { font-size: .9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vx-scene-text small { color: var(--vx-muted); font-size: .74rem; }
+.vx-scene-tools { display: flex; gap: 2px; padding-right: 6px; }
+.vx-scene-tools button { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--vx-line); background: var(--vx-panel); color: var(--vx-text); cursor: pointer; font-size: .9rem; }
+.vx-scene-tools button:disabled { opacity: .35; }
+.vx-scene-edit { padding: 4px 12px 14px; display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--vx-line); }
+.vx-scene-edit .vx-tabs { flex-wrap: wrap; }
+.vx-scene-hint { margin: 0; padding: 8px 10px; border-radius: 10px; background: rgba(166,116,255,.16); font-weight: 700; font-size: .86rem; }
+.vx-photo-strip { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.vx-photo-strip button { flex: none; width: 64px; height: 84px; padding: 0; border-radius: 10px; overflow: hidden; border: 2px solid transparent; background: var(--vx-line); cursor: pointer; color: var(--vx-muted); font: inherit; font-size: .72rem; }
+.vx-photo-strip button img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.vx-photo-strip button.on { border-color: var(--vx-accent); box-shadow: 0 0 0 2px var(--vx-accent); }
+.vx-scene-edit .vx-field { display: flex; flex-direction: column; gap: 4px; }
+.vx-scene-edit input, .vx-scene-edit textarea { width: 100%; }
+.vx-spec-pick { display: flex; flex-direction: column; gap: 2px; }
+.vx-spec-pick label { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 7px 2px; border-bottom: 1px solid var(--vx-line); font-size: .88rem; cursor: pointer; }
+.vx-spec-pick input { width: 18px; height: 18px; accent-color: var(--vx-accent); }
+.vx-spec-pick b { font-weight: 700; }
+.vx-add { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px dashed var(--vx-line); }
+.vx-add-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.vx-add-chips button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--vx-line); background: var(--vx-panel); color: var(--vx-text); font: inherit; font-size: .84rem; font-weight: 600; cursor: pointer; }
+.vx-add-chips button.used { opacity: .55; }
+.vx-video-focus { position: absolute; left: 10px; top: 10px; background: rgba(18,11,30,.8); color: #fff; font-size: .74rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }

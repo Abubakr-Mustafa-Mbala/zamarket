@@ -96,3 +96,23 @@ test('car videos end with an enquiry, never "order", and show the specifications
   assert.match(s, /export const PACES = \[3, 4, 5, 6\]/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /Each scene stays/)
 })
+
+test('video maker: you build the scenes; nothing is added for you', async () => {
+  const mod = await import('../src/lib/listingVideo.js').catch(() => ({}))
+  const s = read('src/lib/listingVideo.js')
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  // Starting point is only the photos: no specs card, no features.
+  assert.match(s, /const starter = photos\.slice\(0, 10\)/)
+  assert.match(ui, /Choose the photo that shows/)
+  assert.match(ui, /Specifications card/)
+  if (!mod.videoParts) return
+  const p = mod.videoParts({ name: 'Hilux', price: 385000, images: ['a', 'b', 'c'], page: { vehicle: { make: 'Toyota', model: 'Hilux', year: 2016, mileage: 120000, features: ['Leather seats'] } } }, 'vehicle', 'https://zamarket.shop/p/hilux')
+  assert.equal(p.starter.length, 3)
+  assert.ok(p.starter.every((x) => x.type !== 'specs'))
+  assert.ok(!p.starter.some((x) => /Leather/.test(x.line)))
+  const feat = p.blocks.find((b) => b.feature)
+  assert.equal(feat.label, 'Leather seats')
+  const sc = mod.sceneFrom(feat, 'c')
+  assert.equal(sc.photo, 'c')
+  assert.match(p.end.cta, /Enquire/)
+})

@@ -1,6 +1,6 @@
 import { load, qrImage } from './posterKit'
 import { money } from './format'
-import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts } from './vehicle'
+import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts, rankFeatures } from './vehicle'
 
 // Short vertical videos made from what is already on the site: a listing's
 // own photos, its name, price and real details, ending on the link and a QR
@@ -337,4 +337,61 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
     throw new Error('The video did not come out right. Tap Make video again; it will try another way.')
   }
   return { blob, ext: cfg.mime.includes('mp4') ? 'mp4' : 'webm', width: cfg.w, height: cfg.h }
+}
+
+// ---- A video you arrange yourself ------------------------------------------
+// The pieces a listing offers: its photos, and blocks you can turn into a
+// scene (title and price, the specifications card, each recorded feature,
+// where it is, your own words). Nothing is placed for you except a plain
+// starting point: the title over the first photo, then each photo on its
+// own. You choose what goes on which photo.
+let nextId = 1
+export const sceneId = () => `s${Date.now().toString(36)}${(nextId++).toString(36)}`
+
+export function videoParts(item, kind = 'product', link = '') {
+  const base = videoScript(item, kind, link)
+  const photos = [...new Set((kind === 'lunch'
+    ? [item.cover_url, ...(item.dishList || []).flatMap((d) => d.images || [])]
+    : item.images || []).filter(Boolean))].slice(0, 20)
+  const blocks = []
+  if (kind === 'vehicle') {
+    const v = vehicleOf(item)
+    const title = vehicleTitle(v, item.name)
+    const note = priceNote(v)
+    const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
+    blocks.push({ id: 'title', label: 'Title and price', scene: { kicker: 'For sale on ZaMarket Motors', line: title, sub: [price, note].filter(Boolean).join(' · '), say: `${title}. ${price ? `Asking ${price}${note ? `, ${note.toLowerCase()}` : ''}.` : ''}` } })
+    const rows = vehicleFacts(v).filter((f) => f.key !== 'location').map((f) => [f.label, String(f.value)])
+    if (rows.length) blocks.push({ id: 'specs', label: 'Specifications card', allRows: rows, scene: { type: 'specs', kicker: 'Specifications', rows: rows.slice(0, 6), say: '' } })
+    if (v.location) blocks.push({ id: 'where', label: `Where: ${v.location}`, scene: { kicker: 'Where', line: v.location, say: `It is in ${v.location}.` } })
+    for (const f of rankFeatures(v.features || [])) blocks.push({ id: `f-${f.label}`, label: f.label, feature: true, scene: { kicker: '', line: f.label, say: `${f.label}.` } })
+  } else if (kind === 'lunch') {
+    blocks.push({ id: 'title', label: 'Title and price', scene: base.slides[0] })
+    for (const d of item.dishList || []) blocks.push({ id: `d-${d.id}`, label: d.name, feature: true, scene: { kicker: 'On the menu', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', say: `${d.name}.` }, photo: d.images?.[0] })
+    blocks.push({ id: 'how', label: 'How it works', scene: base.slides.find((x) => x.kicker === 'How it works') })
+  } else {
+    blocks.push({ id: 'title', label: 'Name and price', scene: base.slides[0] })
+    for (const p of (item.benefits || []).filter(Boolean)) blocks.push({ id: `b-${p}`, label: p, feature: true, scene: { kicker: '', line: p, say: `${p}.` } })
+  }
+  blocks.push({ id: 'words', label: 'My own words', scene: { kicker: '', line: '', sub: '', say: '' } })
+  const title = blocks.find((b) => b.id === 'title')
+  const starter = photos.slice(0, 10).map((p, i) => ({ id: sceneId(), photo: p, ...(i === 0 && title ? clean(title.scene) : { kicker: '', line: '', sub: '', say: '' }) }))
+  return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
+}
+
+const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...(sc.rows ? { rows: sc.rows } : {}) })
+
+// A new scene from a block, on a chosen photo.
+export const sceneFrom = (block, photo) => ({ id: sceneId(), photo: photo ?? block.photo ?? null, ...clean(block.scene) })
+
+// What you will say, scene by scene, then the ending.
+export const voiceFor = (scenes, endSay) => [...scenes.map((x) => x.say).filter(Boolean), endSay].filter(Boolean).join(' ')
+
+// Photos loaded once and reused while you edit.
+export async function loadPhotos(urls, cache) {
+  await Promise.all([...new Set(urls.filter(Boolean))].filter((u) => !cache.has(u)).map(async (u) => { cache.set(u, await load(u)) }))
+  return cache
+}
+export async function endCard(script, link) {
+  const qr = link ? await qrImage(link, '#120b1e', '#ffffff') : null
+  return { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' }
 }
