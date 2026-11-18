@@ -9,7 +9,7 @@ import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
-import { listSounds, addSound, removeSound, savedChoice, saveChoice } from '../../lib/videoSounds'
+import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice } from '../../lib/videoSounds'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -365,7 +365,9 @@ const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).pa
 // it loops to the length of the video and fades out at the end.
 function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, toast, busy }) {
   const player = useRef(null)
-  const [adding, setAdding] = useState(false)
+  const [adding, setAdding] = useState('')
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkText, setLinkText] = useState('')
   const [playing, setPlaying] = useState(false)
   const timer = useRef(0)
   const url = useMemo(() => (music ? URL.createObjectURL(music.blob) : null), [music])
@@ -378,16 +380,24 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
     a.currentTime = sound?.start || 0
     a.play().then(() => { setPlaying(true); timer.current = setTimeout(stop, 10000) }, () => toast('This phone cannot play that sound', true))
   }
+  const progress = (word) => (p) => setAdding(`${word} ${Math.round((p || 0) * 100)}%`)
+  const added = async (s) => {
+    setSounds(await listSounds())
+    setSound({ id: s.id, start: 0 })
+    toast(`${s.name} added`)
+  }
   const add = async (file) => {
     if (!file) return
-    setAdding(true)
-    try {
-      const s = await addSound(file)
-      setSounds(await listSounds())
-      setSound({ id: s.id, start: 0 })
-      toast(`${s.name} added`)
-    } catch (e) { toast(e.message, true) }
-    setAdding(false)
+    const video = file.type?.startsWith('video/')
+    setAdding(video ? 'Taking out the sound…' : 'Adding…')
+    try { await added(await addSound(file, { onProgress: progress(video ? 'Taking out the sound' : 'Making it smaller') })) } catch (e) { toast(e.message, true) }
+    setAdding('')
+  }
+  const fromLink = async () => {
+    if (!linkText.trim()) return
+    setAdding('Getting it…')
+    try { await added(await addSoundFromLink(linkText, { onProgress: progress('Taking out the sound') })); setLinkText(''); setLinkOpen(false) } catch (e) { toast(e.message, true) }
+    setAdding('')
   }
   const remove = async () => {
     if (!music || !window.confirm(`Remove "${music.name}" from this phone?`)) return
@@ -396,12 +406,24 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
   return (
     <section className="vx-card-block vx-sound">
       <h3>Background sound</h3>
-      <p className="vx-muted tiny">For videos without your voice. Add a nasheed or qasida with voices only, from your phone. It plays for the whole video, from the part you choose.</p>
+      <p className="vx-muted tiny">For videos without your voice. Add a nasheed or qasida with voices only: a sound file, a video (only its sound is kept), or a link. It plays for the whole video, from the part you choose.</p>
       <div className="vx-tabs vx-sound-list">
         <button type="button" disabled={busy} className={!music ? 'on' : ''} onClick={() => { stop(); setSound(null) }}>No sound</button>
         {sounds.map((x) => <button key={x.id} type="button" disabled={busy} className={music?.id === x.id ? 'on' : ''} onClick={() => { stop(); setSound({ id: x.id, start: 0 }) }}>♪ {x.name}</button>)}
-        <label className={`vx-sound-add ${adding ? 'busy' : ''}`}>{adding ? 'Adding…' : '+ Add from phone'}<input type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" hidden onChange={(e) => { add(e.target.files?.[0]); e.target.value = '' }} /></label>
       </div>
+      <div className="vx-sound-adds">
+        <label className={`vx-sound-add ${adding ? 'busy' : ''}`}>+ From phone<input type="file" disabled={!!adding} accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" hidden onChange={(e) => { add(e.target.files?.[0]); e.target.value = '' }} /></label>
+        <label className={`vx-sound-add ${adding ? 'busy' : ''}`}>+ From a video<input type="file" disabled={!!adding} accept="video/*,.mp4,.mov,.3gp" hidden onChange={(e) => { add(e.target.files?.[0]); e.target.value = '' }} /></label>
+        <button type="button" className={`vx-sound-add ${linkOpen ? 'on' : ''}`} disabled={!!adding} onClick={() => setLinkOpen(!linkOpen)}>+ From a link</button>
+      </div>
+      {adding && <p className="vx-sound-busy"><span className="vx-spin" /> {adding}</p>}
+      {linkOpen && (
+        <div className="vx-sound-link">
+          <input type="url" inputMode="url" placeholder="https://… link of the MP3 or video file" value={linkText} onChange={(e) => setLinkText(e.target.value)} />
+          <button type="button" className="vx-btn primary" disabled={!!adding || !linkText.trim()} onClick={fromLink}>Add</button>
+          <small className="vx-muted tiny">Paste the link of the file itself (it usually ends in .mp3 or .mp4). On the <a href="https://archive.org/search?query=nasheed+acapella&and%5B%5D=mediatype%3A%22audio%22" target="_blank" rel="noreferrer">Internet Archive</a>, open a nasheed, then copy the link under Download options. YouTube, TikTok and Facebook do not allow it.</small>
+        </div>
+      )}
       {music && (
         <div className="vx-sound-part">
           <label>

@@ -725,3 +725,12 @@
 .vx-sound-part label { display: flex; flex-direction: column; gap: 6px; }
 .vx-sound-part input[type=range] { width: 100%; accent-color: var(--vx-accent); }
 .vx-sound-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.vx-sound-adds { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+button.vx-sound-add { background: transparent; font: inherit; font-weight: 800; }
+.vx-sound-add.on { border-style: solid; background: rgba(166,116,255,.14); }
+.vx-sound-busy { display: flex; align-items: center; gap: 10px; margin: 8px 0 0; font-weight: 700; }
+.vx-sound-busy .vx-spin { width: 18px; height: 18px; border-width: 2px; border-color: rgba(166,116,255,.3); border-top-color: var(--vx-accent); }
+.vx-sound-link { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px; }
+.vx-sound-link input { min-height: 44px; border-radius: 12px; border: 1px solid var(--vx-line, rgba(255,255,255,.2)); background: transparent; color: inherit; padding: 0 12px; font: inherit; min-width: 0; }
+.vx-sound-link small { grid-column: 1 / -1; }
+.vx-sound-link a { color: var(--vx-accent); }

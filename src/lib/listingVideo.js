@@ -1,4 +1,4 @@
-import { load, qrImage } from './posterKit'
+import { load, qrImage, brandMark } from './posterKit'
 import { finishVideo, videoSeconds } from './videoFinish'
 import { money } from './format'
 import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts, rankFeatures } from './vehicle'
@@ -164,12 +164,13 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   }
   // Fade between slides.
   if (local < 0.25 && i > 0) { ctx.fillStyle = `rgba(18,11,30,${1 - local / 0.25})`; ctx.fillRect(0, 0, W, H) }
-  // Brand mark, top.
+  // The ZaMarket logo and name, top.
   ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.textBaseline = 'middle'
   const za = ctx.measureText('Za').width; const bw = ctx.measureText('ZaMarket').width
-  ctx.fillStyle = 'rgba(18,11,30,.6)'; roundRect(ctx, 48, 70, bw + 88, 84, 42); ctx.fill()
-  ctx.fillStyle = '#c9a6ff'; ctx.fillText('Za', 92, 113)
-  ctx.fillStyle = '#fff'; ctx.fillText('Market', 92 + za, 113)
+  ctx.fillStyle = 'rgba(18,11,30,.6)'; roundRect(ctx, 48, 70, bw + 160, 84, 42); ctx.fill()
+  brandMark(ctx, 70, 82, 60)
+  ctx.fillStyle = '#c9a6ff'; ctx.fillText('Za', 146, 113)
+  ctx.fillStyle = '#fff'; ctx.fillText('Market', 146 + za, 113)
   if (s.type === 'specs') drawSpecs(ctx, s, local)
   // Words, bottom, rising in.
   else if (s.line || s.kicker) {
@@ -284,13 +285,46 @@ function drawEnd(ctx, t, end) {
   const a = Math.min(1, t / 0.4)
   ctx.save(); ctx.globalAlpha = a
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillStyle = '#fff'; ctx.font = '900 96px Inter, Arial, sans-serif'; ctx.fillText('ZaMarket', W / 2, 420)
-  ctx.fillStyle = '#c9a6ff'; ctx.font = '700 50px Inter, Arial, sans-serif'; ctx.fillText(end.cta || 'See it on ZaMarket', W / 2, 540)
-  if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 290, 660, 580, 580, 40); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 250, 700, 500, 500) }
-  ctx.fillStyle = '#ffd36b'; ctx.font = '800 54px Inter, Arial, sans-serif'
-  wrapText(ctx, end.link || 'zamarket.shop', W - 140).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, 1360 + i * 66))
-  ctx.fillStyle = '#fff'; ctx.font = '600 44px Inter, Arial, sans-serif'; ctx.fillText(end.foot || 'Delivered in Lusaka', W / 2, 1530)
+  // Logo and name
+  brandMark(ctx, W / 2 - 90, 190, 180)
+  ctx.fillStyle = '#fff'; ctx.font = '900 92px Inter, Arial, sans-serif'; ctx.fillText('ZaMarket', W / 2, 450)
+  ctx.fillStyle = '#c9a6ff'; ctx.font = '700 48px Inter, Arial, sans-serif'
+  wrapText(ctx, end.cta || 'See it on ZaMarket', W - 140).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, 550 + i * 60))
+  if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 250, 680, 500, 500, 40); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 215, 715, 430, 430) }
+  // The link, big enough to read and type: the address on its own line, the
+  // rest broken at / and - so it never runs off the screen.
+  const link = end.link || 'zamarket.shop'
+  const cut = link.indexOf('/')
+  const site = cut > 0 ? link.slice(0, cut) : link
+  const rest = cut > 0 ? link.slice(cut) : ''
+  ctx.fillStyle = '#ffd36b'; ctx.font = '900 76px Inter, Arial, sans-serif'; ctx.fillText(site, W / 2, 1290)
+  if (rest) {
+    const lines = fitLink(ctx, rest, W - 120)
+    ctx.fillStyle = '#fff'
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 1385 + i * (lines.size + 14)))
+  }
+  ctx.fillStyle = 'rgba(255,255,255,.78)'; ctx.font = '600 42px Inter, Arial, sans-serif'; ctx.fillText(end.foot || 'Delivered in Lusaka', W / 2, rest ? 1590 : 1420)
+  if (end.qr) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '600 34px Inter, Arial, sans-serif'; ctx.fillText('Scan the code or type the link', W / 2, rest ? 1660 : 1490) }
   ctx.restore(); ctx.textAlign = 'left'
+}
+
+// A link path in at most two lines, largest type that fits, broken after
+// a / or a - (a web address has no spaces to break at).
+function fitLink(ctx, text, maxW) {
+  const parts = String(text).split(/(?<=[/-])/)
+  for (let size = 52; size >= 30; size -= 2) {
+    ctx.font = `700 ${size}px Inter, Arial, sans-serif`
+    const lines = []; let cur = ''
+    for (const p of parts) {
+      if (ctx.measureText(cur + p).width > maxW && cur) { lines.push(cur); cur = p } else cur += p
+    }
+    if (cur) lines.push(cur)
+    if (lines.length <= 2 && lines.every((l) => ctx.measureText(l).width <= maxW)) return Object.assign(lines, { size })
+  }
+  ctx.font = '700 30px Inter, Arial, sans-serif'
+  const t = String(text)
+  const lines = [t.slice(0, Math.ceil(t.length / 2)), t.slice(Math.ceil(t.length / 2))]
+  return Object.assign(lines, { size: 30 })
 }
 
 function roundRect(ctx, x, y, w, h, r) {

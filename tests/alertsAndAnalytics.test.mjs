@@ -207,3 +207,14 @@ test('video maker: your own nasheed under silent videos, looped and faded', () =
   assert.match(r, /if \(!voice && spec\.music\?\.blob\)/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /<SoundPicker /)
 })
+
+test('video maker: logo on every scene, readable link at the end, sound from a video or a link', () => {
+  const s = read('src/lib/listingVideo.js')
+  assert.match(s, /brandMark\(ctx, 70, 82, 60\)/)
+  assert.match(s, /function fitLink/)
+  const v = read('src/lib/videoSounds.js')
+  assert.match(v, /video: \{ discard: true \}/)
+  assert.match(v, /export async function addSoundFromLink/)
+  assert.match(v, /youtube/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /\+ From a video/)
+})
