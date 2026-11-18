@@ -15,13 +15,12 @@ import JournalHighlights from '../../components/JournalHighlights'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
-import { useDepartments, useShopInfo, isFood } from '../../lib/departments'
+import { useDepartments, useShopInfo } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
 import PhotoViewer from '../../components/PhotoViewer'
 import LunchPromo from '../../components/LunchPromo'
-import LunchShop, { CategoryLunch } from '../../components/LunchShop'
 import OfferHighlights from '../../components/OfferHighlights'
 import VehicleCard from '../../components/vehicle/VehicleCard'
 import TrustPanel from '../../components/TrustPanel'
@@ -132,27 +131,13 @@ function CatalogueUnavailable({ error, retry }) {
 }
 
 // Departments with nothing in them are hidden from shoppers — an empty shelf looks abandoned.
-// Weekly lunch lives in the food department, so a published lunch plan keeps
-// that department showing even when no other food is listed.
-let lunchLive = null
-function useLunchLive() {
-  const [on, setOn] = useState(lunchLive)
-  useEffect(() => {
-    if (lunchLive !== null) return
-    supabase.from('meal_deals').select('id').eq('status', 'published').limit(1)
-      .then(({ data }) => { lunchLive = !!data?.length; setOn(lunchLive) }, () => {})
-  }, [])
-  return !!on
-}
-
 function useStockedDepartments(all) {
   const { data } = useCatalogue()
-  const lunch = useLunchLive()
   return useMemo(() => {
     if (!data) return []
     const have = new Set((data.products || []).map((p) => p.category))
-    return all.filter((d) => have.has(d.name) || (lunch && isFood(d.name)))
-  }, [data, all, lunch])
+    return all.filter((d) => have.has(d.name))
+  }, [data, all])
 }
 
 const isOut = (p) => p.fulfilment === 'in_stock' && (p.status === 'out_of_stock' || (p.owner_type === 'founder' && p.stock_available <= 0))
@@ -645,7 +630,6 @@ export function PublicShell() {
           so someone who tapped a product saw a photo and had to hunt for how
           to buy it. */}
       {pathname === '/' && <CategoryRail />}
-      {pathname === '/' && <div className="hl-wrap"><OfferHighlights /></div>}
       <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
         {/* The boundary matters most here: without it a single failed page
@@ -1048,7 +1032,7 @@ export function SearchPage() {
         <div className="results-head">
           <div>
             <h1>{heading}</h1>
-            {!(isFood(cat) && !results.length) && <p className="muted small">{results.length} result{results.length === 1 ? '' : 's'}</p>}
+            <p className="muted small">{results.length} result{results.length === 1 ? '' : 's'}</p>
           </div>
           <div className="row">
             <button type="button" className="btn sm show-mobile" onClick={() => setSheet(true)}>Filters{active ? ` (${active})` : ''}</button>
@@ -1058,11 +1042,10 @@ export function SearchPage() {
           </div>
         </div>
         {deals && <LunchPromo />}
-        {(isFood(cat) || /\b(lunch|meals?)\b/.test(q)) && <CategoryLunch />}
         {results.length === 0 ? (
           <div className="empty-shop">
-            <h2>{isFood(cat) && !q ? 'More food coming soon' : 'Nothing matches yet'}</h2>
-            <p>{isFood(cat) && !q ? 'Cakes, snacks and more food from local sellers appear here as they are listed.' : 'Try a different word or remove a filter.'}</p>
+            <h2>Nothing matches yet</h2>
+            <p>Try a different word or remove a filter.</p>
             <Link to="/search" className="btn">See all products</Link>
           </div>
         ) : (
@@ -1450,7 +1433,8 @@ export function StorePage() {
       verified={verified}
       share={<ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />}
       renderProduct={(p) => <OfferingCard p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />}
-      special={<><OfferHighlights vendorId={store.id} /><LunchShop vendorId={store.id} vendor={store} />{special.map(([kind, title]) => (
+      highlights={<OfferHighlights vendorId={store.id} />}
+      special={<>{special.map(([kind, title]) => (
         <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
           <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>
           <div className={kind === 'vehicle' ? 'vx-grid' : 'zsv-grid'}>

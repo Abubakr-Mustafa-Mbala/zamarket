@@ -14,7 +14,6 @@ import { shareAudience } from '../../components/ShareProduct'
 import ShareLunch from '../../components/ShareLunch'
 import DishCollage, { collagePhotos } from '../../components/DishCollage'
 import { whatsappLink } from '../../lib/vehicle'
-import { useDepartments, foodDepartment } from '../../lib/departments'
 import '../../lunch.css'
 
 export const DEAL_COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,group_discounts,trial_first,day_discounts'
@@ -34,7 +33,6 @@ export function LunchIndex() {
   useSeo({ title: 'Homemade lunch delivered to your workplace | ZaMarket', description: 'Order homemade lunches a day ahead and get them delivered to your office in Lusaka. Try one lunch first.' })
   const [deals, setDeals] = useState(null)
   const [vendors, setVendors] = useState({})
-  const food = foodDepartment(useDepartments())
   useEffect(() => {
     supabase.from('meal_deals').select(DEAL_COLS).eq('status', 'published').order('created_at', { ascending: false }).then(({ data }) => {
       setDeals(data || [])
@@ -44,7 +42,7 @@ export function LunchIndex() {
   }, [])
   return (
     <div className="ln ln-index">
-      <nav className="crumbs ln-crumbs" aria-label="You are here"><Link to="/">Home</Link><Link to={`/search?cat=${encodeURIComponent(food)}`}>{food}</Link><span>Weekly lunch</span></nav>
+      <nav className="crumbs ln-crumbs" aria-label="You are here"><Link to="/">Home</Link><span>Weekly lunch</span></nav>
       <header className="ln-index-head">
         <span className="ln-eyebrow">Lunch at work</span>
         <h1>Homemade lunch, delivered to your office</h1>
@@ -130,14 +128,12 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
   const affiliate = role === 'reseller' && profile?.partner?.code
   const windows = deal.delivery_windows || []
   const link = `${window.location.origin}/lunch/${deal.slug}`
-  const food = foodDepartment(useDepartments())
 
   return (
     <div className={`ln ln-page ${preview ? 'is-preview' : ''}`}>
       {!preview && (
         <nav className="crumbs ln-crumbs" aria-label="You are here">
           <Link to="/">Home</Link>
-          <Link to={`/search?cat=${encodeURIComponent(food)}`}>{food}</Link>
           {vendor?.slug && <Link to={`/${vendor.slug}`}>{vendor.business_name}</Link>}
           <span>Weekly lunch</span>
         </nav>

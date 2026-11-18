@@ -488,3 +488,4 @@ body:has(.zsv) .cat-rail { display: none; }
   .zsv-category-tile strong, .zsv-category-all strong { font-size: .8rem; }
   .zsv-category-tile small, .zsv-category-all small { font-size: .68rem; }
 }
+.zsv > .hl { margin: 2px 0 6px; }

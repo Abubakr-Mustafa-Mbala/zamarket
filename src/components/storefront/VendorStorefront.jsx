@@ -166,7 +166,7 @@ function ShopCategories({ groups, order, selected, onChoose, total }) {
 
 export default function VendorStorefront({
   store, products = [], featured = [], groups = {}, groupOrder = [], verified = false,
-  share, renderProduct, special = null,
+  share, renderProduct, special = null, highlights = null,
 }) {
   useCompactHeader()
   const [selectedCategory, setSelectedCategory] = useState(null)
@@ -189,6 +189,9 @@ export default function VendorStorefront({
       </nav>
 
       <Hero store={store} products={products} verified={verified} share={share} />
+
+      {/* Special offers as round highlights, right under the shop, like on an Instagram page */}
+      {highlights}
 
       <ShopCategories groups={groups} order={groupOrder} total={productList.length}
         selected={categoryName} onChoose={chooseCategory} />

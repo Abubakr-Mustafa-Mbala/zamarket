@@ -127,11 +127,13 @@ test('video maker: countdown before recording, reading view, marketplace videos'
   assert.doesNotMatch(s, /guaranteed income|earn up to/i)
 })
 
-test('weekly lunch lives in Food & cakes and the seller store, not a separate top tab', () => {
+test('weekly lunch lives in the seller store as a highlight, not across the site', () => {
   const m = read('src/pages/public/Marketplace.jsx')
-  assert.match(m, /isFood\(cat\) \|\| .*<CategoryLunch \/>/)
+  assert.doesNotMatch(m, /<CategoryLunch \/>/)
   assert.doesNotMatch(m, /\['\/lunch', 'Lunch'/)
-  assert.match(m, /<LunchShop vendorId=\{store\.id\}/)
+  assert.doesNotMatch(m, /<OfferHighlights \/>/)
+  assert.match(m, /highlights=\{<OfferHighlights vendorId=\{store\.id\} \/>\}/)
+  assert.match(read('src/components/OfferHighlights.jsx'), /navigate\(`\/lunch\/\$\{d\.slug\}`\)/)
   assert.match(read('src/pages/public/Lunch.jsx'), /className="crumbs ln-crumbs"/)
 })
 
@@ -189,14 +191,10 @@ test('lunch: edit dish opens under the dish, reviews apart, owner can edit, shar
   assert.match(read('supabase/run-in-supabase.sql'), /add column if not exists review_images text\[\]/)
 })
 
-test('lunch: affiliates see lunch offers with earnings; highlights on home and store', () => {
+test('lunch: affiliates see lunch offers with earnings', () => {
   const r = read('src/pages/reseller/Reseller.jsx')
   assert.match(r, /<LunchOffersToSell \/>/)
   assert.match(r, /meal_deal_affiliate_rate/)
-  const m = read('src/pages/public/Marketplace.jsx')
-  assert.match(m, /<OfferHighlights \/>/)
-  assert.match(m, /<OfferHighlights vendorId=\{store\.id\} \/>/)
-  assert.match(read('src/components/OfferHighlights.jsx'), /See the offer and order/)
 })
 
 test('video maker: your own nasheed under silent videos, looped and faded', () => {
