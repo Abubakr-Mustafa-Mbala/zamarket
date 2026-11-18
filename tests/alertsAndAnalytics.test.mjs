@@ -88,3 +88,11 @@ test('recording with your voice waits for you: each scene holds until Next, and 
   assert.ok(heldTime(0, 60, slides) < 2.8, 'a long-held scene never runs into the next')
   assert.ok(heldTime(1, 0, slides) >= 2.8)
 })
+
+test('car videos end with an enquiry, never "order", and show the specifications card; scene length is chosen', () => {
+  const s = read('src/lib/listingVideo.js')
+  assert.match(s, /cta: 'Enquire on ZaMarket Motors'/)
+  assert.match(s, /type: 'specs', kicker: 'Specifications'/)
+  assert.match(s, /export const PACES = \[3, 4, 5, 6\]/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /Each scene stays/)
+})

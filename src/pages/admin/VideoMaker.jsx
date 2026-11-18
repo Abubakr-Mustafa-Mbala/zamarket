@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoScript, prepare, drawFrame, recordVideo, videoLength, bestMime, voiceController, W, H } from '../../lib/listingVideo'
+import { videoScript, prepare, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, PACES, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
@@ -30,6 +30,8 @@ export default function VideoMaker() {
   const [busy, setBusy] = useState('')
   const [progress, setProgress] = useState(0)
   const [stage, setStage] = useState('')
+  const [secs, setSecs] = useState(() => { try { return Number(localStorage.getItem('zm-video-pace')) || 4 } catch { return 4 } })
+  setPace(secs)
   const [scene, setScene] = useState(0)
   const ctrl = useRef(null)
   const [out, setOut] = useState(null)
@@ -71,6 +73,7 @@ export default function VideoMaker() {
   // A looping preview while nothing is recording.
   useEffect(() => {
     if (!assets || !script || busy) return
+    setPace(secs)
     const ctx = canvas.current?.getContext('2d')
     if (!ctx) return
     const len = videoLength(script.slides)
@@ -80,7 +83,7 @@ export default function VideoMaker() {
     id = requestAnimationFrame(step)
     playing.current = id
     return () => cancelAnimationFrame(id)
-  }, [assets, script, busy])
+  }, [assets, script, busy, secs])
 
   const make = async (voice) => {
     if (!assets) return
@@ -143,6 +146,11 @@ export default function VideoMaker() {
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides))} seconds · {script.slides.length} scenes · {bestMime().includes('mp4') ? 'MP4' : 'WebM'}</p>
+            <div className="vx-pace">
+              <span>Each scene stays</span>
+              <div className="vx-tabs">{PACES.map((p) => <button key={p} type="button" disabled={!!busy} className={secs === p ? 'on' : ''} onClick={() => { setSecs(p); try { localStorage.setItem('zm-video-pace', String(p)) } catch { /* ignore */ } }}>{p}s</button>)}</div>
+              <small className="vx-muted">With your voice, each scene waits for you instead.</small>
+            </div>
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Making…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>

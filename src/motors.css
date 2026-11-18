@@ -645,3 +645,6 @@
 .vx-prompter p { font-size: 1.25rem; line-height: 1.45; font-weight: 700; margin: 0; }
 .vx-prompter-buttons { display: grid; grid-template-columns: auto 1fr; gap: 8px; }
 .vx-prompter-end { align-self: center; }
+.vx-pace { display: flex; flex-direction: column; gap: 6px; }
+.vx-pace > span { font-weight: 700; font-size: .9rem; }
+.vx-pace .vx-tabs { align-self: flex-start; }

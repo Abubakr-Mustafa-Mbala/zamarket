@@ -1,6 +1,6 @@
 import { load, qrImage } from './posterKit'
 import { money } from './format'
-import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km } from './vehicle'
+import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts } from './vehicle'
 
 // Short vertical videos made from what is already on the site: a listing's
 // own photos, its name, price and real details, ending on the link and a QR
@@ -23,7 +23,9 @@ export function videoScript(item, kind = 'product', link = '') {
     const facts = [v.year, v.mileage_km && km(v.mileage_km), v.transmission, v.fuel].filter(Boolean)
     const feats = standoutFeatures(v, 4)
     slides.push({ kicker: 'For sale on ZaMarket Motors', line: title, sub: [price, note].filter(Boolean).join(' · '), say: `${title}${v.location ? `, in ${v.location}` : ''}. ${price ? `Asking ${price}${note ? `, ${note.toLowerCase()}` : ''}.` : ''}` })
-    if (facts.length) slides.push({ kicker: 'The basics', line: facts.join(' · '), sub: v.location ? `In ${v.location}` : '', say: `${facts.join(', ')}.` })
+    // The specifications as a clear card, row by row, over a darkened photo.
+    const rows = vehicleFacts(v).filter((f) => f.key !== 'location').slice(0, 8).map((f) => [f.label, String(f.value)])
+    if (rows.length) slides.push({ type: 'specs', kicker: 'Specifications', rows, line: '', sub: '', say: `${facts.join(', ')}${v.engine ? `, ${v.engine} engine` : ''}.` })
     feats.forEach((f, i) => slides.push({ kicker: i === 0 ? 'Highlights' : '', line: f, sub: '', say: i === 0 ? `It comes with ${f.toLowerCase()}.` : `${f}.` }))
     const voice = [
       `${title}${v.location ? `, in ${v.location}` : ''}.`,
@@ -32,7 +34,7 @@ export function videoScript(item, kind = 'product', link = '') {
       feats.length ? `It comes with ${feats.slice(0, 3).join(', ')}.` : '',
       'Photos, details and enquiries on zamarket dot shop. Link in the description.',
     ].filter(Boolean).join(' ')
-    return finish(slides, photos, voice, captionFor(title, price, note, feats, link, ['#ZaMarketMotors', '#CarsForSaleZambia', '#Lusaka']))
+    return { ...finish(slides, photos, voice, captionFor(title, price, note, feats, link, ['#ZaMarketMotors', '#CarsForSaleZambia', '#Lusaka'])), end: { cta: 'Enquire on ZaMarket Motors', foot: 'Ask about it · viewings arranged' } }
   }
   if (kind === 'lunch') {
     const dishes = item.dishList || []
@@ -40,16 +42,18 @@ export function videoScript(item, kind = 'product', link = '') {
     dishes.slice(0, 4).forEach((d, i) => slides.push({ kicker: i === 0 ? 'On the menu' : '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0], say: `${i === 0 ? 'On the menu: ' : ''}${d.name}.` }))
     slides.push({ kicker: 'How it works', line: 'Choose your days once', sub: `Order by ${item.cutoff_hour || 18}:00 the day before`, say: `Choose the full week or just the days you want, and order by ${item.cutoff_hour || 18} hundred hours the day before.` })
     const voice = `Homemade lunch, delivered to your office or your door. ${dishes.slice(0, 3).map((d) => d.name).join(', ')}. Choose the full week or just the days you want, and order by ${item.cutoff_hour || 18} hundred hours the day before. Order on zamarket dot shop.`
-    return finish(slides, [item.cover_url, ...dishes.map((d) => d.images?.[0])].filter(Boolean), voice,
-      captionFor(item.title || item.name, item.from ? `From ${money(item.from, { whole: true })}` : '', '', dishes.slice(0, 4).map((d) => d.name), link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket']))
+    return withEnd({ cta: 'Order your weekly lunch', foot: 'Delivered to your office or door' }, finish(slides, [item.cover_url, ...dishes.map((d) => d.images?.[0])].filter(Boolean), voice,
+      captionFor(item.title || item.name, item.from ? `From ${money(item.from, { whole: true })}` : '', '', dishes.slice(0, 4).map((d) => d.name), link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket'])))
   }
   const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
   const points = (item.benefits || []).filter(Boolean).slice(0, 3)
   slides.push({ kicker: item.vendor_name || 'On ZaMarket', line: item.name, sub: price, say: `${item.name}${item.vendor_name ? ` from ${item.vendor_name}` : ''}.${price ? ` ${price}.` : ''}` })
   points.forEach((p, i) => slides.push({ kicker: i === 0 ? 'Why people love it' : '', line: p, sub: '', say: `${p}.` }))
   const voice = `${item.name}${item.vendor_name ? ` from ${item.vendor_name}` : ''}. ${price ? `${price}. ` : ''}${points.join('. ')}${points.length ? '. ' : ''}Order on zamarket dot shop, delivered in Lusaka.`
-  return finish(slides, photos, voice, captionFor(item.name, price, '', points, link, ['#ZaMarket', '#Lusaka', '#ShopLocal']))
+  return withEnd({ cta: 'See it and order on ZaMarket', foot: 'Delivered in Lusaka' }, finish(slides, photos, voice, captionFor(item.name, price, '', points, link, ['#ZaMarket', '#Lusaka', '#ShopLocal'])))
 }
+
+const withEnd = (end, script) => ({ ...script, end })
 
 function finish(slides, photos, voice, caption) {
   const pics = photos.length ? photos : [null]
@@ -68,8 +72,12 @@ function captionFor(title, price, note, points, link, tags) {
   ].filter(Boolean).join('\n')
 }
 
-const SLIDE = 2.8
-const END = 3.4
+// How long each scene stays on screen (seconds). Chosen in the video maker.
+let SLIDE = 4
+let END = 5
+export const PACES = [3, 4, 5, 6]
+export function setPace(seconds) { SLIDE = Math.min(8, Math.max(2.5, Number(seconds) || 4)); END = Math.max(4, SLIDE + 1) }
+export const pace = () => SLIDE
 
 export const videoLength = (slides) => slides.length * SLIDE + END
 
@@ -84,7 +92,8 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   const img = imgs[i]
   if (img) {
     // Slow push in, alternating direction, so a still photo feels alive.
-    const z = 1.04 + 0.08 * (local / SLIDE)
+    // Photo-only scenes zoom in further, to show the details.
+    const z = s.line || s.kicker || s.type ? 1.04 + 0.08 * (local / SLIDE) : 1.02 + 0.3 * (local / SLIDE)
     const r = Math.max(W / img.width, H / img.height) * z
     const dw = img.width * r; const dh = img.height * r
     const dx = (W - dw) / 2 + (i % 2 ? 1 : -1) * 30 * (local / SLIDE)
@@ -98,8 +107,9 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   ctx.fillStyle = 'rgba(18,11,30,.6)'; roundRect(ctx, 48, 70, bw + 88, 84, 42); ctx.fill()
   ctx.fillStyle = '#c9a6ff'; ctx.fillText('Za', 92, 113)
   ctx.fillStyle = '#fff'; ctx.fillText('Market', 92 + za, 113)
+  if (s.type === 'specs') drawSpecs(ctx, s, local)
   // Words, bottom, rising in.
-  if (s.line || s.kicker) {
+  else if (s.line || s.kicker) {
     const g = ctx.createLinearGradient(0, H * 0.5, 0, H)
     g.addColorStop(0, 'rgba(18,11,30,0)'); g.addColorStop(0.45, 'rgba(18,11,30,.72)'); g.addColorStop(1, 'rgba(18,11,30,.95)')
     ctx.fillStyle = g; ctx.fillRect(0, H * 0.5, W, H * 0.5)
@@ -117,6 +127,39 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   ctx.fillStyle = '#b98cff'; ctx.fillRect(72, H - 90, (W - 144) * (t / (total + END)), 8)
 }
 
+// A specifications card that grows into view, the rows arriving one by one.
+function drawSpecs(ctx, s, local) {
+  ctx.fillStyle = 'rgba(18,11,30,.62)'; ctx.fillRect(0, 0, W, H)
+  const grow = Math.min(1, local / 0.6)
+  const scale = 0.9 + 0.1 * (1 - Math.pow(1 - grow, 3))
+  const rows = s.rows || []
+  const rowH = 118
+  const cardH = 190 + rows.length * rowH
+  const top = Math.max(230, (H - cardH) / 2)
+  ctx.save()
+  ctx.translate(W / 2, top + cardH / 2); ctx.scale(scale, scale); ctx.translate(-W / 2, -(top + cardH / 2))
+  ctx.globalAlpha = grow
+  ctx.fillStyle = 'rgba(27,18,48,.94)'; roundRect(ctx, 56, top, W - 112, cardH, 40); ctx.fill()
+  ctx.strokeStyle = 'rgba(185,140,255,.55)'; ctx.lineWidth = 3; roundRect(ctx, 56, top, W - 112, cardH, 40); ctx.stroke()
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = '#c9a6ff'; ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.fillText((s.kicker || 'Specifications').toUpperCase(), 110, top + 90)
+  rows.forEach(([label, value], i) => {
+    const appear = Math.min(1, Math.max(0, (local - 0.35 - i * 0.22) / 0.3))
+    if (!appear) return
+    const y = top + 190 + i * rowH + rowH / 2 - 20
+    ctx.globalAlpha = grow * appear
+    if (i) { ctx.fillStyle = 'rgba(255,255,255,.1)'; ctx.fillRect(110, y - rowH / 2, W - 220, 2) }
+    ctx.fillStyle = '#c4b8dd'; ctx.font = '600 42px Inter, Arial, sans-serif'; ctx.fillText(label, 110, y)
+    ctx.fillStyle = '#fff'; ctx.font = '800 50px Inter, Arial, sans-serif'
+    ctx.textAlign = 'right'
+    let v = value
+    while (v.length > 3 && ctx.measureText(v).width > W - 220 - 320) v = v.slice(0, -2)
+    ctx.fillText(v === value ? v : `${v.trim()}…`, W - 110, y)
+    ctx.textAlign = 'left'
+  })
+  ctx.restore()
+}
+
 function drawEnd(ctx, t, end) {
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#2a1650'); g.addColorStop(1, '#120b1e')
@@ -125,11 +168,11 @@ function drawEnd(ctx, t, end) {
   ctx.save(); ctx.globalAlpha = a
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillStyle = '#fff'; ctx.font = '900 96px Inter, Arial, sans-serif'; ctx.fillText('ZaMarket', W / 2, 420)
-  ctx.fillStyle = '#c9a6ff'; ctx.font = '700 50px Inter, Arial, sans-serif'; ctx.fillText(end.cta || 'See it and order', W / 2, 540)
+  ctx.fillStyle = '#c9a6ff'; ctx.font = '700 50px Inter, Arial, sans-serif'; ctx.fillText(end.cta || 'See it on ZaMarket', W / 2, 540)
   if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 290, 660, 580, 580, 40); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 250, 700, 500, 500) }
   ctx.fillStyle = '#ffd36b'; ctx.font = '800 54px Inter, Arial, sans-serif'
   wrapText(ctx, end.link || 'zamarket.shop', W - 140).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, 1360 + i * 66))
-  ctx.fillStyle = '#fff'; ctx.font = '600 44px Inter, Arial, sans-serif'; ctx.fillText('Delivered in Lusaka', W / 2, 1530)
+  ctx.fillStyle = '#fff'; ctx.font = '600 44px Inter, Arial, sans-serif'; ctx.fillText(end.foot || 'Delivered in Lusaka', W / 2, 1530)
   ctx.restore(); ctx.textAlign = 'left'
 }
 
@@ -152,7 +195,7 @@ function wrapText(ctx, text, max) {
 export async function prepare(script, link) {
   const imgs = await Promise.all(script.slides.map((s) => (s.photo ? load(s.photo) : Promise.resolve(null))))
   const qr = link ? await qrImage(link, '#120b1e', '#ffffff') : null
-  return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: 'See it and order on ZaMarket' } }
+  return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' } }
 }
 
 // Which recorder this phone can really use. Some phones say they can record
