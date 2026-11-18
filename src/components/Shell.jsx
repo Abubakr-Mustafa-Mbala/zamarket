@@ -1,3 +1,4 @@
+import VideoJobsChip from './VideoJobsChip'
 import { useState, useEffect, useRef, Suspense } from 'react'
 import { NavLink, Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
@@ -251,6 +252,7 @@ export default function Shell({ kind }) {
           )}
         </header>
         <main className="content">
+          {kind === 'staff' && <VideoJobsChip />}
           <ErrorBoundary home={kind === 'vendor' ? '/vendor' : kind === 'reseller' ? '/sell' : '/admin'}>
             <Suspense fallback={<Loading shape="page" />}><Outlet /></Suspense>
           </ErrorBoundary>

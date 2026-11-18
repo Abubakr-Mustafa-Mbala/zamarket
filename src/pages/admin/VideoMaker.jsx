@@ -3,10 +3,11 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
+import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -33,6 +34,10 @@ function tick(high) {
 const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
 
 const shareFile = async (file) => { try { await navigator.share({ files: [file], title: 'ZaMarket video' }) } catch { /* closed */ } }
+// Phones that can build a video frame by frame (fast, and it carries on when
+// you leave the page). Others record in real time, as before.
+const fast = () => typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined'
+const pickAudio = () => ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm', 'audio/ogg;codecs=opus'].find((m) => { try { return MediaRecorder.isTypeSupported(m) } catch { return false } }) || ''
 
 export default function VideoMaker() {
   const toast = useToast()
@@ -49,12 +54,14 @@ export default function VideoMaker() {
   const [count, setCount] = useState(0)
   const [elapsed, setElapsed] = useState(0)
   const ctrl = useRef(null)
-  const [out, setOut] = useState(null)
+  const [videos, setVideos] = useState([])
+  useEffect(() => subscribeVideos(setVideos), [])
+  useEffect(() => { if (!document.hidden) markSeen() }, [videos])
   const canvas = useRef(null)
   const playing = useRef(0)
 
   useEffect(() => {
-    setItems(null); setPick(null); setOut(null)
+    setItems(null); setPick(null)
     if (kind === 'market') {
       Promise.all([
         supabase.from('public_products').select('images,offering_type').eq('status', 'published').order('created_at', { ascending: false }).limit(80),
@@ -108,7 +115,7 @@ export default function VideoMaker() {
     let saved = null
     try { saved = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { saved = null }
     setScenes(Array.isArray(saved) && saved.length ? saved : parts.starter)
-    setOpen(null); setOut(null); setEditing(false)
+    setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
   }, [parts])
@@ -156,26 +163,86 @@ export default function VideoMaker() {
     return () => cancelAnimationFrame(id)
   }, [assets, script, busy, secs, open, motion])
 
+  const spec = () => ({
+    title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion,
+    script: { slides: scenes, end: parts.end, endSay: parts.endSay, caption: parts.caption },
+  })
+
+  // Silent: hand the video to My videos and carry on. It is built in the
+  // background; you can leave this page.
   const make = async (voice) => {
     if (!assets || !script.slides.length) return
+    if (fast()) {
+      if (voice) return recordVoice()
+      await startVideo(spec())
+      toast('Making your video. You can leave this page; it will be in My videos.')
+      return
+    }
+    // Older phones: record in real time, as before.
     setOpen(null); setMotion(motion)
-    setBusy(voice ? 'voice' : 'silent'); setProgress(0); setOut(null); setScene(0)
-    // With your voice you set the pace: Next moves on, Finish ends it.
+    setBusy(voice ? 'voice' : 'silent'); setProgress(0); setScene(0)
     ctrl.current = voice ? voiceController(script.slides.length, setScene) : null
     try {
-      const countdown = voice ? async () => {
-        setStage('Get ready')
-        for (const n of [3, 2, 1]) { setCount(n); tick(false); await sleep(1000) }
-        setCount(0); tick(true)
-      } : null
+      const countdown = voice ? countIn : null
       const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage, controller: ctrl.current, countdown })
-      const name = `${(pick.slug || 'zamarket').slice(0, 40)}.${r.ext}`
-      setOut({ url: URL.createObjectURL(r.blob), ext: r.ext, size: r.blob.size, file: new File([r.blob], name, { type: r.blob.type }), name })
+      await keepVideo({ title: title(pick), slug: pick.slug || pick.id, kind, caption: parts.caption, blob: r.blob })
       toast('Video ready')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
     }
     setBusy(''); setStage(''); setCount(0); ctrl.current = null
+  }
+
+  const countIn = async () => {
+    setStage('Get ready')
+    for (const n of [3, 2, 1]) { setCount(n); tick(false); await sleep(1000) }
+    setCount(0); tick(true)
+  }
+
+  // With your voice: only your voice is recorded live, with the moments you
+  // tap Next. The video is then built around it, quickly, in My videos.
+  const recordVoice = async () => {
+    setOpen(null); setBusy('voice'); setScene(0); setStage('Getting ready…')
+    const marks = [{ i: 0, at: 0 }]
+    let t0 = 0
+    const c = voiceController(script.slides.length, (i) => { setScene(i); marks.push({ i, at: (c.at - t0) / 1000 }) })
+    ctrl.current = c
+    let mic = null; let raf = 0
+    try {
+      mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      setPace(secs); setMotion(motion)
+      const ctx = canvas.current.getContext('2d')
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      drawFrame(ctx, 0.6, script.slides, assets.imgs, assets.end)
+      await countIn()
+      const type = pickAudio()
+      const rec = new MediaRecorder(mic, type ? { mimeType: type, audioBitsPerSecond: 128000 } : undefined)
+      const chunks = []
+      rec.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data) }
+      const stopped = new Promise((ok) => { rec.onstop = ok })
+      await new Promise((ok) => { rec.onstart = ok; rec.start(500) })
+      t0 = performance.now(); c.at = t0
+      setStage('Recording')
+      const done = new Promise((ok) => { const f = c.finish; c.finish = () => { f(); ok() } })
+      const draw = () => {
+        drawFrame(ctx, heldTime(c.i, (performance.now() - c.at) / 1000, script.slides), script.slides, assets.imgs, assets.end)
+        raf = requestAnimationFrame(draw)
+      }
+      raf = requestAnimationFrame(draw)
+      await done
+      const duration = (performance.now() - t0) / 1000
+      cancelAnimationFrame(raf)
+      rec.stop(); await stopped
+      const audio = new Blob(chunks, { type: (rec.mimeType || type || 'audio/webm').split(';')[0] })
+      await startVideo({ ...spec(), audio, marks, duration })
+      toast('Recorded. Your video is being made; you can leave this page.')
+    } catch (e) {
+      toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
+    } finally {
+      cancelAnimationFrame(raf)
+      mic?.getTracks().forEach((t) => t.stop())
+      setBusy(''); setStage(''); setCount(0); ctrl.current = null
+    }
   }
   useEffect(() => {
     if (stage !== 'Recording') return
@@ -191,6 +258,7 @@ export default function VideoMaker() {
       <div className="vx-form-head">
         <div><h1>Video maker</h1><p>Turn a car, a product or a lunch plan into a short vertical video for TikTok, Reels, Facebook and WhatsApp status, made from its own photos and details. No face or camera needed.</p></div>
       </div>
+      {!pick && <MyVideos videos={videos} toast={toast} copy={copy} />}
       <div className="vx-tabs">{KINDS.map(([k, l]) => <button key={k} type="button" className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
 
       {!pick ? (
@@ -236,20 +304,12 @@ export default function VideoMaker() {
           <div className="vx-video-side">
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
-            <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · {bestMime().includes('mp4') ? 'MP4' : 'WebM'}</p>
+            <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · MP4{fast() ? ' · made in seconds, you can leave the page' : ''}</p>
             <div className="vx-video-buttons">
-              <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Making…' : 'Make video'}</button>
+              <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
             </div>
-            {out && (
-              <div className="vx-video-out">
-                <video src={out.url} controls playsInline />
-                <p className="vx-muted tiny">{out.ext.toUpperCase()} · {(out.size / 1048576).toFixed(1)} MB · keep this page open until you have saved it</p>
-                {canShareFile(out.file) && <button type="button" className="vx-btn primary" onClick={() => shareFile(out.file)}>Save or share video</button>}
-                <a className={`vx-btn ${canShareFile(out.file) ? 'outline' : 'primary'}`} href={out.url} download={out.name}>Download video</a>
-                {out.ext === 'webm' && <p className="vx-muted tiny">This browser saves WebM. If TikTok refuses it, open it in CapCut and export, or make it in Chrome on Android, which saves MP4.</p>}
-              </div>
-            )}
+            <MyVideos videos={videos} toast={toast} copy={copy} />
             {!editing ? (
               <section className="vx-card-block vx-change">
                 <h3>Something not right?</h3>
@@ -282,6 +342,47 @@ export default function VideoMaker() {
         </div>
       )}
     </div>
+  )
+}
+
+function MyVideos({ videos, copy }) {
+  if (!videos.length) return null
+  const save = async (v) => {
+    const file = new File([v.blob], `${String(v.slug || 'zamarket').slice(0, 40)}.mp4`, { type: 'video/mp4' })
+    if (canShareFile(file)) return shareFile(file)
+    const a = document.createElement('a'); a.href = v.url; a.download = file.name; a.click()
+  }
+  const when = (t) => new Date(t).toLocaleString('en-ZM', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  return (
+    <section className="vx-card-block vx-myvideos">
+      <h3>My videos</h3>
+      <p className="vx-muted tiny">Kept on this phone. While one is being made you can go to another page; if the phone pauses it, it carries on when you come back.</p>
+      <ul>
+        {videos.map((v) => (
+          <li key={v.id} className={`vx-myvideo is-${v.status}`}>
+            {v.url ? <video src={v.url} controls playsInline preload="metadata" /> : (
+              <div className="vx-myvideo-wait">
+                {v.status === 'failed' ? <b>!</b> : <span className="vx-spin" />}
+                <small>{v.status === 'making' ? `${Math.round((v.progress || 0) * 100)}%` : v.status === 'waiting' ? 'Waiting' : 'Stopped'}</small>
+              </div>
+            )}
+            <div className="vx-myvideo-body">
+              <strong>{v.title}</strong>
+              <small className="vx-muted">{when(v.createdAt)}{v.status === 'ready' && v.size ? ` · ${Math.round(v.seconds || 0) || ''}${v.seconds ? 's · ' : ''}${(v.size / 1048576).toFixed(1)} MB` : ''}</small>
+              {v.status === 'making' && <div className="vx-myvideo-bar"><span style={{ width: `${Math.round((v.progress || 0) * 100)}%` }} /></div>}
+              {v.status === 'waiting' && <small className="vx-muted">Starts in a moment. Paused while the phone is locked.</small>}
+              {v.status === 'failed' && <small className="vx-myvideo-error">It did not finish: {v.error || 'unknown problem'}</small>}
+              <div className="vx-myvideo-actions">
+                {v.status === 'ready' && <button type="button" className="vx-btn primary" onClick={() => save(v)}>Save or share</button>}
+                {v.status === 'ready' && v.caption && <button type="button" className="vx-btn outline" onClick={() => copy(v.caption, 'Caption')}>Copy caption</button>}
+                {v.status === 'failed' && v.spec && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
+                {v.status !== 'making' && <button type="button" className="vx-btn ghost" onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

@@ -218,12 +218,23 @@ function drawCollage(ctx, imgs, s, local) {
 }
 
 // The whole photo, uncropped and still, over a soft darkened copy of itself.
+// The blurred backdrop is made once per photo (small, then stretched), not on
+// every frame: blurring a full frame 30 times a second is slow on a phone.
+const backdrops = new WeakMap()
+function backdrop(img) {
+  let c = backdrops.get(img)
+  if (c) return c
+  c = document.createElement('canvas'); c.width = W / 4; c.height = H / 4
+  const x = c.getContext('2d')
+  const r = Math.max(c.width / img.width, c.height / img.height) * 1.1
+  try { x.filter = 'blur(9px)' } catch { /* no filters */ }
+  x.drawImage(img, (c.width - img.width * r) / 2, (c.height - img.height * r) / 2, img.width * r, img.height * r)
+  backdrops.set(img, c)
+  return c
+}
+
 function drawWhole(ctx, img, s) {
-  const r = Math.max(W / img.width, H / img.height) * 1.1
-  ctx.save()
-  try { ctx.filter = 'blur(36px)' } catch { /* no filters */ }
-  ctx.drawImage(img, (W - img.width * r) / 2, (H - img.height * r) / 2, img.width * r, img.height * r)
-  ctx.restore()
+  ctx.drawImage(backdrop(img), 0, 0, W, H)
   ctx.fillStyle = 'rgba(18,11,30,.55)'; ctx.fillRect(0, 0, W, H)
   const words = s.line || s.kicker || s.type
   const top = 200; const bottom = words ? H - 600 : H - 200

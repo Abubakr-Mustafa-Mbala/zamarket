@@ -6,7 +6,7 @@
 // Loaded only when a video is finished, so pages stay light.
 let aacReady = null
 
-async function tools() {
+export async function tools() {
   const mb = await import('mediabunny')
   if (!aacReady) {
     aacReady = (async () => {

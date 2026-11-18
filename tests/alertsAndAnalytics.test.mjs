@@ -75,7 +75,7 @@ test('video maker checks the recording plays before offering it, and falls back 
   assert.match(s, /await playable\(blob\)/)
   assert.match(s, /video\/webm;codecs=vp8/)
   assert.match(s, /w: 720, h: 1280/)
-  assert.match(read('src/pages/admin/VideoMaker.jsx'), /Save or share video/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /Save or share/)
 })
 
 test('recording with your voice waits for you: each scene holds until Next, and only Finish ends it', async () => {
@@ -145,4 +145,18 @@ test('video maker: every video is finished as a real MP4 before saving or sharin
   assert.match(s, /const done = await finishVideo\(blob\)/)
   // Loaded only when needed, never in the main bundle.
   assert.match(f, /await import\('mediabunny'\)/)
+})
+
+test('video maker: built frame by frame in the background, kept in My videos', () => {
+  const r = read('src/lib/videoRender.js')
+  const j = read('src/lib/videoJobs.js')
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(r, /new mb\.CanvasSource\(canvas, \{ codec: 'avc'/)
+  assert.match(r, /new mb\.AudioBufferSource\(\{ codec: 'aac'/)
+  assert.match(r, /fastStart: 'in-memory'/)
+  assert.match(j, /indexedDB\.open/)
+  assert.match(j, /visibilitychange/)
+  assert.match(j, /wakeLock/)
+  assert.match(ui, /await startVideo\(\{ \.\.\.spec\(\), audio, marks, duration \}\)/)
+  assert.match(read('src/components/Shell.jsx'), /<VideoJobsChip \/>/)
 })

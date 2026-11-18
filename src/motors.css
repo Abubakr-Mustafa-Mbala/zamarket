@@ -703,3 +703,16 @@
 .vx-video-work.studio .vx-prompter-buttons .vx-btn.big { min-height: 64px; font-size: 1.15rem; }
 .vx-video-topic { position: absolute; margin: 8px; padding: 3px 9px; border-radius: 999px; background: rgba(18,11,30,.75); color: #fff; font-size: .72rem; font-weight: 800; }
 .vx-video-pick button { position: relative; }
+/* My videos */
+.vx-myvideos ul { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.vx-myvideo { display: grid; grid-template-columns: 96px 1fr; gap: 12px; align-items: start; }
+.vx-myvideo video, .vx-myvideo-wait { width: 96px; aspect-ratio: 9 / 16; border-radius: 12px; background: #120b1e; object-fit: cover; }
+.vx-myvideo-wait { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #fff; }
+.vx-myvideo-wait b { font-size: 1.6rem; color: #f87171; }
+.vx-spin { width: 24px; height: 24px; border-radius: 50%; border: 3px solid rgba(255,255,255,.25); border-top-color: #fff; animation: video-chip-spin .8s linear infinite; }
+.vx-myvideo-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.vx-myvideo-body strong { overflow-wrap: anywhere; }
+.vx-myvideo-bar { height: 8px; border-radius: 99px; background: var(--vx-line, rgba(0,0,0,.1)); overflow: hidden; }
+.vx-myvideo-bar span { display: block; height: 100%; background: var(--vx-accent); transition: width .25s; }
+.vx-myvideo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.vx-myvideo-error { color: #dc2626; }
