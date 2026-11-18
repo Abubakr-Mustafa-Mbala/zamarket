@@ -77,3 +77,14 @@ test('video maker checks the recording plays before offering it, and falls back 
   assert.match(s, /w: 720, h: 1280/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /Save or share video/)
 })
+
+test('recording with your voice waits for you: each scene holds until Next, and only Finish ends it', async () => {
+  const { heldTime } = await import('../src/lib/listingVideo.js').catch(() => ({}))
+  const s = read('src/lib/listingVideo.js')
+  assert.match(s, /until: \(\) => controller\.done/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /Finish recording/)
+  if (!heldTime) return
+  const slides = [{}, {}, {}]
+  assert.ok(heldTime(0, 60, slides) < 2.8, 'a long-held scene never runs into the next')
+  assert.ok(heldTime(1, 0, slides) >= 2.8)
+})

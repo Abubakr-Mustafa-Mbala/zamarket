@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoScript, prepare, drawFrame, recordVideo, videoLength, bestMime, W, H } from '../../lib/listingVideo'
+import { videoScript, prepare, drawFrame, recordVideo, videoLength, bestMime, voiceController, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
@@ -30,6 +30,8 @@ export default function VideoMaker() {
   const [busy, setBusy] = useState('')
   const [progress, setProgress] = useState(0)
   const [stage, setStage] = useState('')
+  const [scene, setScene] = useState(0)
+  const ctrl = useRef(null)
   const [out, setOut] = useState(null)
   const canvas = useRef(null)
   const playing = useRef(0)
@@ -82,16 +84,18 @@ export default function VideoMaker() {
 
   const make = async (voice) => {
     if (!assets) return
-    setBusy(voice ? 'voice' : 'silent'); setProgress(0); setOut(null)
+    setBusy(voice ? 'voice' : 'silent'); setProgress(0); setOut(null); setScene(0)
+    // With your voice you set the pace: Next moves on, Finish ends it.
+    ctrl.current = voice ? voiceController(script.slides.length, setScene) : null
     try {
-      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage })
+      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage, controller: ctrl.current })
       const name = `${(pick.slug || 'zamarket').slice(0, 40)}.${r.ext}`
       setOut({ url: URL.createObjectURL(r.blob), ext: r.ext, size: r.blob.size, file: new File([r.blob], name, { type: r.blob.type }), name })
       toast('Video ready')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
     }
-    setBusy(''); setStage('')
+    setBusy(''); setStage(''); ctrl.current = null
   }
   const copy = async (text, what) => { try { await navigator.clipboard.writeText(text); toast(`${what} copied`) } catch { toast('Copy did not work here', true) } }
   const title = (p) => (kind === 'vehicle' ? vehicleTitle(vehicleOf(p), p.name) : p.name)
@@ -120,15 +124,28 @@ export default function VideoMaker() {
           <div className="vx-video-stage">
             <canvas ref={canvas} width={W} height={H} />
             {!assets && <div className="vx-video-wait"><Loading /></div>}
-            {busy && <div className="vx-video-rec"><span>{stage === 'Recording' ? `● Recording ${Math.round(progress * 100)}%` : stage || 'Getting ready…'}</span></div>}
+            {busy && <div className="vx-video-rec"><span>{stage === 'Recording' ? (busy === 'voice' ? '● Recording' : `● Recording ${Math.round(progress * 100)}%`) : stage || 'Getting ready…'}</span></div>}
           </div>
+          {busy === 'voice' && stage === 'Recording' && ctrl.current && (
+            <div className="vx-prompter">
+              <small>Scene {Math.min(scene + 1, script.slides.length + 1)} of {script.slides.length + 1} · take your time, it waits for you</small>
+              <p>{scene < script.slides.length ? (script.slides[scene].say || 'Say anything about this photo, or tap Next.') : script.endSay}</p>
+              <div className="vx-prompter-buttons">
+                <button type="button" className="vx-btn ghost" disabled={scene === 0} onClick={() => ctrl.current?.back()}>Back</button>
+                {scene < script.slides.length
+                  ? <button type="button" className="vx-btn primary big" onClick={() => ctrl.current?.next()}>Next scene</button>
+                  : <button type="button" className="vx-btn primary big" onClick={() => ctrl.current?.finish()}>Finish recording</button>}
+              </div>
+              {scene < script.slides.length && <button type="button" className="vx-btn ghost vx-prompter-end" onClick={() => ctrl.current?.finish()}>Finish now</button>}
+            </div>
+          )}
           <div className="vx-video-side">
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides))} seconds · {script.slides.length} scenes · {bestMime().includes('mp4') ? 'MP4' : 'WebM'}</p>
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Making…' : 'Make video'}</button>
-              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Talk now…' : 'Make it with my voice'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
             </div>
             {out && (
               <div className="vx-video-out">

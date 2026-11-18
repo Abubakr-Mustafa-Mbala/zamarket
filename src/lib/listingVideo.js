@@ -22,9 +22,9 @@ export function videoScript(item, kind = 'product', link = '') {
     const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
     const facts = [v.year, v.mileage_km && km(v.mileage_km), v.transmission, v.fuel].filter(Boolean)
     const feats = standoutFeatures(v, 4)
-    slides.push({ kicker: 'For sale on ZaMarket Motors', line: title, sub: [price, note].filter(Boolean).join(' · ') })
-    if (facts.length) slides.push({ kicker: 'The basics', line: facts.join(' · '), sub: v.location ? `In ${v.location}` : '' })
-    feats.forEach((f, i) => slides.push({ kicker: i === 0 ? 'Highlights' : '', line: f, sub: '' }))
+    slides.push({ kicker: 'For sale on ZaMarket Motors', line: title, sub: [price, note].filter(Boolean).join(' · '), say: `${title}${v.location ? `, in ${v.location}` : ''}. ${price ? `Asking ${price}${note ? `, ${note.toLowerCase()}` : ''}.` : ''}` })
+    if (facts.length) slides.push({ kicker: 'The basics', line: facts.join(' · '), sub: v.location ? `In ${v.location}` : '', say: `${facts.join(', ')}.` })
+    feats.forEach((f, i) => slides.push({ kicker: i === 0 ? 'Highlights' : '', line: f, sub: '', say: i === 0 ? `It comes with ${f.toLowerCase()}.` : `${f}.` }))
     const voice = [
       `${title}${v.location ? `, in ${v.location}` : ''}.`,
       price ? `Asking ${price}${note ? `, ${note.toLowerCase()}` : ''}.` : '',
@@ -36,17 +36,17 @@ export function videoScript(item, kind = 'product', link = '') {
   }
   if (kind === 'lunch') {
     const dishes = item.dishList || []
-    slides.push({ kicker: item.vendor_name || 'Weekly lunch', line: item.title || item.name, sub: item.from ? `From ${money(item.from, { whole: true })} a lunch` : '' })
-    dishes.slice(0, 4).forEach((d, i) => slides.push({ kicker: i === 0 ? 'On the menu' : '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0] }))
-    slides.push({ kicker: 'How it works', line: 'Choose your days once', sub: `Order by ${item.cutoff_hour || 18}:00 the day before` })
+    slides.push({ kicker: item.vendor_name || 'Weekly lunch', line: item.title || item.name, sub: item.from ? `From ${money(item.from, { whole: true })} a lunch` : '', say: 'Homemade lunch, delivered to your office or your door.' })
+    dishes.slice(0, 4).forEach((d, i) => slides.push({ kicker: i === 0 ? 'On the menu' : '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0], say: `${i === 0 ? 'On the menu: ' : ''}${d.name}.` }))
+    slides.push({ kicker: 'How it works', line: 'Choose your days once', sub: `Order by ${item.cutoff_hour || 18}:00 the day before`, say: `Choose the full week or just the days you want, and order by ${item.cutoff_hour || 18} hundred hours the day before.` })
     const voice = `Homemade lunch, delivered to your office or your door. ${dishes.slice(0, 3).map((d) => d.name).join(', ')}. Choose the full week or just the days you want, and order by ${item.cutoff_hour || 18} hundred hours the day before. Order on zamarket dot shop.`
     return finish(slides, [item.cover_url, ...dishes.map((d) => d.images?.[0])].filter(Boolean), voice,
       captionFor(item.title || item.name, item.from ? `From ${money(item.from, { whole: true })}` : '', '', dishes.slice(0, 4).map((d) => d.name), link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket']))
   }
   const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
   const points = (item.benefits || []).filter(Boolean).slice(0, 3)
-  slides.push({ kicker: item.vendor_name || 'On ZaMarket', line: item.name, sub: price })
-  points.forEach((p, i) => slides.push({ kicker: i === 0 ? 'Why people love it' : '', line: p, sub: '' }))
+  slides.push({ kicker: item.vendor_name || 'On ZaMarket', line: item.name, sub: price, say: `${item.name}${item.vendor_name ? ` from ${item.vendor_name}` : ''}.${price ? ` ${price}.` : ''}` })
+  points.forEach((p, i) => slides.push({ kicker: i === 0 ? 'Why people love it' : '', line: p, sub: '', say: `${p}.` }))
   const voice = `${item.name}${item.vendor_name ? ` from ${item.vendor_name}` : ''}. ${price ? `${price}. ` : ''}${points.join('. ')}${points.length ? '. ' : ''}Order on zamarket dot shop, delivered in Lusaka.`
   return finish(slides, photos, voice, captionFor(item.name, price, '', points, link, ['#ZaMarket', '#Lusaka', '#ShopLocal']))
 }
@@ -55,8 +55,8 @@ function finish(slides, photos, voice, caption) {
   const pics = photos.length ? photos : [null]
   const out = slides.map((s, i) => ({ ...s, photo: s.photo || pics[i % pics.length] }))
   // Show every photo at least once: extra photos get a slide of their own.
-  for (let i = out.length; i < Math.min(pics.length, 8); i++) out.push({ kicker: '', line: '', sub: '', photo: pics[i] })
-  return { slides: out.slice(0, 9), voice, caption }
+  for (let i = out.length; i < Math.min(pics.length, 8); i++) out.push({ kicker: '', line: '', sub: '', photo: pics[i], say: '' })
+  return { slides: out.slice(0, 9), voice, caption, endSay: 'See the photos, details and price on zamarket dot shop. The link is in the description.' }
 }
 
 function captionFor(title, price, note, points, link, tags) {
@@ -192,7 +192,7 @@ export function playable(blob, timeout = 5000) {
 }
 
 // Records `seconds` of drawing into a canvas of the given size.
-function capture(cfg, seconds, paint, { audio = null, onProgress } = {}) {
+function capture(cfg, seconds, paint, { audio = null, onProgress, until = null } = {}) {
   return new Promise((resolve, reject) => {
     const c = document.createElement('canvas')
     c.width = cfg.w; c.height = cfg.h
@@ -212,9 +212,9 @@ function capture(cfg, seconds, paint, { audio = null, onProgress } = {}) {
     const step = () => {
       const t = (performance.now() - start) / 1000
       ctx.setTransform(scale, 0, 0, scale, 0, 0)
-      paint(ctx, Math.min(t, seconds), c)
-      onProgress?.(Math.min(1, t / seconds))
-      if (t < seconds) requestAnimationFrame(step)
+      paint(ctx, until ? t : Math.min(t, seconds), c)
+      if (!until) onProgress?.(Math.min(1, t / seconds))
+      if (until ? !until() : t < seconds) requestAnimationFrame(step)
       else setTimeout(() => { try { rec.requestData?.() } catch { /* ignore */ } rec.stop() }, 150)
     }
     requestAnimationFrame(step)
@@ -241,7 +241,28 @@ async function pickRecorder(probePaint) {
 // Records the video in real time (the length of the video), showing it on
 // the preview canvas as it goes. With voice on, the microphone is recorded
 // at the same time, so you can talk over it.
-export async function recordVideo(preview, script, assets, { voice = false, onProgress, onStage } = {}) {
+// With voice, you set the pace: each scene stays on screen until you tap
+// Next, and the recording ends only when you tap Finish. A scene keeps a
+// slow, gentle zoom however long you talk over it.
+export function voiceController(scenes, onScene) {
+  const c = { i: 0, at: 0, done: false, scenes }
+  c.next = () => { if (c.i < scenes) { c.i += 1; c.at = performance.now(); onScene?.(c.i) } }
+  c.back = () => { if (c.i > 0) { c.i -= 1; c.at = performance.now(); onScene?.(c.i) } }
+  c.finish = () => { c.done = true }
+  return c
+}
+
+// Time on the video's timeline for a scene held open for `held` seconds:
+// moves quickly through the entrance, then slows right down, never stopping
+// dead and never running into the next scene.
+export function heldTime(scene, held, slides) {
+  const total = slides.length * SLIDE
+  if (scene >= slides.length) return total + Math.min(held, END - 0.05)
+  const local = (SLIDE - 0.05) * (1 - Math.exp(-held / (SLIDE * 1.2)))
+  return scene * SLIDE + local
+}
+
+export async function recordVideo(preview, script, assets, { voice = false, onProgress, onStage, controller = null } = {}) {
   if (typeof MediaRecorder === 'undefined') throw new Error('This browser cannot record video. Use Chrome on your phone or computer.')
   const pctx = preview.getContext('2d')
   const show = (c) => { pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.drawImage(c, 0, 0, preview.width, preview.height) }
@@ -254,7 +275,16 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
   onStage?.('Recording')
   let blob
   try {
-    blob = await capture(cfg, length, (ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) }, { audio: mic, onProgress })
+    if (controller) {
+      controller.at = performance.now()
+      blob = await capture(cfg, 0, (ctx, _t, c) => {
+        const held = (performance.now() - controller.at) / 1000
+        drawFrame(ctx, heldTime(controller.i, held, script.slides), script.slides, assets.imgs, assets.end)
+        show(c)
+      }, { audio: mic, until: () => controller.done })
+    } else {
+      blob = await capture(cfg, length, (ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) }, { audio: mic, onProgress })
+    }
   } finally {
     mic?.getTracks().forEach((t) => t.stop())
   }
