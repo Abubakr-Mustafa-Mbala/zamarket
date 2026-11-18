@@ -69,3 +69,11 @@ test('navigation shows where you are, and Motors is one tap away', () => {
   assert.match(s, /aria-current=\{on \? 'page' : undefined\}/)
   assert.ok(!/className=\{`journal-nav/.test(s))
 })
+
+test('video maker checks the recording plays before offering it, and falls back to another format', () => {
+  const s = read('src/lib/listingVideo.js')
+  assert.match(s, /await playable\(blob\)/)
+  assert.match(s, /video\/webm;codecs=vp8/)
+  assert.match(s, /w: 720, h: 1280/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /Save or share video/)
+})

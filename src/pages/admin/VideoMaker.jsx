@@ -15,6 +15,11 @@ import '../../motors.css'
 // CapCut) or talk over it while it records, reading the script shown.
 const KINDS = [['vehicle', 'Cars'], ['product', 'Products'], ['lunch', 'Lunch plans']]
 
+// On phones, the share sheet is the reliable way to keep a video: it offers
+// "Save to gallery"/Files, TikTok, WhatsApp and Facebook directly.
+const canShareFile = (file) => { try { return !!file && !!navigator.canShare?.({ files: [file] }) } catch { return false } }
+const shareFile = async (file) => { try { await navigator.share({ files: [file], title: 'ZaMarket video' }) } catch { /* closed */ } }
+
 export default function VideoMaker() {
   const toast = useToast()
   const { profile } = useAuth()
@@ -24,6 +29,7 @@ export default function VideoMaker() {
   const [assets, setAssets] = useState(null)
   const [busy, setBusy] = useState('')
   const [progress, setProgress] = useState(0)
+  const [stage, setStage] = useState('')
   const [out, setOut] = useState(null)
   const canvas = useRef(null)
   const playing = useRef(0)
@@ -78,17 +84,17 @@ export default function VideoMaker() {
     if (!assets) return
     setBusy(voice ? 'voice' : 'silent'); setProgress(0); setOut(null)
     try {
-      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress })
-      setOut({ url: URL.createObjectURL(r.blob), ext: r.ext, size: r.blob.size })
+      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage })
+      const name = `${(pick.slug || 'zamarket').slice(0, 40)}.${r.ext}`
+      setOut({ url: URL.createObjectURL(r.blob), ext: r.ext, size: r.blob.size, file: new File([r.blob], name, { type: r.blob.type }), name })
       toast('Video ready')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
     }
-    setBusy('')
+    setBusy(''); setStage('')
   }
   const copy = async (text, what) => { try { await navigator.clipboard.writeText(text); toast(`${what} copied`) } catch { toast('Copy did not work here', true) } }
   const title = (p) => (kind === 'vehicle' ? vehicleTitle(vehicleOf(p), p.name) : p.name)
-  const fileName = pick ? `${(pick.slug || 'zamarket').slice(0, 40)}.${out?.ext || 'mp4'}` : 'zamarket.mp4'
 
   return (
     <div className="vx vx-form vx-video">
@@ -114,7 +120,7 @@ export default function VideoMaker() {
           <div className="vx-video-stage">
             <canvas ref={canvas} width={W} height={H} />
             {!assets && <div className="vx-video-wait"><Loading /></div>}
-            {busy && <div className="vx-video-rec"><span>● Recording {Math.round(progress * 100)}%</span></div>}
+            {busy && <div className="vx-video-rec"><span>{stage === 'Recording' ? `● Recording ${Math.round(progress * 100)}%` : stage || 'Getting ready…'}</span></div>}
           </div>
           <div className="vx-video-side">
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
@@ -127,7 +133,9 @@ export default function VideoMaker() {
             {out && (
               <div className="vx-video-out">
                 <video src={out.url} controls playsInline />
-                <a className="vx-btn primary" href={out.url} download={fileName}>Download video</a>
+                <p className="vx-muted tiny">{out.ext.toUpperCase()} · {(out.size / 1048576).toFixed(1)} MB · keep this page open until you have saved it</p>
+                {canShareFile(out.file) && <button type="button" className="vx-btn primary" onClick={() => shareFile(out.file)}>Save or share video</button>}
+                <a className={`vx-btn ${canShareFile(out.file) ? 'outline' : 'primary'}`} href={out.url} download={out.name}>Download video</a>
                 {out.ext === 'webm' && <p className="vx-muted tiny">This browser saves WebM. If TikTok refuses it, open it in CapCut and export, or make it in Chrome on Android, which saves MP4.</p>}
               </div>
             )}

@@ -155,41 +155,113 @@ export async function prepare(script, link) {
   return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: 'See it and order on ZaMarket' } }
 }
 
+// Which recorder this phone can really use. Some phones say they can record
+// MP4 but hand back an empty or broken file, especially at full 1080×1920
+// in portrait. So each option is tried for about a second and the result is
+// checked (it must have data and play) before the real recording starts.
+// The first one that works is remembered on this device.
+const CANDIDATES = [
+  { mime: 'video/mp4;codecs=avc1.42E01F', w: 720, h: 1280 },
+  { mime: 'video/mp4;codecs=avc1', w: 720, h: 1280 },
+  { mime: 'video/webm;codecs=vp8', w: 720, h: 1280 },
+  { mime: 'video/webm;codecs=vp9', w: 720, h: 1280 },
+  { mime: 'video/webm', w: 720, h: 1280 },
+  { mime: 'video/mp4', w: 720, h: 1280 },
+]
+const REMEMBER = 'zm-video-recorder-v2'
+const supported = (m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)
+
 export function bestMime() {
-  const opts = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
-  return opts.find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)) || ''
+  try { const r = JSON.parse(localStorage.getItem(REMEMBER) || 'null'); if (r?.mime && supported(r.mime)) return r.mime } catch { /* ignore */ }
+  return CANDIDATES.find((c) => supported(c.mime))?.mime || ''
 }
 
-// Records the video in real time (the length of the video). With voice on,
-// the microphone is recorded at the same time, so you can talk over it.
-export async function recordVideo(canvas, script, assets, { voice = false, onProgress } = {}) {
-  const ctx = canvas.getContext('2d')
-  const mime = bestMime()
-  if (!mime || !canvas.captureStream) throw new Error('This browser cannot record video. Try Chrome on Android or a computer.')
-  const stream = canvas.captureStream(30)
-  let mic = null
-  if (voice) {
-    mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-    mic.getAudioTracks().forEach((t) => stream.addTrack(t))
-  }
-  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6_000_000 })
-  const chunks = []
-  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
-  const length = videoLength(script.slides)
-  const done = new Promise((res) => { rec.onstop = res })
-  rec.start(250)
-  const start = performance.now()
-  await new Promise((resolve) => {
+// True when the file has data and a video element can open it.
+export function playable(blob, timeout = 5000) {
+  return new Promise((res) => {
+    if (!blob || blob.size < 1500) return res(false)
+    const v = document.createElement('video')
+    const url = URL.createObjectURL(blob)
+    const end = (ok) => { clearTimeout(t); v.removeAttribute('src'); v.load?.(); URL.revokeObjectURL(url); res(ok) }
+    const t = setTimeout(() => end(false), timeout)
+    v.muted = true; v.preload = 'metadata'
+    v.onloadedmetadata = () => end(v.videoWidth > 0 || v.duration > 0)
+    v.onerror = () => end(false)
+    v.src = url
+  })
+}
+
+// Records `seconds` of drawing into a canvas of the given size.
+function capture(cfg, seconds, paint, { audio = null, onProgress } = {}) {
+  return new Promise((resolve, reject) => {
+    const c = document.createElement('canvas')
+    c.width = cfg.w; c.height = cfg.h
+    const ctx = c.getContext('2d')
+    if (!c.captureStream) return reject(new Error('This browser cannot record video. Use Chrome.'))
+    const stream = c.captureStream(30)
+    audio?.getAudioTracks().forEach((tr) => stream.addTrack(tr))
+    let rec
+    try { rec = new MediaRecorder(stream, { mimeType: cfg.mime, videoBitsPerSecond: 4_000_000 }) } catch (e) { return reject(e) }
+    const chunks = []
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data) }
+    rec.onerror = (e) => reject(e.error || new Error('The recorder stopped'))
+    rec.onstop = () => { stream.getVideoTracks().forEach((tr) => tr.stop()); resolve(new Blob(chunks, { type: cfg.mime.split(';')[0] })) }
+    const scale = cfg.w / W
+    rec.start(500)
+    const start = performance.now()
     const step = () => {
       const t = (performance.now() - start) / 1000
-      drawFrame(ctx, Math.min(t, length), script.slides, assets.imgs, assets.end)
-      onProgress?.(Math.min(1, t / length))
-      if (t < length) requestAnimationFrame(step); else resolve()
+      ctx.setTransform(scale, 0, 0, scale, 0, 0)
+      paint(ctx, Math.min(t, seconds), c)
+      onProgress?.(Math.min(1, t / seconds))
+      if (t < seconds) requestAnimationFrame(step)
+      else setTimeout(() => { try { rec.requestData?.() } catch { /* ignore */ } rec.stop() }, 150)
     }
     requestAnimationFrame(step)
   })
-  rec.stop()
-  await done
-  mic?.getTracks().forEach((t) => t.stop())
-  return { blob: new Blob(chunks, { type: mime.split(';')[0] }), ext: mime.includes('mp4') ? 'mp4' : 'webm' }
+}
+
+async function pickRecorder(probePaint) {
+  try {
+    const r = JSON.parse(localStorage.getItem(REMEMBER) || 'null')
+    if (r?.mime && supported(r.mime)) return r
+  } catch { /* ignore */ }
+  for (const cfg of CANDIDATES.filter((c) => supported(c.mime))) {
+    try {
+      const blob = await capture(cfg, 1.2, probePaint)
+      if (await playable(blob)) {
+        try { localStorage.setItem(REMEMBER, JSON.stringify(cfg)) } catch { /* ignore */ }
+        return cfg
+      }
+    } catch { /* try the next one */ }
+  }
+  return null
+}
+
+// Records the video in real time (the length of the video), showing it on
+// the preview canvas as it goes. With voice on, the microphone is recorded
+// at the same time, so you can talk over it.
+export async function recordVideo(preview, script, assets, { voice = false, onProgress, onStage } = {}) {
+  if (typeof MediaRecorder === 'undefined') throw new Error('This browser cannot record video. Use Chrome on your phone or computer.')
+  const pctx = preview.getContext('2d')
+  const show = (c) => { pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.drawImage(c, 0, 0, preview.width, preview.height) }
+  onStage?.('Getting ready…')
+  const cfg = await pickRecorder((ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) })
+  if (!cfg) throw new Error('This phone could not record a working video. Try Chrome, or make it on a computer.')
+  let mic = null
+  if (voice) mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+  const length = videoLength(script.slides)
+  onStage?.('Recording')
+  let blob
+  try {
+    blob = await capture(cfg, length, (ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) }, { audio: mic, onProgress })
+  } finally {
+    mic?.getTracks().forEach((t) => t.stop())
+  }
+  onStage?.('Checking the video…')
+  if (!(await playable(blob, 8000))) {
+    try { localStorage.removeItem(REMEMBER) } catch { /* ignore */ }
+    throw new Error('The video did not come out right. Tap Make video again; it will try another way.')
+  }
+  return { blob, ext: cfg.mime.includes('mp4') ? 'mp4' : 'webm', width: cfg.w, height: cfg.h }
 }
