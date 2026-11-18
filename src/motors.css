@@ -685,3 +685,21 @@
 .vx-scene-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .vx-change h3 { margin: 0 0 4px; }
 .vx-change .vx-btn { margin-top: 8px; }
+/* Recording studio: big countdown, live REC badge, a prompter made for reading */
+.vx-video-rec.live { animation: vx-rec 1.2s ease-in-out infinite; }
+@keyframes vx-rec { 50% { opacity: .55; } }
+.vx-countdown { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; background: rgba(10,6,20,.55); color: #fff; z-index: 3; }
+.vx-countdown b { font-size: 7rem; line-height: 1; font-weight: 900; animation: vx-count 1s ease-out both; }
+.vx-countdown small { font-weight: 700; letter-spacing: .04em; }
+@keyframes vx-count { from { transform: scale(1.6); opacity: 0; } 30% { transform: scale(1); opacity: 1; } to { transform: scale(.9); opacity: .85; } }
+.vx-video-work.studio .vx-video-stage { position: fixed; z-index: 80; top: 8px; left: 50%; transform: translateX(-50%); width: auto; height: 34vh; margin: 0; }
+.vx-video-work.studio .vx-video-side { visibility: hidden; }
+.vx-video-work.studio .vx-prompter { position: fixed; z-index: 80; left: 0; right: 0; bottom: 0; top: calc(34vh + 16px); border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom)); background: #0d0817; border: 0; border-top: 2px solid var(--vx-accent); overflow-y: auto; gap: 14px; }
+.vx-video-work.studio::before { content: ''; position: fixed; inset: 0; z-index: 79; background: #0d0817; }
+.vx-prompter-top { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.vx-prompter .vx-prompter-now { font-size: clamp(1.55rem, 6.4vw, 2.2rem); line-height: 1.42; font-weight: 800; color: #fff; flex: 1; }
+.vx-prompter-next { margin: 0; font-size: 1rem; line-height: 1.4; color: rgba(255,255,255,.5); }
+.vx-prompter-next span { display: block; font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; font-weight: 800; color: var(--vx-accent); margin-bottom: 2px; }
+.vx-video-work.studio .vx-prompter-buttons .vx-btn.big { min-height: 64px; font-size: 1.15rem; }
+.vx-video-topic { position: absolute; margin: 8px; padding: 3px 9px; border-radius: 999px; background: rgba(18,11,30,.75); color: #fff; font-size: .72rem; font-weight: 800; }
+.vx-video-pick button { position: relative; }

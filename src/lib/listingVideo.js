@@ -13,6 +13,7 @@ export const H = 1920
 // The story of a listing, as slides: [{ photo, kicker, line, sub }].
 export function videoScript(item, kind = 'product', link = '') {
   if (!item) return { slides: [], voice: '', caption: '' }
+  if (kind === 'market') return marketScript(item, link)
   const photos = (item.images || []).filter(Boolean)
   const slides = []
   if (kind === 'vehicle') {
@@ -54,6 +55,56 @@ export function videoScript(item, kind = 'product', link = '') {
 }
 
 const withEnd = (end, script) => ({ ...script, end })
+
+// ---- Videos about ZaMarket itself ------------------------------------------
+// For shoppers, for recruiting affiliates, for recruiting sellers. Made from
+// photos already on the site; every line is something the site really does
+// (the affiliate lines follow the affiliate page word for word in meaning).
+export const MARKET_TOPICS = [
+  ['shoppers', 'ZaMarket for shoppers', 'Show people what they can find and order', 'https://zamarket.shop'],
+  ['affiliates', 'Recruit affiliates', 'Who can join, how they earn, how to apply', 'https://zamarket.shop/affiliates'],
+  ['sellers', 'Recruit sellers', 'Why a business should sell on ZaMarket', 'https://zamarket.shop/apply/vendor'],
+]
+
+function marketScript(item, link) {
+  const cars = item.cars || []; const products = item.products || []; const lunch = item.lunch || []
+  const pool = [...new Set([...products, ...cars, ...lunch])]
+  const at = (list, i) => list[i] || pool[i % Math.max(1, pool.length)] || null
+  const grid = (list, from = 0) => { const g = [...list.slice(from), ...pool].filter(Boolean); return [...new Set(g)].slice(0, 4) }
+  const mix = [...new Set([products[0], cars[0], lunch[0], products[1], cars[1], products[2]].filter(Boolean))].slice(0, 4)
+  const slides = []
+  let end; let caption; let endSay
+  if (item.topic === 'affiliates') {
+    slides.push({ type: 'collage', photos: mix.length ? mix : grid(pool), kicker: 'Affiliate programme', line: 'Earn with ZaMarket', sub: 'zamarket.shop/affiliates', say: 'Want to earn by sharing products online? This is the ZaMarket affiliate programme.' })
+    slides.push({ type: 'collage', photos: grid(products), kicker: 'What you share', line: 'Real products from local sellers', say: 'You promote real products and cars from the ZaMarket marketplace.' })
+    slides.push({ photo: at(cars, 0), kicker: 'How you earn', line: 'Commission on completed sales', sub: 'Earnings depend on real sales', say: 'You earn a commission when a sale you brought in is completed. What you earn depends on real sales.' })
+    slides.push({ photo: at(products, 1), kicker: 'You are taught', line: 'Training in our academy', sub: 'Plus ready-made posters and captions', say: 'Approved affiliates are trained in our academy, and given ready-made posters and captions to share.' })
+    slides.push({ photo: at(products, 2), kicker: 'No shop, no stock', line: 'Start with your phone', say: 'You do not need your own shop or stock. You start with your phone.' })
+    slides.push({ photo: at(cars, 1), kicker: 'How to join', line: 'Apply on zamarket.shop/affiliates', sub: 'Every application is reviewed', say: 'Apply on zamarket dot shop slash affiliates. Every application is reviewed.' })
+    end = { cta: 'Apply to be an affiliate', foot: 'Applications are reviewed' }
+    endSay = 'Apply on zamarket dot shop slash affiliates. The link is in the description.'
+    caption = ['Earn with ZaMarket: become an affiliate', '✓ Promote real products and cars from local sellers', '✓ Commission when a sale you brought in is completed', '✓ Training in our academy, ready-made posters and captions', '✓ Start with your phone, no stock needed', 'Earnings depend on completed sales and are not guaranteed. Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/affiliates'}`, '#ZaMarket #Zambia #Lusaka #EarnOnline'].join('\n')
+  } else if (item.topic === 'sellers') {
+    slides.push({ type: 'collage', photos: grid(products), kicker: 'For businesses in Zambia', line: 'Sell on ZaMarket', say: 'Do you sell products in Zambia? Put your shop on ZaMarket.' })
+    slides.push({ photo: at(products, 0), kicker: 'Your own shop', line: 'Your products on your own shop page', say: 'Your products get their own shop page on ZaMarket, with photos, prices and ordering.' })
+    slides.push({ type: 'collage', photos: grid(products, 1), kicker: 'More people see them', line: 'Affiliates can share your products', say: 'Approved affiliates can share your products with their own customers.' })
+    slides.push({ photo: at(products, 2), kicker: 'Orders', line: 'You are told when an order comes in', say: 'When an order comes in, you get an alert, so you can prepare it.' })
+    slides.push({ photo: at(products, 3), kicker: 'How to join', line: 'Apply on zamarket.shop', sub: 'Every application is reviewed', say: 'Apply on zamarket dot shop. Every application is reviewed.' })
+    end = { cta: 'Apply to sell on ZaMarket', foot: 'Applications are reviewed' }
+    endSay = 'Apply on zamarket dot shop. The link is in the description.'
+    caption = ['Sell on ZaMarket', '✓ Your products on your own shop page', '✓ Approved affiliates can share your products', '✓ An alert when an order comes in', 'Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/apply/vendor'}`, '#ZaMarket #Lusaka #SmallBusinessZambia #ShopLocal'].join('\n')
+  } else {
+    slides.push({ type: 'collage', photos: mix.length ? mix : grid(pool), kicker: 'Online marketplace in Zambia', line: 'This is ZaMarket', sub: 'zamarket.shop', say: 'This is ZaMarket, an online marketplace here in Zambia.' })
+    if (products.length) slides.push({ type: 'collage', photos: grid(products), kicker: 'Shop', line: 'Products from local sellers', sub: 'Order online · delivered in Lusaka', say: 'Shop products from local sellers and order online, with delivery in Lusaka.' })
+    if (cars.length) slides.push({ photo: cars[0], kicker: 'ZaMarket Motors', line: 'Cars for sale', sub: 'Enquire and arrange a viewing', say: 'On ZaMarket Motors you can see cars for sale, ask about them and arrange a viewing.' })
+    if (lunch.length) slides.push({ photo: lunch[0], kicker: 'Weekly lunch', line: 'Homemade lunch to your office or door', say: 'And you can order your weekly lunch, delivered to your office or your door.' })
+    end = { cta: 'Visit zamarket.shop', foot: [products.length && 'Shop', cars.length && 'Motors', lunch.length && 'Lunch'].filter(Boolean).join(' · ') }
+    endSay = 'Visit zamarket dot shop. The link is in the description.'
+    caption = ['ZaMarket: an online marketplace in Zambia', products.length ? '✓ Products from local sellers, delivered in Lusaka' : '', cars.length ? '✓ Cars for sale on ZaMarket Motors' : '', lunch.length ? '✓ Weekly lunch to your office or door' : '', link || 'https://zamarket.shop', '#ZaMarket #Lusaka #Zambia #ShopLocal'].filter(Boolean).join('\n')
+  }
+  const out = slides.map((x) => ({ kicker: '', line: '', sub: '', ...x, photo: x.photo || x.photos?.[0] || null }))
+  return { slides: out, voice: [...out.map((x) => x.say), endSay].join(' '), caption, endSay, end }
+}
 
 function finish(slides, photos, voice, caption) {
   const pics = photos.length ? photos : [null]
@@ -97,7 +148,8 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   const local = t - i * SLIDE
   const s = slides[i]
   const img = imgs[i]
-  if (img && MOTION === 'still') drawWhole(ctx, img, s)
+  if (s.type === 'collage') drawCollage(ctx, Array.isArray(img) ? img.filter(Boolean) : [img].filter(Boolean), s, local)
+  else if (img && MOTION === 'still') drawWhole(ctx, img, s)
   else if (img) {
     // Slow push in, alternating direction, so a still photo feels alive.
     // Photo-only scenes zoom in further, to show the details.
@@ -135,6 +187,33 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   // Progress bar.
   ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(72, H - 90, W - 144, 8)
   ctx.fillStyle = '#b98cff'; ctx.fillRect(72, H - 90, (W - 144) * (t / (total + END)), 8)
+}
+
+// Up to four photos in a grid, each arriving in turn and drifting gently.
+function drawCollage(ctx, imgs, s, local) {
+  const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2a1650'); g.addColorStop(1, '#120b1e')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  if (!imgs.length) return
+  const words = s.line || s.kicker
+  const top = 200; const bottom = words ? H - 610 : H - 160; const gap = 18; const side = 48
+  const n = Math.min(4, imgs.length)
+  const cells = n === 1 ? [[0, 0, 1, 1]] : n === 2 ? [[0, 0, 1, 0.5], [0, 0.5, 1, 0.5]] : n === 3 ? [[0, 0, 1, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]] : [[0, 0, 0.5, 0.5], [0.5, 0, 0.5, 0.5], [0, 0.5, 0.5, 0.5], [0.5, 0.5, 0.5, 0.5]]
+  const bw = W - side * 2; const bh = bottom - top
+  cells.forEach(([cx, cy, cw, ch], k) => {
+    const img = imgs[k]
+    const appear = Math.min(1, Math.max(0, (local - k * 0.18) / 0.45))
+    if (!appear || !img) return
+    const x = side + cx * bw + (cx ? gap / 2 : 0); const y = top + cy * bh + (cy ? gap / 2 : 0)
+    const w = cw * bw - (cw < 1 ? gap / 2 : 0); const h = ch * bh - (ch < 1 ? gap / 2 : 0)
+    const z = 1.04 + 0.05 * (local / SLIDE)
+    const r = Math.max(w / img.width, h / img.height) * z
+    const dw = img.width * r; const dh = img.height * r
+    ctx.save(); ctx.globalAlpha = appear
+    ctx.translate(0, (1 - appear) * 30)
+    roundRect(ctx, x, y, w, h, 26); ctx.clip()
+    ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh)
+    ctx.restore()
+  })
 }
 
 // The whole photo, uncropped and still, over a soft darkened copy of itself.
@@ -219,7 +298,7 @@ function wrapText(ctx, text, max) {
 }
 
 export async function prepare(script, link) {
-  const imgs = await Promise.all(script.slides.map((s) => (s.photo ? load(s.photo) : Promise.resolve(null))))
+  const imgs = await Promise.all(script.slides.map((s) => (s.type === 'collage' ? Promise.all((s.photos || []).map(load)) : s.photo ? load(s.photo) : Promise.resolve(null))))
   const qr = link ? await qrImage(link, '#120b1e', '#ffffff') : null
   return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' } }
 }
@@ -331,7 +410,7 @@ export function heldTime(scene, held, slides) {
   return scene * SLIDE + local
 }
 
-export async function recordVideo(preview, script, assets, { voice = false, onProgress, onStage, controller = null } = {}) {
+export async function recordVideo(preview, script, assets, { voice = false, onProgress, onStage, controller = null, countdown = null } = {}) {
   if (typeof MediaRecorder === 'undefined') throw new Error('This browser cannot record video. Use Chrome on your phone or computer.')
   const pctx = preview.getContext('2d')
   const show = (c) => { pctx.setTransform(1, 0, 0, 1, 0, 0); pctx.drawImage(c, 0, 0, preview.width, preview.height) }
@@ -340,6 +419,11 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
   if (!cfg) throw new Error('This phone could not record a working video. Try Chrome, or make it on a computer.')
   let mic = null
   if (voice) mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+  // 3, 2, 1 before anything is recorded, with the first scene on screen.
+  if (countdown) {
+    show((() => { const c = document.createElement('canvas'); c.width = W; c.height = H; drawFrame(c.getContext('2d'), 0.6, script.slides, assets.imgs, assets.end); return c })())
+    try { await countdown() } catch (e) { mic?.getTracks().forEach((t) => t.stop()); throw e }
+  }
   const length = videoLength(script.slides)
   onStage?.('Recording')
   let blob
@@ -376,6 +460,13 @@ export const sceneId = () => `s${Date.now().toString(36)}${(nextId++).toString(3
 
 export function videoParts(item, kind = 'product', link = '') {
   const base = videoScript(item, kind, link)
+  if (kind === 'market') {
+    const photos = [...new Set([...(item.products || []), ...(item.cars || []), ...(item.lunch || [])])].slice(0, 20)
+    const blocks = base.slides.map((sc, i) => ({ id: `m${i}`, label: sc.line, scene: sc, photo: sc.photo }))
+    blocks.push({ id: 'words', label: 'My own words', scene: { kicker: '', line: '', sub: '', say: '' } })
+    const starter = base.slides.map((sc) => ({ id: sceneId(), photo: sc.photo || null, ...clean(sc) }))
+    return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
+  }
   const photos = [...new Set((kind === 'lunch'
     ? [item.cover_url, ...(item.dishList || []).flatMap((d) => d.images || [])]
     : item.images || []).filter(Boolean))].slice(0, 20)
@@ -406,7 +497,7 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...(sc.rows ? { rows: sc.rows } : {}) })
+const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...(sc.rows ? { rows: sc.rows } : {}), ...(sc.photos ? { photos: sc.photos } : {}) })
 
 // A new scene from a block, on a chosen photo.
 export const sceneFrom = (block, photo) => ({ id: sceneId(), photo: photo ?? block.photo ?? null, ...clean(block.scene) })

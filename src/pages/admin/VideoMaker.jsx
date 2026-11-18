@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
@@ -13,11 +13,25 @@ import '../../motors.css'
 // a lunch plan; the video is made from its own photos and details, ending on
 // the link and a QR code. Record it silent (add music or a voice in TikTok or
 // CapCut) or talk over it while it records, reading the script shown.
-const KINDS = [['vehicle', 'Cars'], ['product', 'Products'], ['lunch', 'Lunch plans']]
+const KINDS = [['vehicle', 'Cars'], ['product', 'Products'], ['lunch', 'Lunch plans'], ['market', 'Marketplace']]
 
 // On phones, the share sheet is the reliable way to keep a video: it offers
 // "Save to gallery"/Files, TikTok, WhatsApp and Facebook directly.
 const canShareFile = (file) => { try { return !!file && !!navigator.canShare?.({ files: [file] }) } catch { return false } }
+const sleep = (ms) => new Promise((ok) => setTimeout(ok, ms))
+// A short soft tick for each number of the countdown.
+function tick(high) {
+  try {
+    const A = window.AudioContext || window.webkitAudioContext
+    const a = tick.ctx || (tick.ctx = new A())
+    const o = a.createOscillator(); const g = a.createGain()
+    o.frequency.value = high ? 1320 : 880; g.gain.setValueAtTime(0.18, a.currentTime); g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.18)
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + 0.2)
+  } catch { /* no sound */ }
+  try { navigator.vibrate?.(high ? 120 : 40) } catch { /* ignore */ }
+}
+const clock = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
+
 const shareFile = async (file) => { try { await navigator.share({ files: [file], title: 'ZaMarket video' }) } catch { /* closed */ } }
 
 export default function VideoMaker() {
@@ -32,6 +46,8 @@ export default function VideoMaker() {
   const [secs, setSecs] = useState(() => { try { return Number(localStorage.getItem('zm-video-pace')) || 4 } catch { return 4 } })
   setPace(secs)
   const [scene, setScene] = useState(0)
+  const [count, setCount] = useState(0)
+  const [elapsed, setElapsed] = useState(0)
   const ctrl = useRef(null)
   const [out, setOut] = useState(null)
   const canvas = useRef(null)
@@ -39,6 +55,19 @@ export default function VideoMaker() {
 
   useEffect(() => {
     setItems(null); setPick(null); setOut(null)
+    if (kind === 'market') {
+      Promise.all([
+        supabase.from('public_products').select('images,offering_type').eq('status', 'published').order('created_at', { ascending: false }).limit(80),
+        supabase.from('meal_deals').select('cover_url').eq('status', 'published'),
+      ]).then(([{ data: ps }, { data: ds }]) => {
+        const first = (list) => [...new Set((list || []).map((p) => (p.images || [])[0]).filter(Boolean))]
+        const cars = first((ps || []).filter((p) => p.offering_type === 'vehicle')).slice(0, 8)
+        const products = first((ps || []).filter((p) => p.offering_type !== 'vehicle')).slice(0, 10)
+        const lunch = (ds || []).map((d) => d.cover_url).filter(Boolean).slice(0, 4)
+        setItems(MARKET_TOPICS.map(([topic, name, desc, url]) => ({ id: topic, slug: `zamarket-${topic}`, topic, name, desc, link: url, cars, products, lunch, images: [...products, ...cars, ...lunch].slice(0, 1) })))
+      }, () => setItems([]))
+      return
+    }
     if (kind === 'lunch') {
       supabase.from('meal_deals').select('*').eq('status', 'published').then(async ({ data }) => {
         const list = await Promise.all((data || []).map(async (d) => {
@@ -56,7 +85,7 @@ export default function VideoMaker() {
   }, [kind])
 
   const code = profile?.partner?.code
-  const link = pick ? (kind === 'lunch'
+  const link = pick ? (kind === 'market' ? pick.link : kind === 'lunch'
     ? `https://zamarket.shop/lunch/${pick.slug}`
     : code ? `https://zamarket.shop/r/${code}/${pick.slug || pick.id}` : `https://zamarket.shop/p/${pick.slug || pick.id}`) : ''
   const parts = useMemo(() => (pick ? videoParts(pick, kind, link) : null), [pick, kind, link])
@@ -85,12 +114,12 @@ export default function VideoMaker() {
   }, [parts])
   useEffect(() => { if (draftKey && scenes.length) { try { localStorage.setItem(draftKey, JSON.stringify(scenes)) } catch { /* full */ } } }, [scenes, draftKey])
   useEffect(() => {
-    const missing = scenes.map((x) => x.photo).filter((u) => u && !cache.current.has(u))
+    const missing = scenes.flatMap((x) => [x.photo, ...(x.photos || [])]).filter((u) => u && !cache.current.has(u))
     if (missing.length) loadPhotos(missing, cache.current).then(() => setLoaded((n) => n + 1))
   }, [scenes])
 
   const script = useMemo(() => (parts ? { slides: scenes, end: parts.end, endSay: parts.endSay, caption: parts.caption, voice: voiceFor(scenes, parts.endSay) } : null), [parts, scenes])
-  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => cache.current.get(x.photo) || null), end } : null), [script, end, loaded])
+  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
 
   // Editing scenes
   const update = (id, patch) => setScenes((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)))
@@ -134,17 +163,28 @@ export default function VideoMaker() {
     // With your voice you set the pace: Next moves on, Finish ends it.
     ctrl.current = voice ? voiceController(script.slides.length, setScene) : null
     try {
-      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage, controller: ctrl.current })
+      const countdown = voice ? async () => {
+        setStage('Get ready')
+        for (const n of [3, 2, 1]) { setCount(n); tick(false); await sleep(1000) }
+        setCount(0); tick(true)
+      } : null
+      const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage, controller: ctrl.current, countdown })
       const name = `${(pick.slug || 'zamarket').slice(0, 40)}.${r.ext}`
       setOut({ url: URL.createObjectURL(r.blob), ext: r.ext, size: r.blob.size, file: new File([r.blob], name, { type: r.blob.type }), name })
       toast('Video ready')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
     }
-    setBusy(''); setStage(''); ctrl.current = null
+    setBusy(''); setStage(''); setCount(0); ctrl.current = null
   }
+  useEffect(() => {
+    if (stage !== 'Recording') return
+    const at = performance.now(); setElapsed(0)
+    const id = setInterval(() => setElapsed((performance.now() - at) / 1000), 500)
+    return () => clearInterval(id)
+  }, [stage])
   const copy = async (text, what) => { try { await navigator.clipboard.writeText(text); toast(`${what} copied`) } catch { toast('Copy did not work here', true) } }
-  const title = (p) => (kind === 'vehicle' ? vehicleTitle(vehicleOf(p), p.name) : p.name)
+  const title = (p) => (kind === 'market' ? p.name : kind === 'vehicle' ? vehicleTitle(vehicleOf(p), p.name) : p.name)
 
   return (
     <div className="vx vx-form vx-video">
@@ -158,32 +198,39 @@ export default function VideoMaker() {
           <div className="vx-video-pick">
             {items.map((p) => (
               <button key={p.id} type="button" onClick={() => setPick(p)}>
+                {kind === 'market' && <span className="vx-video-topic">ZaMarket</span>}
                 {p.images?.[0] || p.cover_url ? <img src={p.images?.[0] || p.cover_url} alt="" loading="lazy" /> : <span />}
                 <strong>{title(p)}</strong>
-                <small>{kind === 'lunch' ? (p.from ? `From ${money(p.from, { whole: true })}` : '') : money(p.price, { whole: true })}</small>
+                <small>{kind === 'market' ? p.desc : kind === 'lunch' ? (p.from ? `From ${money(p.from, { whole: true })}` : '') : money(p.price, { whole: true })}</small>
               </button>
             ))}
           </div>
         )
       ) : (
-        <div className="vx-video-work">
+        <div className={`vx-video-work${busy === 'voice' && (stage === 'Get ready' || stage === 'Recording') ? ' studio' : ''}`}>
           <div className="vx-video-stage">
             <canvas ref={canvas} width={W} height={H} />
             {!assets && <div className="vx-video-wait"><Loading /></div>}
             {open && !busy && <div className="vx-video-focus">Showing scene {scenes.findIndex((x) => x.id === open) + 1}</div>}
-            {busy && <div className="vx-video-rec"><span>{stage === 'Recording' ? (busy === 'voice' ? '● Recording' : `● Recording ${Math.round(progress * 100)}%`) : stage || 'Getting ready…'}</span></div>}
+            {busy && !count && <div className={`vx-video-rec${stage === 'Recording' ? ' live' : ''}`}><span>{stage === 'Recording' ? (busy === 'voice' ? `● REC ${clock(elapsed)}` : `● Recording ${Math.round(progress * 100)}%`) : stage || 'Getting ready…'}</span></div>}
+            {count > 0 && <div className="vx-countdown" aria-live="assertive"><b key={count}>{count}</b><small>Recording starts…</small></div>}
           </div>
-          {busy === 'voice' && stage === 'Recording' && ctrl.current && (
+          {busy === 'voice' && (stage === 'Recording' || stage === 'Get ready') && ctrl.current && (
             <div className="vx-prompter">
-              <small>Scene {Math.min(scene + 1, script.slides.length + 1)} of {script.slides.length + 1} · take your time, it waits for you</small>
-              <p>{scene < script.slides.length ? (script.slides[scene].say || 'Say anything about this photo, or tap Next.') : script.endSay}</p>
+              <div className="vx-prompter-top">
+                <small>{stage === 'Get ready' ? 'Get ready. Your first line:' : scene < script.slides.length ? `Scene ${scene + 1} of ${script.slides.length + 1}` : 'Last scene'}</small>
+                <small>It waits for you. Read at your own pace.</small>
+              </div>
+              <p className="vx-prompter-now">{scene < script.slides.length ? (script.slides[scene].say || 'No words for this scene. Say something about it, or tap Next.') : script.endSay}</p>
+              {scene + 1 < script.slides.length && script.slides[scene + 1].say && <p className="vx-prompter-next"><span>Next</span>{script.slides[scene + 1].say}</p>}
+              {scene + 1 === script.slides.length && <p className="vx-prompter-next"><span>Next</span>{script.endSay}</p>}
               <div className="vx-prompter-buttons">
-                <button type="button" className="vx-btn ghost" disabled={scene === 0} onClick={() => ctrl.current?.back()}>Back</button>
+                <button type="button" className="vx-btn ghost" disabled={scene === 0 || stage !== 'Recording'} onClick={() => ctrl.current?.back()}>Back</button>
                 {scene < script.slides.length
-                  ? <button type="button" className="vx-btn primary big" onClick={() => ctrl.current?.next()}>Next scene</button>
+                  ? <button type="button" className="vx-btn primary big" disabled={stage !== 'Recording'} onClick={() => ctrl.current?.next()}>Next scene →</button>
                   : <button type="button" className="vx-btn primary big" onClick={() => ctrl.current?.finish()}>Finish recording</button>}
               </div>
-              {scene < script.slides.length && <button type="button" className="vx-btn ghost vx-prompter-end" onClick={() => ctrl.current?.finish()}>Finish now</button>}
+              {scene < script.slides.length && stage === 'Recording' && <button type="button" className="vx-btn ghost vx-prompter-end" onClick={() => ctrl.current?.finish()}>Finish now</button>}
             </div>
           )}
           <div className="vx-video-side">
@@ -238,7 +285,7 @@ export default function VideoMaker() {
   )
 }
 
-const TYPES = [['', 'Photo with words'], ['photo', 'Photo only'], ['specs', 'Specifications card']]
+const TYPES = [['', 'Photo with words'], ['photo', 'Photo only'], ['collage', 'Photo grid'], ['specs', 'Specifications card']]
 
 // The scenes, in order. Tap one to change its photo, words and what you
 // will say; add scenes from the listing's own details.
@@ -254,15 +301,15 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
       <ol className="vx-scene-list">
         {scenes.map((sc, i) => {
           const isOpen = open === sc.id
-          const mode = sc.type === 'specs' ? 'specs' : sc.line || sc.kicker ? '' : 'photo'
+          const mode = sc.type === 'specs' ? 'specs' : sc.type === 'collage' ? 'collage' : sc.line || sc.kicker ? '' : 'photo'
           const kind = TYPES.find(([t]) => t === mode)[1]
           return (
             <li key={sc.id} className={isOpen ? 'on' : ''}>
               <div className="vx-scene-row">
                 <button type="button" className="vx-scene-main" disabled={busy} onClick={() => setOpen(isOpen ? null : sc.id)}>
                   <span className="vx-scene-n">{i + 1}</span>
-                  {sc.photo ? <img src={sc.photo} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
-                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? 'Specifications card' : sc.line || 'Photo only'}</strong><small>{sc.feature && !sc.checked ? <em className="vx-scene-check">Check the photo shows it</em> : kind}</small></span>
+                  {sc.photo || sc.photos?.[0] ? <img src={sc.photo || sc.photos[0]} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
+                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? 'Specifications card' : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.feature && !sc.checked ? <em className="vx-scene-check">Check the photo shows it</em> : kind}</small></span>
                 </button>
                 <span className="vx-scene-tools">
                   <button type="button" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}>↑</button>
@@ -272,16 +319,25 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
               </div>
               {isOpen && (
                 <div className="vx-scene-edit">
-                  <div className="vx-tabs">{TYPES.map(([t, l]) => <button key={t || 'words'} type="button" className={mode === t ? 'on' : ''}
-                    onClick={() => update(sc.id, t === 'specs' ? { type: 'specs', kicker: 'Specifications', rows: sc.rows || specsBlock?.scene.rows || [] } : t === 'photo' ? { type: '', kicker: '', line: '', sub: '' } : { type: '', line: sc.line || 'Your words here' })}
-                    disabled={t === 'specs' && !specsBlock}>{l}</button>)}</div>
+                  <div className="vx-tabs">{TYPES.filter(([t]) => (t !== 'specs' || specsBlock) && (t !== 'collage' || parts.photos.length > 1)).map(([t, l]) => <button key={t || 'words'} type="button" className={mode === t ? 'on' : ''}
+                    onClick={() => update(sc.id, t === 'specs' ? { type: 'specs', kicker: 'Specifications', rows: sc.rows || specsBlock?.scene.rows || [] }
+                      : t === 'photo' ? { type: '', kicker: '', line: '', sub: '' }
+                        : t === 'collage' ? { type: 'collage', photos: sc.photos?.length ? sc.photos : [...new Set([sc.photo, ...parts.photos].filter(Boolean))].slice(0, 4) }
+                          : { type: '', line: sc.line || 'Your words here' })}>{l}</button>)}</div>
 
-                  <span className="vx-field-label">Photo</span>
+                  <span className="vx-field-label">{mode === 'collage' ? `Photos in the grid (${(sc.photos || []).length} of 4, tap to add or remove)` : 'Photo'}</span>
                   {sc.feature && !sc.checked && choosing?.id !== sc.id && <p className="vx-scene-hint">Does this photo show “{sc.line}”? If not, tap the one that does.</p>}
                   {choosing?.id === sc.id && <p className="vx-scene-hint">{choosing.hint}</p>}
                   <div className="vx-photo-strip">
-                    {parts.photos.map((p) => <button key={p} type="button" className={sc.photo === p ? 'on' : ''} onClick={() => { update(sc.id, { photo: p, checked: true }); setChoosing(null) }}><img src={p} alt="" /></button>)}
-                    <button type="button" className={!sc.photo ? 'on none' : 'none'} onClick={() => { update(sc.id, { photo: null }); setChoosing(null) }}>None</button>
+                    {mode === 'collage' ? parts.photos.map((p) => {
+                      const has = (sc.photos || []).includes(p)
+                      return <button key={p} type="button" className={has ? 'on' : ''} disabled={!has && (sc.photos || []).length >= 4} onClick={() => update(sc.id, { photos: has ? sc.photos.filter((u) => u !== p) : [...(sc.photos || []), p] })}><img src={p} alt="" /></button>
+                    }) : (
+                      <>
+                        {parts.photos.map((p) => <button key={p} type="button" className={sc.photo === p ? 'on' : ''} onClick={() => { update(sc.id, { photo: p, checked: true }); setChoosing(null) }}><img src={p} alt="" /></button>)}
+                        <button type="button" className={!sc.photo ? 'on none' : 'none'} onClick={() => { update(sc.id, { photo: null }); setChoosing(null) }}>None</button>
+                      </>
+                    )}
                   </div>
 
                   {sc.type === 'specs' ? (
@@ -295,7 +351,7 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                         )
                       })}
                     </div>
-                  ) : mode === '' ? (
+                  ) : mode === '' || mode === 'collage' ? (
                     <div className="vx-fields">
                       <label className="vx-field"><span className="vx-field-label">Small heading</span><input value={sc.kicker || ''} maxLength={40} onChange={(e) => update(sc.id, { kicker: e.target.value })} placeholder="e.g. Highlights" /></label>
                       <label className="vx-field"><span className="vx-field-label">Main words</span><input value={sc.line || ''} maxLength={70} onChange={(e) => update(sc.id, { line: e.target.value })} /></label>

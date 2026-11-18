@@ -113,3 +113,16 @@ test('video maker: starts from the full video, you change only what you want', a
   assert.equal(sc.photo, 'c')
   assert.match(p.end.cta, /Enquire/)
 })
+
+test('video maker: countdown before recording, reading view, marketplace videos', () => {
+  const s = read('src/lib/listingVideo.js')
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(ui, /for \(const n of \[3, 2, 1\]\)/)
+  assert.match(s, /if \(countdown\) \{/)
+  assert.match(ui, /vx-prompter-now/)
+  assert.match(ui, /\['market', 'Marketplace'\]/)
+  // Recruitment lines stay honest: earnings depend on real sales; applications reviewed.
+  assert.match(s, /Earnings depend on real sales/)
+  assert.match(s, /Every application is reviewed/)
+  assert.doesNotMatch(s, /guaranteed income|earn up to/i)
+})
