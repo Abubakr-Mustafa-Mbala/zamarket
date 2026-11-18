@@ -126,3 +126,11 @@ test('video maker: countdown before recording, reading view, marketplace videos'
   assert.match(s, /Every application is reviewed/)
   assert.doesNotMatch(s, /guaranteed income|earn up to/i)
 })
+
+test('weekly lunch lives in Food & cakes and the seller store, not a separate top tab', () => {
+  const m = read('src/pages/public/Marketplace.jsx')
+  assert.match(m, /isFood\(cat\) \|\| .*<CategoryLunch \/>/)
+  assert.doesNotMatch(m, /\['\/lunch', 'Lunch'/)
+  assert.match(m, /<LunchShop vendorId=\{store\.id\}/)
+  assert.match(read('src/pages/public/Lunch.jsx'), /className="crumbs ln-crumbs"/)
+})

@@ -32,3 +32,7 @@ export function useDepartments() {
   return list
 }
 export { DEFAULT_DEPARTMENTS }
+
+// The food department (named "Food & cakes" unless renamed): weekly lunch lives in it.
+export const isFood = (name) => /food|cake|meal|lunch/i.test(name || '')
+export const foodDepartment = (deps) => (deps || []).find((d) => isFood(d.name))?.name || 'Food & cakes'

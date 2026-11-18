@@ -35,6 +35,34 @@ export default function LunchShop({ vendorId, vendor }) {
   return <>{deals.map((d) => <WeeklyLunchOffer key={d.id} deal={d} vendor={vendor} />)}</>
 }
 
+// Weekly lunch inside the Food & cakes category: every seller's published
+// lunch plan, each as its menu board, with the seller's name on it.
+export function CategoryLunch() {
+  const [deals, setDeals] = useState([])
+  const [vendors, setVendors] = useState({})
+  useEffect(() => {
+    supabase.from('meal_deals').select(DEAL_COLS).eq('status', 'published').order('created_at', { ascending: false }).then(async ({ data }) => {
+      const ids = [...new Set((data || []).map((d) => d.vendor_id))]
+      if (ids.length) {
+        const { data: v } = await supabase.from('public_vendors').select('id,business_name,slug,logo_url,town').in('id', ids)
+        setVendors(Object.fromEntries((v || []).map((x) => [x.id, x])))
+      }
+      setDeals(data || [])
+    }, () => {})
+  }, [])
+  if (!deals.length) return null
+  return (
+    <section className="cat-lunch" aria-label="Weekly lunch">
+      {deals.map((d) => (
+        <div key={d.id} className="cat-lunch-item">
+          {vendors[d.vendor_id] && <Link className="cat-lunch-from" to={`/${vendors[d.vendor_id].slug}`}>From <b>{vendors[d.vendor_id].business_name}</b> · see the shop →</Link>}
+          <WeeklyLunchOffer deal={d} vendor={vendors[d.vendor_id]} />
+        </div>
+      ))}
+    </section>
+  )
+}
+
 export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
   const [products, setProducts] = useState([])
   const [availability, setAvailability] = useState([])
@@ -43,7 +71,7 @@ export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
     Promise.all([loadDealDishes(deal), supabase.rpc('meal_availability', { p_deal: deal.id, p_days: 24 })])
       .then(([p, a]) => { if (alive) { setProducts(p); setAvailability(a.data || []) } }, () => {})
     return () => { alive = false }
-  }, [deal.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [deal.id])
   const menu = useMemo(() => upcomingMenu({ deal, products, availability, days: 21 }), [deal, products, availability])
   const weeks = useMemo(() => workingWeeks(menu, 2), [menu])
   const wi = Math.max(0, weeks.findIndex((w) => w.open === 5))

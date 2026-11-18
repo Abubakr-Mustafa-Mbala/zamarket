@@ -15,13 +15,13 @@ import JournalHighlights from '../../components/JournalHighlights'
 import { offerCopy, useCountdown, DEAL_TYPES, CONDITION_TYPES } from '../../lib/offers'
 import { howText } from '../../lib/madeToOrder'
 import { iconFor } from '../../lib/categories'
-import { useDepartments, useShopInfo } from '../../lib/departments'
+import { useDepartments, useShopInfo, isFood } from '../../lib/departments'
 import { payLine } from '../../lib/paymentWords'
 import { commissionLabel } from '../../lib/economics'
 import PromoKit from '../../components/PromoKit'
 import PhotoViewer from '../../components/PhotoViewer'
 import LunchPromo from '../../components/LunchPromo'
-import LunchShop from '../../components/LunchShop'
+import LunchShop, { CategoryLunch } from '../../components/LunchShop'
 import VehicleCard from '../../components/vehicle/VehicleCard'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
@@ -131,13 +131,27 @@ function CatalogueUnavailable({ error, retry }) {
 }
 
 // Departments with nothing in them are hidden from shoppers — an empty shelf looks abandoned.
+// Weekly lunch lives in the food department, so a published lunch plan keeps
+// that department showing even when no other food is listed.
+let lunchLive = null
+function useLunchLive() {
+  const [on, setOn] = useState(lunchLive)
+  useEffect(() => {
+    if (lunchLive !== null) return
+    supabase.from('meal_deals').select('id').eq('status', 'published').limit(1)
+      .then(({ data }) => { lunchLive = !!data?.length; setOn(lunchLive) }, () => {})
+  }, [])
+  return !!on
+}
+
 function useStockedDepartments(all) {
   const { data } = useCatalogue()
+  const lunch = useLunchLive()
   return useMemo(() => {
     if (!data) return []
     const have = new Set((data.products || []).map((p) => p.category))
-    return all.filter((d) => have.has(d.name))
-  }, [data, all])
+    return all.filter((d) => have.has(d.name) || (lunch && isFood(d.name)))
+  }, [data, all, lunch])
 }
 
 const isOut = (p) => p.fulfilment === 'in_stock' && (p.status === 'out_of_stock' || (p.owner_type === 'founder' && p.stock_available <= 0))
@@ -618,7 +632,6 @@ export function PublicShell() {
           {[
             ['/search?deals=1', "Today's deals", pathname === '/search' && sp.get('deals') === '1'],
             ['/motors', 'Motors', pathname.startsWith('/motors')],
-            ['/lunch', 'Lunch', pathname.startsWith('/lunch')],
             ['/blog', 'Journal', pathname.startsWith('/blog')],
             ['/sellers', 'Stores', pathname.startsWith('/sellers')],
           ].map(([to, label, on]) => <Link key={to} to={to} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>{label}</Link>)}
@@ -1033,7 +1046,7 @@ export function SearchPage() {
         <div className="results-head">
           <div>
             <h1>{heading}</h1>
-            <p className="muted small">{results.length} result{results.length === 1 ? '' : 's'}</p>
+            {!(isFood(cat) && !results.length) && <p className="muted small">{results.length} result{results.length === 1 ? '' : 's'}</p>}
           </div>
           <div className="row">
             <button type="button" className="btn sm show-mobile" onClick={() => setSheet(true)}>Filters{active ? ` (${active})` : ''}</button>
@@ -1043,10 +1056,11 @@ export function SearchPage() {
           </div>
         </div>
         {deals && <LunchPromo />}
+        {(isFood(cat) || /\b(lunch|meals?)\b/.test(q)) && <CategoryLunch />}
         {results.length === 0 ? (
           <div className="empty-shop">
-            <h2>Nothing matches yet</h2>
-            <p>Try a different word or remove a filter.</p>
+            <h2>{isFood(cat) && !q ? 'More food coming soon' : 'Nothing matches yet'}</h2>
+            <p>{isFood(cat) && !q ? 'Cakes, snacks and more food from local sellers appear here as they are listed.' : 'Try a different word or remove a filter.'}</p>
             <Link to="/search" className="btn">See all products</Link>
           </div>
         ) : (
