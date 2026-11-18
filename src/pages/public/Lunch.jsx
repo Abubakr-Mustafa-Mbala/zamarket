@@ -112,6 +112,28 @@ export default function LunchPage() {
   return <LunchView deal={deal} products={products} vendor={vendor} availability={availability} reviews={reviews} onBooked={() => setRefresh((n) => n + 1)} />
 }
 
+// Photos and screenshots shown whole, never cropped, in two tidy columns
+// (each keeps its own shape, like a Pinterest board). Customer messages sit in
+// even cards, the whole screenshot fitted inside; tap to read it full size.
+// A few show; the rest behind one button.
+function PhotoWall({ images, alt, onOpen, framed = false }) {
+  const [all, setAll] = useState(false)
+  const first = framed ? 4 : 6
+  const shown = all ? images : images.slice(0, first)
+  return (
+    <>
+      <div className={`ln-wall ${framed ? 'is-framed' : ''}`}>
+        {shown.map((src, i) => (
+          <button type="button" key={`${src}-${i}`} onClick={() => onOpen(i)} aria-label={`Open ${framed ? 'message' : 'photo'} ${i + 1}`}>
+            <img src={src} alt={alt} loading="lazy" />
+          </button>
+        ))}
+      </div>
+      {images.length > first && !all && <button type="button" className="ln-btn ghost ln-wall-more" onClick={() => setAll(true)}>See all {images.length} {framed ? 'messages' : 'photos'}</button>}
+    </>
+  )
+}
+
 export function LunchView({ deal, products, vendor, availability, reviews = [], preview = false, onBooked }) {
   const { role, profile, settings } = useAuth()
   const deliveryIncluded = useDeliveryIncluded()
@@ -186,11 +208,7 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           <div className="ln-head"><h2>Who cooks your lunch</h2></div>
           {deal.about_cook && <p className="ln-story">{deal.about_cook}</p>}
           {proofs.length > 0 && (
-            <div className={`ln-proof n${Math.min(proofs.length, 4)}`}>
-              {proofs.map((src, i) => (
-                <button type="button" key={`${src}-${i}`} onClick={() => setViewer({ images: proofs, start: i, alt: 'From the kitchen' })} aria-label={`Open photo ${i + 1}`}><img src={src} alt="" loading="lazy" /></button>
-              ))}
-            </div>
+            <PhotoWall images={proofs} alt="From the kitchen" onOpen={(i) => setViewer({ images: proofs, start: i, alt: 'From the kitchen' })} />
           )}
           {vendor?.slug && !preview && <Link className="ln-link" to={`/${vendor.slug}`}>Visit {vendor.business_name} →</Link>}
         </section>
@@ -199,11 +217,7 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
       {said.length > 0 && (
         <section className="ln-section">
           <div className="ln-head"><h2>What customers said</h2><p>Real messages from people who ordered.</p></div>
-          <div className="ln-said">
-            {said.map((src, i) => (
-              <button type="button" key={`${src}-${i}`} onClick={() => setViewer({ images: said, start: i, alt: 'A message from a customer' })} aria-label={`Open message ${i + 1}`}><img src={src} alt="" loading="lazy" /></button>
-            ))}
-          </div>
+          <PhotoWall images={said} alt="A message from a customer" framed onOpen={(i) => setViewer({ images: said, start: i, alt: 'A message from a customer' })} />
         </section>
       )}
 

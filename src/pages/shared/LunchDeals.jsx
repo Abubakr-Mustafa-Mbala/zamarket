@@ -321,6 +321,12 @@ function DealEditor({ deal, vendorId, onSaved }) {
                 ))}
                 <label>{uploading ? 'Uploading…' : 'Add photos'}<input type="file" accept="image/*" multiple hidden onChange={(e) => { upload(e.target.files, 'proof'); e.target.value = '' }} /></label>
               </div>
+              {reviewsOk && (d.proof_images || []).length > 1 && (
+                <button type="button" className="ln-btn ghost" style={{ alignSelf: 'flex-start' }}
+                  onClick={() => setD((x) => ({ ...x, review_images: [...(x.review_images || []), ...(x.proof_images || [])], proof_images: [] }))}>
+                  These are all customer messages: move them to reviews
+                </button>
+              )}
               <small className="ln-hint">Your kitchen, cooking and packed lunches. Only real photos. Ask before posting anyone's face.{reviewsOk ? ' A customer message by mistake here? Tap "It\'s a review" to move it.' : ''}</small>
             </div>
           </section>

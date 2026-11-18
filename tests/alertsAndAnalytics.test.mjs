@@ -180,7 +180,7 @@ test('lunch: edit dish opens under the dish, reviews apart, owner can edit, shar
   assert.match(ed, /What customers said/)
   assert.match(ed, /It's a review/)
   const page = read('src/pages/public/Lunch.jsx')
-  assert.match(page, /className="ln-said"/)
+  assert.match(page, /<PhotoWall images=\{said\}[^>]*framed/)
   assert.match(page, /Edit lunch offer/)
   assert.match(page, /<ShareLunch /)
   assert.doesNotMatch(page, /<ShareProduct /)
