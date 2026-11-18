@@ -82,14 +82,18 @@ export default async function orderAlert(request) {
   if (pub && priv) {
     try {
       webpush.setVapidDetails(contact, pub, priv)
-      const subs = await rest(base, service, 'push_subscriptions?select=id,endpoint,p256dh,auth')
+      // Only ZaMarket's team hears about every new order. Sellers and
+      // affiliates get their own alerts (see alert-tick).
+      const staff = await rest(base, service, 'profiles?select=id&role=in.(founder,ops,finance,delivery)')
+      const ids = (staff || []).map((p) => p.id)
+      const subs = ids.length ? await rest(base, service, `push_subscriptions?select=id,endpoint,p256dh,auth&user_id=in.(${ids.join(',')})`) : []
       const payload = JSON.stringify({ title, body, url, tag: `order-${order.order_number}` })
       const dead = []
       let sent = 0
       await Promise.all((subs || []).map(async (s) => {
         try {
           await webpush.sendNotification(
-            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload,
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 3600, urgency: 'high' },
           )
           sent += 1
         } catch (e) {

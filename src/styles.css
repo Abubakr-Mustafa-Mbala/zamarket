@@ -2865,3 +2865,42 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 @media(max-width:540px){.aff-dash{gap:17px}.aff-dash-welcome h1{font-size:1.7rem}.aff-dash-welcome p{font-size:.83rem}.aff-dash-numbers{gap:8px}.aff-dash-number{padding:13px 11px;gap:7px;border-radius:13px}.aff-dash-number strong{font-size:1.22rem}.aff-dash-number small{font-size:.65rem}.aff-dash-main-action{padding:15px}.aff-dash-shortcuts{gap:7px}.aff-dash-shortcuts a,.aff-dash-shortcuts button{font-size:.7rem;padding:12px 5px;flex-direction:column;text-align:center;gap:5px}.aff-dash-shortcuts svg{font-size:1.3rem}.aff-goal-card{padding:15px;border-radius:16px}.aff-goal-header h2{font-size:1.1rem}.aff-goal-edit{padding:9px;font-size:.71rem}.aff-goal-ring{width:83px;height:83px}.aff-goal-ring:before{inset:8px}.aff-goal-ring strong{font-size:1.1rem}.aff-goal-display{gap:15px}.aff-goal-amounts strong{font-size:1.45rem}.aff-goal-balance{gap:7px}.aff-goal-balance>div{padding:10px}.aff-goal-balance strong{font-size:.95rem}.aff-dash-product-grid{gap:8px}.aff-dash-product>div:last-child{padding:9px}.aff-dash-product-bottom b{font-size:.9rem}}
 
 .aff-goal-presets{display:flex;gap:7px;flex-wrap:wrap}.aff-goal-presets button{border:1px solid #66517f;border-radius:9px;background:#2e2440;color:#e3d2f9;padding:6px 11px;font-size:.75rem;cursor:pointer}.aff-goal-presets button:hover{background:#483263}
+
+/* Bell: no switches on the front, one-time offer, settings behind the gear (Nov 18) */
+.bell-actions { display: inline-flex; align-items: center; gap: 4px; }
+.bell-link { background: none; border: 0; padding: 6px 8px; font: inherit; font-size: .78rem; font-weight: 700; color: var(--accent, #8a6cff); cursor: pointer; border-radius: 8px; }
+.bell-link:hover, .bell-gear:hover { background: rgba(138,108,255,.12); }
+.bell-gear { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+.bell-settings { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 4px; }
+.bell-switch { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.bell-switch span { display: flex; flex-direction: column; gap: 2px; }
+.bell-switch small { color: var(--muted); font-size: .78rem; line-height: 1.35; }
+.bell-switch input { appearance: none; -webkit-appearance: none; flex: none; width: 46px; height: 26px; border-radius: 999px; background: var(--line-strong, #3a3f47); position: relative; cursor: pointer; transition: background .15s; margin: 0; }
+.bell-switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.bell-switch input:checked { background: var(--accent, #8a6cff); }
+.bell-switch input:checked::after { transform: translateX(20px); }
+.bell-switch input:disabled { opacity: .5; }
+.bell-offer { position: absolute; right: 0; top: calc(100% + 8px); width: min(330px, 92vw); z-index: 61; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--paper); border: 1px solid var(--accent, #8a6cff); box-shadow: 0 18px 44px rgba(0,0,0,.35); }
+.bell-offer span { font-size: .86rem; color: var(--muted); line-height: 1.4; }
+@media (max-width: 720px) { .bell-offer { position: fixed; left: 8px; right: 8px; width: auto; top: 62px; } }
+
+/* Navigation: every link looks the same until it is the page you are on,
+   then it is unmistakable (Nov 18). */
+.shop .dept-strip a, .shop .dept-strip a:first-child, .shop .dept-strip .journal-nav { color: var(--ink-2, #d9dbe6); font-weight: 650; background: transparent; position: relative; }
+.shop .dept-strip a.on { color: #fff; background: rgba(138,108,255,.28); box-shadow: inset 0 0 0 1px rgba(185,167,255,.55); }
+.shop .dept-strip a.on::after { content: ''; position: absolute; left: 12px; right: 12px; bottom: 2px; height: 2px; border-radius: 2px; background: #b9a7ff; }
+.shop .dept-strip a:active { background: rgba(138,108,255,.2); }
+.shop .bottom-bar a { position: relative; transition: color .15s; }
+.shop .bottom-bar a.on { color: #fff; font-weight: 800; }
+.shop .bottom-bar a.on .bb-icon { background: rgba(138,108,255,.32); border-radius: 999px; padding: 3px 14px; color: #d9ccff; }
+.shop .bottom-bar a.on::before { content: ''; position: absolute; top: 0; left: 28%; right: 28%; height: 3px; border-radius: 0 0 3px 3px; background: #b9a7ff; }
+.shop .bottom-bar a:active .bb-icon { background: rgba(138,108,255,.2); border-radius: 999px; }
+/* Workspace bottom bar and menu: a clear "you are here" (Nov 18) */
+@media (max-width: 900px) {
+  .bottomnav a, .bottomnav button { position: relative; }
+  .bottomnav a.active, .bottomnav button.active { color: #fff !important; font-weight: 800; }
+  .bottomnav a.active svg, .bottomnav button.active svg { background: rgba(138,108,255,.34); border-radius: 999px; padding: 3px 12px; width: 46px !important; height: 28px !important; color: #d9ccff; }
+  .bottomnav a.active::before, .bottomnav button.active::before { content: ''; position: absolute; top: 0; left: 26%; right: 26%; height: 3px; border-radius: 0 0 3px 3px; background: #b9a7ff; }
+}
+.sheet-grid a.active { border-color: #b9a7ff !important; background: rgba(138,108,255,.26) !important; color: #fff !important; font-weight: 800; box-shadow: inset 0 0 0 1px #b9a7ff; }
+.sidenav a.active, .sidenav-links a.active { box-shadow: inset 3px 0 0 #b9a7ff; font-weight: 750; }

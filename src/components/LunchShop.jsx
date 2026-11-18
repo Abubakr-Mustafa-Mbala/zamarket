@@ -6,6 +6,7 @@ import { upcomingMenu, fromPrice, lunchShareProduct, workingWeeks, packagePrice,
 import { loadDealDishes } from '../lib/lunchData'
 import { DEAL_COLS } from '../pages/public/Lunch'
 import ShareProduct from './ShareProduct'
+import DishCollage, { collagePhotos } from './DishCollage'
 import '../lunch.css'
 
 const I = (d) => <svg viewBox="0 0 24 24" aria-hidden="true">{d}</svg>
@@ -51,6 +52,7 @@ export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
   const four = week ? packagePrice(weeks, wi, 'monthu', menu, deal) : null
   const from = fromPrice(products, deal)
   const photo = deal.cover_url || products.find((p) => p.images?.[0])?.images[0]
+  const collage = collagePhotos(products).length >= 2
   const link = `${window.location.origin}/lunch/${deal.slug}`
   const to = (plan) => `/lunch/${deal.slug}?plan=${plan}#order`
   const isNew = deal.created_at && Date.now() - new Date(deal.created_at).getTime() < 45 * 864e5
@@ -62,8 +64,8 @@ export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
 
   return (
     <section className="ln ln-offer" id="lunch" aria-label="Weekly office lunches">
-      <div className="ln-offer-top">
-        {photo && <img className="ln-offer-bg" src={photo} alt="" loading="lazy" />}
+      <div className={`ln-offer-top ${collage ? 'has-collage' : ''}`}>
+        {!collage && photo && <img className="ln-offer-bg" src={photo} alt="" loading="lazy" />}
         <div className="ln-offer-fade" />
         <div className="ln-offer-brand">
           <span className="ln-offer-zm"><img src="/favicon.svg" alt="" />ZaMarket</span>
@@ -79,6 +81,7 @@ export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
             <li>{ICONS.cloche}<span>Homemade meals</span></li>
           </ul>
         </div>
+        {collage && <DishCollage className="ln-offer-collage" cover={deal.cover_url} dishes={products.filter((p) => deal.dishes?.some((d) => d.product_id === p.id))} />}
       </div>
 
       {dayCards.some((d) => d.dish) && (

@@ -14,7 +14,7 @@ export function Inventory() {
   const [adj, setAdj] = useState(null)
   const { data, loading, reload } = useData(async () => {
     const [products, requests, moves] = await Promise.all([
-      q(supabase.from('products').select('*').eq('owner_type', 'founder').order('name')),
+      q(supabase.from('products').select('*').eq('owner_type', 'founder').order('name')).then((rows) => (rows || []).filter((p) => p.offering_type !== 'vehicle' && !p.third_party_owner && !p.lunch_only)),
       q(supabase.from('stock_requests').select('*,product:products(name)').eq('fulfilled', false).order('created_at', { ascending: false })),
       q(supabase.from('inventory_movements').select('*,product:products(name)').order('created_at', { ascending: false }).limit(100)),
     ])
@@ -127,7 +127,7 @@ function PurchaseEditor({ purchase, onClose, onDone }) {
   const { user } = useAuth()
   const { data: refs } = useData(async () => ({
     suppliers: await q(supabase.from('suppliers').select('id,name').order('name')),
-    products: await q(supabase.from('products').select('id,name').eq('owner_type', 'founder').order('name')),
+    products: await q(supabase.from('products').select('id,name,offering_type').eq('owner_type', 'founder').order('name')).then((rows) => (rows || []).filter((p) => p.offering_type !== 'vehicle' && !p.third_party_owner && !p.lunch_only)),
   }), [])
   const [p, setP] = useState({ ...purchase })
   const [items, setItems] = useState(purchase.items?.length ? purchase.items.map((i) => ({ ...i })) : [{ product_id: '', quantity: 1, unit_price: 0, quantity_received: 0, quantity_damaged: 0 }])

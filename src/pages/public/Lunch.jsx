@@ -11,6 +11,7 @@ import { PhotoSaver } from '../../components/vehicle/AffiliateTools'
 import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct, cleanTiers, workingWeeks, PACKAGES, packageDates, packagePrice, picksFromDates, matchPackage, dateRange, defaultDish } from '../../lib/lunch'
 import { loadDealDishes } from '../../lib/lunchData'
 import ShareProduct from '../../components/ShareProduct'
+import DishCollage, { collagePhotos } from '../../components/DishCollage'
 import { whatsappLink } from '../../lib/vehicle'
 import '../../lunch.css'
 
@@ -122,8 +123,9 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
 
   return (
     <div className={`ln ln-page ${preview ? 'is-preview' : ''}`}>
-      <section className="ln-hero">
+      <section className={`ln-hero ${collagePhotos(allDishes).length >= 2 ? 'has-collage' : ''}`}>
         {deal.cover_url && <img className="ln-hero-img" src={deal.cover_url} alt="" />}
+        {collagePhotos(allDishes).length >= 2 && <DishCollage className="ln-hero-collage" cover={deal.cover_url} dishes={allDishes} />}
         <div className="ln-hero-shade" />
         <div className="ln-hero-copy">
           <span className="ln-eyebrow">{vendor ? `${vendor.business_name} · ` : ''}Weekly lunch</span>

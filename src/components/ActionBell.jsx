@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
 import { money } from '../lib/format'
-import { chime, soundOn, setSound } from '../lib/chime'
+import { chime, soundOn, setSound, unlock } from '../lib/chime'
 import { pushSupported, needsHomeScreen, enablePush, disablePush, currentSubscription } from '../lib/push'
 
 // Remembering what you have seen, kept out of the component so a private
@@ -46,45 +47,70 @@ const ago = (iso) => {
   return `${days} day${days > 1 ? 's' : ''}`
 }
 
+const ASKED = 'zamarket-alerts-asked'
+const DISMISSED = 'zamarket-bell-cleared'
+const readJson = (k) => { try { return JSON.parse(localStorage.getItem(k) || '{}') } catch { return {} } }
+const writeJson = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch { /* ignore */ } }
+const asked = () => { try { return !!localStorage.getItem(ASKED) } catch { return true } }
+const markAsked = () => { try { localStorage.setItem(ASKED, '1') } catch { /* ignore */ } }
+
 // One bell for everything waiting: orders, money, applications, requests.
+// No switches on it: alerts are offered once ("Turn on alerts"), and the
+// choices live behind the gear in the panel.
 export default function ActionBell() {
+  const { user } = useAuth() || {}
   const [groups, setGroups] = useState([])
   const [open, setOpen] = useState(false)
+  const [view, setView] = useState('list')
   const [sound, setSoundOn] = useState(soundOn())
-  const [perm, setPerm] = useState(notifyState())
-  // Phone notifications: separate from the browser notification above,
-  // because this one keeps working with every tab closed.
   const [pushOn, setPushOn] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
   const [pushNote, setPushNote] = useState('')
-  useEffect(() => { currentSubscription().then((sub) => setPushOn(!!sub)) }, [])
-  const togglePush = async () => {
+  const pushRef = useRef(false)
+  useEffect(() => { pushRef.current = pushOn }, [pushOn])
+  const [emailOn, setEmailOn] = useState(true)
+  const [offer, setOffer] = useState(false)
+  const [cleared, setCleared] = useState(() => readJson(DISMISSED))
+  useEffect(() => {
+    currentSubscription().then((sub) => {
+      setPushOn(!!sub)
+      // Offer alerts once per device, a moment after the dashboard opens.
+      if (!sub && !asked() && (pushSupported() || canNotify())) setTimeout(() => setOffer(true), 1500)
+    })
+  }, [])
+  useEffect(() => {
+    if (!user?.id) return
+    supabase.from('alert_prefs').select('email').eq('user_id', user.id).maybeSingle()
+      .then(({ data }) => { if (data) setEmailOn(data.email !== false) }, () => {})
+  }, [user?.id])
+
+  // One tap turns on everything this device can do: the sound inside the
+  // dashboard, and phone alerts that arrive with ZaMarket closed.
+  const turnOn = async () => {
+    unlock(); setSound(true); setSoundOn(true); chime()
     setPushBusy(true); setPushNote('')
-    if (pushOn) {
-      await disablePush()
-      setPushOn(false)
-    } else {
-      const r = await enablePush()
-      if (r.ok) setPushOn(true); else setPushNote(r.reason)
-    }
-    setPushBusy(false)
+    let r = { ok: false, reason: '' }
+    if (pushSupported() && !needsHomeScreen()) r = await enablePush()
+    else if (canNotify()) { const p = await askToNotify(); r = { ok: p === 'granted', reason: p === 'granted' ? '' : 'Notifications are blocked for this site in your browser settings.' } }
+    else r = { ok: false, reason: needsHomeScreen() ? 'On an iPhone, add ZaMarket to your home screen first, then turn alerts on from there.' : 'This browser cannot show alerts.' }
+    setPushOn(!!r.ok && pushSupported()); setPushNote(r.ok ? '' : r.reason); setPushBusy(false)
+    markAsked(); setOffer(false)
+    return r.ok
+  }
+  const togglePush = async () => {
+    if (pushOn) { setPushBusy(true); await disablePush(); setPushOn(false); setPushBusy(false); return }
+    await turnOn()
+  }
+  const toggleEmail = async () => {
+    const v = !emailOn
+    setEmailOn(v)
+    if (user?.id) await supabase.from('alert_prefs').upsert({ user_id: user.id, email: v, updated_at: new Date().toISOString() })
   }
   const box = useRef(null)
-  // The badge counts what has arrived SINCE YOU LAST LOOKED, not everything
-  // outstanding. The list underneath still shows all the work until it is
-  // actually done — so opening the bell clears the red dot without hiding a
-  // pending order, which is the thing that must never disappear quietly.
-  //
-  // This is remembered per KIND of work, not as one running total. A single
-  // total hid real arrivals: with three orders already waiting, a fourth
-  // arriving while one was handled left the total at three and showed no
-  // badge at all. Counting each kind against what you last saw of that kind
-  // cannot go quiet like that.
+  // The badge counts what has arrived SINCE YOU LAST LOOKED, per kind of work.
   const [seen, setSeen] = useState(() => {
     try { return JSON.parse(localStorage.getItem('zamarket-bell-seen-v2') || '{}') } catch { return {} }
   })
-  // What each kind stood at last time, so a sound plays when something NEW
-  // arrives rather than every time the list is refreshed.
   const lastCounts = useRef(null)
 
   const load = async () => {
@@ -95,9 +121,6 @@ export default function ActionBell() {
     const was = lastCounts.current
     setGroups(next)
     lastCounts.current = counts
-
-    // When work is handled elsewhere, what you have "seen" of that kind drops
-    // with it, so the badge never owes you a number for something already done.
     setSeen((prev) => {
       const merged = { ...prev }
       let changed = false
@@ -110,15 +133,21 @@ export default function ActionBell() {
       if (changed) save(merged)
       return changed ? merged : prev
     })
-
-    // Only on a genuine arrival, and never on the first load — otherwise
-    // opening the dashboard would chime at whatever was already waiting.
+    // Cleared items come back when something new of that kind arrives.
+    setCleared((prev) => {
+      const next2 = { ...prev }
+      let changed = false
+      for (const k of Object.keys(next2)) if ((counts[k] ?? 0) !== next2[k] && (counts[k] ?? 0) < next2[k]) { next2[k] = counts[k] ?? 0; changed = true }
+      if (changed) writeJson(DISMISSED, next2)
+      return changed ? next2 : prev
+    })
     if (was) {
       const arrived = next.filter((g) => Number(g.count || 0) > Number(was[g.key] || 0))
       if (arrived.length) {
         const urgentNow = arrived.some((g) => g.tone === 'urgent')
         chime({ urgent: urgentNow })
-        notify(arrived, urgentNow)
+        // With phone alerts on, the phone itself announces it; don't double up.
+        if (!pushRef.current) notify(arrived, urgentNow)
       }
     }
   }
@@ -135,22 +164,25 @@ export default function ActionBell() {
     return () => document.removeEventListener('mousedown', away)
   }, [open])
 
-  const total = groups.reduce((t, g) => t + Number(g.count || 0), 0)
-  // New work, counted per kind: what is waiting now minus what you last saw.
-  const fresh = groups.reduce(
-    (t, g) => t + Math.max(0, Number(g.count || 0) - Number(seen[g.key] || 0)), 0)
-  const urgent = groups.some((g) => g.tone === 'urgent')
+  const shown = groups.filter((g) => Number(g.count || 0) > Number(cleared[g.key] ?? -1))
+  const total = shown.reduce((t, g) => t + Number(g.count || 0), 0)
+  const fresh = shown.reduce((t, g) => t + Math.max(0, Number(g.count || 0) - Number(seen[g.key] || 0)), 0)
+  const urgent = shown.some((g) => g.tone === 'urgent')
 
   const markSeen = () => {
     const now = Object.fromEntries(groups.map((g) => [g.key, Number(g.count || 0)]))
     setSeen(now)
     save(now)
   }
+  const clearAll = () => {
+    const now = Object.fromEntries(groups.map((g) => [g.key, Number(g.count || 0)]))
+    setCleared(now); writeJson(DISMISSED, now); markSeen()
+  }
 
   return (
     <div className="bell-wrap" ref={box}>
       <button className={`bell ${urgent && fresh > 0 ? 'urgent' : ''}`}
-        onClick={() => { const next = !open; setOpen(next); if (next) { load(); markSeen() } }}
+        onClick={() => { const next = !open; setOpen(next); setView('list'); if (next) { load(); markSeen() } }}
         aria-label={fresh > 0 ? `${fresh} new, ${total} things need you` : `${total} things need you`}>
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
           <path d="M18 8a6 6 0 0 0-12 0c0 7-3 8-3 8h18s-3-1-3-8" /><path d="M13.7 21a2 2 0 0 1-3.4 0" />
@@ -158,46 +190,60 @@ export default function ActionBell() {
         {fresh > 0 && <span className="bell-count">{fresh > 99 ? '99+' : fresh}</span>}
       </button>
 
+      {offer && !open && (
+        <div className="bell-offer" role="dialog" aria-label="Turn on alerts">
+          <strong>Get alerts on this {/Android|iPhone|iPad/i.test(navigator.userAgent) ? 'phone' : 'device'}?</strong>
+          <span>A sound and a notification when an order or anything else needs you, even with ZaMarket closed.</span>
+          <div className="btn-row">
+            <button className="btn sm primary" disabled={pushBusy} onClick={turnOn}>{pushBusy ? 'Turning on…' : 'Turn on alerts'}</button>
+            <button className="btn sm ghost" onClick={() => { markAsked(); setOffer(false) }}>Not now</button>
+          </div>
+        </div>
+      )}
+
       {open && (
         <div className="bell-panel">
           <div className="bell-head">
             <span className="bell-title">
-              <strong>What needs you</strong>
-              <em>{total > 0 ? `${total} still to do` : 'All clear'}</em>
+              <strong>{view === 'settings' ? 'Alerts' : 'What needs you'}</strong>
+              {view === 'list' && <em>{total > 0 ? `${total} still to do` : 'All clear'}</em>}
             </span>
-            <span className="btn-row">
-              <button className="btn sm ghost" title={sound ? 'Sound is on' : 'Sound is off'}
-                aria-pressed={sound}
-                onClick={() => { const v = !sound; setSound(v); setSoundOn(v); if (v) chime() }}>
-                {sound ? '🔔 Sound on' : '🔕 Sound off'}
+            <span className="bell-actions">
+              {view === 'list' && shown.length > 0 && <button type="button" className="bell-link" onClick={markSeen}>Mark all read</button>}
+              {view === 'list' && shown.length > 0 && <button type="button" className="bell-link" onClick={clearAll}>Clear</button>}
+              <button type="button" className="bell-gear" aria-label={view === 'settings' ? 'Back to the list' : 'Alert settings'} onClick={() => setView(view === 'settings' ? 'list' : 'settings')}>
+                {view === 'settings'
+                  ? <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M15 6l-6 6 6 6" /></svg>
+                  : <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>}
               </button>
-              {canNotify() && perm !== 'granted' && (
-                <button className="btn sm ghost" onClick={async () => setPerm(await askToNotify())}>
-                  {perm === 'denied' ? '🔕 Blocked' : '🔔 Alert me'}
-                </button>
-              )}
-              {pushSupported() && (
-                <button className="btn sm ghost" disabled={pushBusy} aria-pressed={pushOn}
-                  title={pushOn ? 'This device is alerted even when ZaMarket is closed' : 'Be told about orders with the app closed'}
-                  onClick={togglePush}>
-                  {pushBusy ? '…' : pushOn ? '📱 Phone alerts on' : '📱 Alert my phone'}
-                </button>
-              )}
-              <button className="btn sm ghost" onClick={load}>Refresh</button>
             </span>
           </div>
-          {pushNote && <p className="bell-note">{pushNote}</p>}
-          {!pushNote && pushSupported() && !pushOn && needsHomeScreen() && (
-            <p className="bell-note">On an iPhone, add ZaMarket to your home screen first — then turn phone alerts on from there.</p>
-          )}
-          {groups.length === 0 ? (
+
+          {view === 'settings' ? (
+            <div className="bell-settings">
+              <label className="bell-switch">
+                <span><strong>Phone alerts</strong><small>{pushOn ? 'On for this device, even with ZaMarket closed.' : 'Get a notification with your phone’s sound.'}</small></span>
+                <input type="checkbox" role="switch" checked={pushOn} disabled={pushBusy || !(pushSupported() || canNotify())} onChange={togglePush} />
+              </label>
+              <label className="bell-switch">
+                <span><strong>Sound in the dashboard</strong><small>A short chime while ZaMarket is open.</small></span>
+                <input type="checkbox" role="switch" checked={sound} onChange={() => { const v = !sound; setSound(v); setSoundOn(v); if (v) { unlock(); chime() } }} />
+              </label>
+              <label className="bell-switch">
+                <span><strong>Emails</strong><small>Approvals, orders to prepare, payouts sent.</small></span>
+                <input type="checkbox" role="switch" checked={emailOn} onChange={toggleEmail} />
+              </label>
+              {pushNote && <p className="bell-note">{pushNote}</p>}
+              <p className="bell-note">Phone alerts use your phone’s own notification sound. If you hear nothing, check that notifications for your browser are not muted in the phone’s settings.</p>
+            </div>
+          ) : shown.length === 0 ? (
             <div className="bell-clear">
               <span aria-hidden>✓</span>
-              <p>Nothing waiting. Everything is handled.</p>
+              <p>{groups.length ? 'Cleared. New things will show here.' : 'Nothing waiting. Everything is handled.'}</p>
             </div>
           ) : (
             <ul className="bell-list">
-              {groups.map((g) => (
+              {shown.map((g) => (
                 <li key={g.key}>
                   <Link to={g.link} onClick={() => setOpen(false)} className={`bell-item ${g.tone}`}>
                     <span className="bell-n">{g.count}</span>

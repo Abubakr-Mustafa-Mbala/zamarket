@@ -25,6 +25,7 @@ const STAFF_NAV = [
   { to: '/admin/products', label: 'Products' },
   { to: '/admin/vehicles', label: 'Vehicles' },
   { to: '/admin/traffic', label: 'Visitors' },
+  { to: '/admin/videos', label: 'Video maker' },
   { to: '/admin/lunch', label: 'Lunch plans' },
   { to: '/admin/studio', label: 'Creative Studio' },
   { to: '/admin/customers', label: 'Customers' },
@@ -260,7 +261,8 @@ export default function Shell({ kind }) {
         {tabs.map((t) => (
           <NavLink key={t.to} to={t.to} end={t.end}>{t.icon}<span>{t.label}</span></NavLink>
         ))}
-        <button onClick={() => setMore(true)}>{I.more}<span>More</span></button>
+        {/* "More" lights up when the page you are on lives in the menu. */}
+        <button className={more || !tabs.some((t) => (t.end ? pathname === t.to : pathname.startsWith(t.to))) ? 'active' : ''} onClick={() => setMore(true)}>{I.more}<span>More</span></button>
       </nav>
 
       {more && (

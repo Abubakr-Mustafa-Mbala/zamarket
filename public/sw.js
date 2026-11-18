@@ -21,6 +21,12 @@ self.addEventListener('push', (event) => {
     // but still buzzes, so a busy evening is one line instead of twenty.
     renotify: true,
     requireInteraction: false,
+    // Not silent: the phone plays its normal notification sound and buzzes.
+    // (Browsers do not let a website choose its own sound for these.)
+    silent: false,
+    vibrate: [180, 80, 180, 80, 260],
+    icon: '/icon-192.png',
+    badge: '/favicon-48.png',
     data: { url: data.url || '/admin/orders?status=pending' },
   }
   event.waitUntil(self.registration.showNotification(title, options))

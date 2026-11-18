@@ -297,7 +297,7 @@ export function BlogPost() {
     supabase.rpc('post_page', { p_slug: slug })
       .then(({ data, error }) => setPost(error ? { found: false } : (data || { found: false })))
       .catch(() => setPost({ found: false }))
-    supabase.rpc('post_read', { p_slug: slug })
+    supabase.rpc('post_read', { p_slug: slug }).then(() => {}, () => {})
   }, [slug])
 
   useEffect(() => {

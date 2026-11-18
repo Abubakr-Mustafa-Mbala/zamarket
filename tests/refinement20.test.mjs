@@ -36,7 +36,7 @@ test('affiliate recruitment is only in public footer, not shopping department st
   const header = code.split('<nav className="dept-strip"')[1].split('</nav>')[0]
   assert.doesNotMatch(header, /affiliates/)
   // Journal is reader-facing content, not affiliate recruitment.
-  assert.match(header, /to="\/blog"/)
+  assert.match(header, /'\/blog', 'Journal'/)
   assert.match(code, /<Link to="\/affiliates">Become an affiliate<\/Link>/)
 })
 test('vendor themes and cover wallpapers have precedence over general premium styling', () => {

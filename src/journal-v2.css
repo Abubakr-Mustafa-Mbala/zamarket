@@ -232,3 +232,4 @@
   .shop .journal-print-mode .article h2 { break-after:avoid; }
   .shop .journal-print-mode .article .article-media { break-inside:avoid; }
 }
+.journal-founder-panel .journal-stats-grid > div small { display:block; margin-top:4px; line-height:1.35; }

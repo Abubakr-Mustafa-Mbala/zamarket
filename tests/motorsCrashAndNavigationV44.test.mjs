@@ -21,10 +21,10 @@ test('Motors hero handles the first render when vehicle data is not available ye
 test('top links are destinations, product departments appear only once on home', () => {
   const src = read('src/pages/public/Marketplace.jsx')
   const nav = src.split('<nav className="dept-strip"')[1]?.split('</nav>')[0] || ''
-  assert.match(nav, /to="\/motors"/)
-  assert.match(nav, /to="\/blog"/)
-  assert.match(nav, /to="\/sellers"/)
-  assert.match(nav, /to="\/search\?deals=1"/)
+  assert.match(nav, /'\/motors', 'Motors'/)
+  assert.match(nav, /'\/blog', 'Journal'/)
+  assert.match(nav, /'\/sellers', 'Stores'/)
+  assert.match(nav, /'\/search\?deals=1', "Today's deals"/)
   assert.doesNotMatch(nav, /stocked\.map|search\?cat=/)
   assert.match(src, /\{pathname === '\/' && <CategoryRail \/>\}/)
 })

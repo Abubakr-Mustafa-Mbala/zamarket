@@ -501,3 +501,63 @@
 .ln-kdays button b { font-size: 1.3rem; }
 .ln-kdays button small { font-size: .68rem; color: var(--ln-muted); }
 .ln-kdays button.on { border-color: var(--ln-accent); background: rgba(166,116,255,.16); }
+
+/* Dish collage: the cover arranged from the dish photos (Nov 18) */
+.dc { position: relative; overflow: hidden; isolation: isolate; }
+.dc img { display: block; }
+.dc-plain img { width: 100%; height: 100%; object-fit: cover; }
+.dc-empty { background: radial-gradient(80% 70% at 70% 30%, rgba(166,116,255,.35), transparent 70%), var(--ln-bg); }
+.dc-bg { position: absolute; inset: -20px; width: calc(100% + 40px); height: calc(100% + 40px); object-fit: cover; filter: blur(14px) saturate(1.15) brightness(.55); transform: scale(1.05); z-index: -2; }
+.dc-warm { background: radial-gradient(70% 60% at 70% 40%, #5a3418, #2a1a10 55%, #140c1e); }
+.dc-glow { position: absolute; inset: 0; z-index: -1; background: radial-gradient(55% 55% at 65% 50%, rgba(255,190,120,.25), transparent 70%), linear-gradient(180deg, rgba(18,11,30,.1), rgba(18,11,30,.35)); }
+.dc-plate { position: absolute; margin: 0; border-radius: 22px; overflow: hidden; background: #1a1210; box-shadow: 0 24px 50px rgba(0,0,0,.55), 0 0 0 3px rgba(255,255,255,.08); }
+.dc-plate img { width: 100%; height: 100%; object-fit: cover; }
+/* Three plates stepping down to the right, like boxes on a table */
+.dc-p1 { width: 54%; aspect-ratio: 4 / 3; left: 4%; top: 6%; transform: rotate(-4deg); z-index: 1; }
+.dc-p2 { width: 54%; aspect-ratio: 4 / 3; right: 4%; top: 22%; transform: rotate(3deg); z-index: 2; }
+.dc-p3 { width: 58%; aspect-ratio: 4 / 3; left: 20%; bottom: 4%; transform: rotate(-1.5deg); z-index: 3; }
+.dc-p4 { width: 24%; aspect-ratio: 1; border-radius: 50%; right: 5%; bottom: 6%; z-index: 4; box-shadow: 0 14px 30px rgba(0,0,0,.5), 0 0 0 3px rgba(255,255,255,.18); }
+.dc-n2 .dc-p1 { width: 60%; top: 8%; }
+.dc-n2 .dc-p2 { width: 60%; top: auto; bottom: 8%; }
+
+/* In the shop's lunch board: collage under the brand row on phones,
+   to the right of the words on wide screens. */
+.ln-offer-top.has-collage { min-height: 0; justify-content: flex-start; }
+.ln-offer-top.has-collage .ln-offer-fade { display: none; }
+.ln-offer-collage { position: relative; z-index: 1; height: 250px; border-radius: 20px; margin: 2px -4px 0; }
+.ln-offer-top.has-collage h2, .ln-offer-top.has-collage .ln-offer-head > p { text-shadow: none; }
+@media (min-width: 760px) {
+  .ln-offer-top.has-collage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'brand brand' 'head collage'; align-items: center; column-gap: 18px; }
+  .ln-offer-top.has-collage .ln-offer-brand { grid-area: brand; }
+  .ln-offer-top.has-collage .ln-offer-head { grid-area: head; }
+  .ln-offer-top.has-collage .ln-offer-collage { grid-area: collage; height: 340px; margin: 0; }
+}
+
+/* On the lunch page hero */
+.ln-hero.has-collage .ln-hero-img { display: none; }
+.ln-hero-collage { position: absolute; inset: 0; border-radius: 0; }
+.ln-hero.has-collage .ln-hero-shade { background: linear-gradient(180deg, rgba(18,11,30,0) 30%, rgba(18,11,30,.75) 62%, rgba(18,11,30,.97) 100%); }
+@media (min-width: 900px) {
+  .ln-hero.has-collage .ln-hero-collage { left: 40%; }
+  .ln-hero.has-collage .ln-hero-shade { background: linear-gradient(90deg, var(--ln-bg) 30%, rgba(18,11,30,.6) 46%, rgba(18,11,30,0) 62%); }
+}
+@media (max-width: 899px) {
+  .ln-hero.has-collage { min-height: 640px; }
+  .ln-hero.has-collage .ln-hero-collage { bottom: auto; height: 340px; }
+  .ln-hero.has-collage .ln-hero-shade { background: linear-gradient(180deg, rgba(18,11,30,0) 0, rgba(18,11,30,0) 300px, var(--ln-bg) 360px); }
+}
+@media (max-width: 759px) {
+  .ln-offer-top.has-collage .ln-offer-brand { order: 0; }
+  .ln-offer-top.has-collage .ln-offer-collage { order: 1; }
+  .ln-offer-top.has-collage .ln-offer-head { order: 2; }
+}
+@media (max-width: 899px) {
+  .ln-hero.has-collage { min-height: 0; align-items: stretch; }
+  .ln-hero.has-collage .ln-hero-copy { padding-top: 352px; }
+}
+@media (min-width: 760px) {
+  .ln-offer-collage .dc-p1, .ln-hero-collage .dc-p1 { width: 46%; left: 6%; top: 8%; }
+  .ln-offer-collage .dc-p2, .ln-hero-collage .dc-p2 { width: 46%; right: 6%; top: 14%; }
+  .ln-offer-collage .dc-p3, .ln-hero-collage .dc-p3 { width: 48%; left: 26%; bottom: 6%; }
+  .ln-offer-collage .dc-p4, .ln-hero-collage .dc-p4 { width: 20%; }
+}

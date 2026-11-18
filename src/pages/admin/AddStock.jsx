@@ -40,7 +40,7 @@ export default function AddStock() {
   const [busy, setBusy] = useState(false)
   const [done, setDone] = useState(null)
   const [search, setSearch] = useState('')
-  const { data: products } = useData(() => q(supabase.from('products').select('id,name,price,images,stock_available,packaging_cost,commission_type,commission_value,landed_cost_total,landed_units,cost_override,category').eq('owner_type', 'founder').order('name')), [])
+  const { data: products } = useData(() => q(supabase.from('products').select('id,name,price,images,stock_available,packaging_cost,commission_type,commission_value,landed_cost_total,landed_units,cost_override,category,offering_type').eq('owner_type', 'founder').order('name')).then((rows) => (rows || []).filter((p) => p.offering_type !== 'vehicle' && !p.third_party_owner && !p.lunch_only)), [])
 
   const [f, setF] = useState({
     product: null, name: '', category: '', images: [],

@@ -167,6 +167,9 @@ export default function VehicleEditor() {
         out.deal_fee_pct = fee
         out.vehicle_affiliate_share_pct = share
         out.vehicle_seller_agreement_note = row.vehicle_seller_agreement_note?.trim() || null
+        // Whose vehicle it is when ZaMarket lists it for a dealer or owner.
+        // Private. Vehicles never count as ZaMarket stock either way.
+        if (row.third_party_owner !== undefined) out.third_party_owner = row.third_party_owner?.trim() || null
         out.commission_type = 'pct'
         out.commission_value = Math.round(fee * share) / 100
       }
@@ -340,6 +343,7 @@ export default function VehicleEditor() {
               <div className="vx-fields">
                 <F label="Seller's success fee (%)" hint="Share of the final agreed sale price the owner pays ZaMarket"><input inputMode="decimal" value={row.deal_fee_pct ?? ''} onChange={(e) => setR('deal_fee_pct')(e.target.value.replace(/[^\d.]/g, ''))} placeholder="5" /></F>
                 <F label="Affiliate share of that fee (%)" hint="50 means an affiliate who brings the buyer gets half"><input inputMode="decimal" value={row.vehicle_affiliate_share_pct ?? 50} onChange={(e) => setR('vehicle_affiliate_share_pct')(e.target.value.replace(/[^\d.]/g, ''))} /></F>
+                <F label="Owner or dealer" hint="Whose vehicle this is, e.g. Nor's Motors. Private. It is never counted as ZaMarket's stock."><input value={row.third_party_owner || ''} maxLength={120} onChange={(e) => setR('third_party_owner')(e.target.value)} placeholder="e.g. Nor's Motors" /></F>
                 <F label="Agreement note" wide hint="Who the seller is, how they agreed, and where the evidence is kept">
                   <textarea value={row.vehicle_seller_agreement_note || ''} onChange={(e) => setR('vehicle_seller_agreement_note')(e.target.value)} />
                 </F>
@@ -393,7 +397,7 @@ export function VehicleList() {
   const [show, setShow] = useState('all')
 
   useEffect(() => {
-    let q = supabase.from('products').select('id,name,slug,price,images,status,page,offering_type,created_at,vendor:vendors(business_name,logo_url,location,category)').eq('offering_type', 'vehicle').order('created_at', { ascending: false })
+    let q = supabase.from('products').select('*,vendor:vendors(business_name,logo_url,location,category)').eq('offering_type', 'vehicle').order('created_at', { ascending: false })
     if (vendorId) q = q.eq('vendor_id', vendorId)
     q.then(({ data, error: e }) => { if (e) setError(e.message); else setRows(data || []) })
   }, [vendorId])
@@ -424,7 +428,7 @@ export function VehicleList() {
                       <span className="vx-admin-photo">{r.images?.[0] ? <img src={r.images[0]} alt="" loading="lazy" /> : VI.camera}</span>
                       <span className="vx-admin-main">
                         <strong>{vehicleTitle(v, r.name)}</strong>
-                        <span>{money(r.price, { whole: true })} · {(r.images || []).length} photos · {v.location || 'No town yet'}{r.vendor?.business_name ? ` · ${r.vendor.business_name}` : ''}</span>
+                        <span>{money(r.price, { whole: true })} · {(r.images || []).length} photos · {v.location || 'No town yet'}{r.vendor?.business_name ? ` · ${r.vendor.business_name}` : r.third_party_owner ? ` · for ${r.third_party_owner}` : ''}</span>
                       </span>
                       <Badge status={r.status} />
                     </Link>

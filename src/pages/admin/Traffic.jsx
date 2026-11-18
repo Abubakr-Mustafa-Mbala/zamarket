@@ -35,7 +35,7 @@ export default function Traffic() {
   return (
     <div className="vx vx-form vx-traffic">
       <div className="vx-form-head">
-        <div><h1>Visitors</h1><p>Who is visiting, where they came from, and which vehicles people are asking about. Anonymous: no names or numbers are recorded, and staff visits are not counted.</p></div>
+        <div><h1>Visitors</h1><p>Who is visiting, where they came from, where they stop, and which vehicles people ask about. Anonymous: no names or numbers are recorded. Your team, affiliates, and sellers looking at their own shop are not counted.</p></div>
       </div>
       <div className="vx-tabs">
         {RANGES.map(([d, l]) => <button type="button" key={d} className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{l}</button>)}
@@ -59,6 +59,16 @@ export default function Traffic() {
                 {data.days.map((d) => <span key={d.day} title={`${d.day}: ${d.visitors}`} style={{ height: `${Math.max(4, (d.visitors / peak) * 100)}%` }} />)}
               </div>
               <p className="vx-muted tiny">{data.days[0].day} to {data.days[data.days.length - 1].day} · busiest day {peak} visitors</p>
+            </section>
+          )}
+
+          {data.funnel && <Funnel f={data.funnel} />}
+
+          {(data.products || []).length > 0 && (
+            <section className="vx-card-block">
+              <h2>Products people look at</h2>
+              <ul className="vx-rank">{data.products.map((p) => <li key={p.product_id}><span><Link to={`/p/${p.slug || p.product_id}`}>{p.name}</Link></span><b>{p.visitors} people · {p.carts} added to cart</b></li>)}</ul>
+              <p className="vx-muted tiny">Many looks and few carts usually means the price, photo or description needs work.</p>
             </section>
           )}
 
@@ -102,5 +112,45 @@ export default function Traffic() {
         </>
       )}
     </div>
+  )
+}
+
+// Where people stop: each step as a share of everyone who visited, and the
+// biggest drop called out in words.
+const STEPS = [
+  ['visited', 'Visited the site'],
+  ['viewed', 'Looked at a product or vehicle'],
+  ['carted', 'Added to cart'],
+  ['checkout', 'Opened checkout'],
+  ['ordered', 'Ordered or enquired'],
+]
+function Funnel({ f }) {
+  const top = Math.max(1, Number(f.visited || 0))
+  let worst = null
+  STEPS.forEach(([k], i) => {
+    if (!i) return
+    const prev = Number(f[STEPS[i - 1][0]] || 0)
+    const lost = prev - Number(f[k] || 0)
+    if (prev > 0 && (!worst || lost / prev > worst.rate)) worst = { rate: lost / prev, from: STEPS[i - 1][1], to: STEPS[i][1] }
+  })
+  return (
+    <section className="vx-card-block">
+      <h2>Where people stop</h2>
+      <div className="vx-funnel">
+        {STEPS.map(([k, label], i) => {
+          const n = Number(f[k] || 0)
+          const prev = i ? Number(f[STEPS[i - 1][0]] || 0) : 0
+          return (
+            <div key={k} className="vx-funnel-row">
+              <span className="vx-funnel-label">{label}</span>
+              <span className="vx-funnel-bar"><i style={{ width: `${Math.max(2, (n / top) * 100)}%` }} /></span>
+              <b>{n}</b>
+              <small>{i && prev ? `${Math.round((n / prev) * 100)}% of the step before` : ''}</small>
+            </div>
+          )
+        })}
+      </div>
+      {worst && worst.rate > 0 && <p className="vx-muted tiny">The biggest drop is between “{worst.from.toLowerCase()}” and “{worst.to.toLowerCase()}”: {Math.round(worst.rate * 100)}% don’t continue. That is the step to improve first.</p>}
+    </section>
   )
 }

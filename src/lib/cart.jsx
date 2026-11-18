@@ -1,3 +1,4 @@
+import { track } from './traffic'
 import { createContext, useContext, useEffect, useState } from 'react'
 
 import { validAttributionTouch } from './referralExpiry'
@@ -38,7 +39,8 @@ export function CartProvider({ children }) {
   useEffect(() => { localStorage.setItem(KEY, JSON.stringify(items)) }, [items])
 
   // offer: a public_offers row (optional); extra: { choices: {Flavour: 'Vanilla'}, note: 'Happy birthday' }
-  const add = (product, qty = 1, offer = null, extra = {}) => setItems((cur) => {
+  const add = (product, qty = 1, offer = null, extra = {}) => { track('cart', { product: product?.id }); return addItem(product, qty, offer, extra) }
+  const addItem = (product, qty = 1, offer = null, extra = {}) => setItems((cur) => {
     const choices = extra.choices || {}
     const note = (extra.note || '').trim()
     const pkg = extra.package || null

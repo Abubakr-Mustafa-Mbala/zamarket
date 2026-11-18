@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { track } from '../../lib/traffic'
 import { useCart } from '../../lib/cart'
 import { money, date, datetime } from '../../lib/format'
 import { Field, Input, Select, Textarea, useToast, Loading } from '../../components/ui'
@@ -222,6 +223,7 @@ export function Checkout() {
   const slotItems = items.filter((i) => i.fulfilment === 'service' && i.time_slots?.length)
   const missingTime = slotItems.find((i) => !i.choices?.Time)
   const dateError = rules ? checkDate(neededBy, rules) || (missingTime ? `Choose a time for ${missingTime.name}` : null) : null
+  useEffect(() => { track('checkout', { path: '/checkout' }) }, [])
   useEffect(() => {
     if (!neededBy || !slotItems.length) return
     Promise.all(slotItems.map((i) => supabase.rpc('booked_slots', { p_product: i.id, p_date: neededBy }).then(({ data }) => [i.id, data])))
@@ -303,6 +305,7 @@ export function Checkout() {
     setBusy(false)
     if (error) return toast(error.message, true)
     trackPurchase(data.order_number, data.total, items)
+    track('order', { path: '/checkout' })
     // Ask the server to announce the order. Deliberately not awaited and
     // deliberately allowed to fail: the customer must never wait on it, and
     // a notification that does not send must never break a real order. If

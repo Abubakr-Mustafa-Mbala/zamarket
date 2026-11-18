@@ -23,7 +23,7 @@ test('public Journal index has the new brand introduction', () => {
 test('public homepage and mobile-visible department navigation feature Journal', () => {
   const shop = read('../src/pages/public/Marketplace.jsx')
   assert.match(shop, /<JournalHighlights \/>/)
-  assert.match(shop, /to="\/blog" className=\{`journal-nav/)
+  assert.match(shop, /\['\/blog', 'Journal', pathname\.startsWith\('\/blog'\)\]/)
   assert.match(shop, /<ShopFooter/)
 })
 

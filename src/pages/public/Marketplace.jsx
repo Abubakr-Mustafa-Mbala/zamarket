@@ -3,6 +3,7 @@ import VendorStorefront, { anchorFor } from '../../components/storefront/VendorS
 import { Fragment, Suspense, useEffect, useMemo, useState, useRef } from 'react'
 import { Link, useParams, useNavigate, Outlet, useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { track } from '../../lib/traffic'
 import { useCart } from '../../lib/cart'
 import { useSaved } from '../../lib/saved'
 import { useAuth } from '../../lib/auth'
@@ -279,7 +280,7 @@ function FounderHero() {
   useEffect(() => { supabase.rpc('featured_now').then(({ data }) => setSlots(data || [])).catch(() => setSlots([])) }, [])
   useEffect(() => {
     if (!slots?.length) return
-    supabase.rpc('featured_seen', { p_slot: slots[i % slots.length].id })
+    supabase.rpc('featured_seen', { p_slot: slots[i % slots.length].id }).then(() => {}, () => {})
     if (slots.length < 2) return
     const t = setInterval(() => setI((x) => x + 1), 7000)
     return () => clearInterval(t)
@@ -500,20 +501,23 @@ function ShopFooter({ user, home, giveaway }) {
 function BottomBar() {
   const { count } = useCart()
   const saved = useSaved()
-  const here = useLocation().pathname
+  const loc = useLocation()
+  const here = loc.pathname
+  // Motors has its own tab so cars are one tap away from anywhere; Today's
+  // deals stays first in the strip under the search bar.
   const items = [
-    { to: '/', label: 'Home', icon: <Icon.house />, end: true },
-    { to: '/categories', label: 'Categories', icon: <Icon.grid /> },
-    { to: '/search?deals=1', label: 'Deals', icon: <Icon.tag /> },
-    { to: '/saved', label: 'Saved', icon: <Icon.heart />, badge: saved.count },
-    { to: '/cart', label: 'Cart', icon: <Icon.cart />, badge: count },
+    { to: '/', label: 'Home', icon: <Icon.house />, on: here === '/' },
+    { to: '/categories', label: 'Categories', icon: <Icon.grid />, on: here.startsWith('/categories') },
+    { to: '/motors', label: 'Motors', icon: <Icon.car />, on: here.startsWith('/motors') },
+    { to: '/saved', label: 'Saved', icon: <Icon.heart />, badge: saved.count, on: here.startsWith('/saved') },
+    { to: '/cart', label: 'Cart', icon: <Icon.cart />, badge: count, on: here.startsWith('/cart') || here.startsWith('/checkout') },
   ]
   return (
     <nav className="bottom-bar" aria-label="Main">
       {items.map((i) => {
-        const on = i.end ? here === '/' : here.startsWith(i.to.split('?')[0])
+        const on = i.on
         return (
-          <Link key={i.label} to={i.to} className={on ? 'on' : ''}>
+          <Link key={i.label} to={i.to} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>
             <span className="bb-icon">{i.icon}{i.badge > 0 && <em>{i.badge}</em>}</span>
             <span>{i.label}</span>
           </Link>
@@ -611,10 +615,13 @@ export function PublicShell() {
           </Link>
         </div>
         <nav className="dept-strip" aria-label="Shopping departments">
-          <Link to="/search?deals=1">Today's deals</Link>
-          <Link to="/motors">Motors</Link>
-          <Link to="/blog" className={`journal-nav${pathname.startsWith('/blog') ? ' active' : ''}`}>Journal</Link>
-          <Link to="/sellers">Stores</Link>
+          {[
+            ['/search?deals=1', "Today's deals", pathname === '/search' && sp.get('deals') === '1'],
+            ['/motors', 'Motors', pathname.startsWith('/motors')],
+            ['/lunch', 'Lunch', pathname.startsWith('/lunch')],
+            ['/blog', 'Journal', pathname.startsWith('/blog')],
+            ['/sellers', 'Stores', pathname.startsWith('/sellers')],
+          ].map(([to, label, on]) => <Link key={to} to={to} className={on ? 'on' : ''} aria-current={on ? 'page' : undefined}>{label}</Link>)}
           {activeGiveaway && <Link className="shop-giveaway-live" to={`/giveaways/${encodeURIComponent(activeGiveaway)}`}><Icon.gift /> Live giveaway</Link>}
         </nav>
       </header>
@@ -654,7 +661,7 @@ export function ReferralCapture() {
   useEffect(() => {
     if (!code) return
     setRef(code.toLowerCase())
-    supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null })
+    supabase.rpc('track_hit', { p_kind: 'affiliate_click', p_code: code.toLowerCase(), p_product: null }).then(() => {}, () => {})
     nav(lunch ? `/lunch/${lunch}` : product ? `/p/${product}` : '/', { replace: true })
   }, [code, product, lunch, nav])
   return null
@@ -1067,7 +1074,8 @@ function ProductSeo({ p }) {
   // a measurement ID has been configured.
   useEffect(() => {
     if (!p?.id) return
-    supabase.rpc('track_hit', { p_kind: 'product_view', p_vendor: p.vendor_id || null, p_product: p.id })
+    supabase.rpc('track_hit', { p_kind: 'product_view', p_vendor: p.vendor_id || null, p_product: p.id }).then(() => {}, () => {})
+    if (p.offering_type !== 'vehicle') track('product', { product: p.id })
     trackViewItem(p)
   }, [p?.id])
   return null

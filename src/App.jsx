@@ -22,6 +22,7 @@ const vendorPages = () => import('./pages/vendor/Vendor')
 
 const Dashboard = lazy(() => import('./pages/admin/Dashboard'))
 const Traffic = lazy(() => import('./pages/admin/Traffic'))
+const VideoMaker = lazy(() => import('./pages/admin/VideoMaker'))
 const OrdersList = named(adminOrders, 'OrdersList')
 const OrderDetail = named(adminOrders, 'OrderDetail')
 const Products = lazy(() => import('./pages/admin/Products'))
@@ -218,6 +219,7 @@ export default function App() {
         <Route path="vehicles" element={<VehicleList />} />
         <Route path="vehicles/:id" element={<VehicleEditor />} />
         <Route path="traffic" element={<Traffic />} />
+        <Route path="videos" element={<VideoMaker />} />
         <Route path="lunch" element={<LunchDeals />} />
         <Route path="customers" element={<Customers />} />
         <Route path="deliveries" element={<Deliveries />} />

@@ -24,7 +24,7 @@ export function MagnetPage() {
 
   useEffect(() => {
     supabase.from('public_magnets').select('*').eq('slug', slug).maybeSingle().then(({ data }) => setM(data || false))
-    supabase.rpc('view_magnet', { p_slug: slug })
+    supabase.rpc('view_magnet', { p_slug: slug }).then(() => {}, () => {})
   }, [slug])
 
   if (m === null) return <Loading />

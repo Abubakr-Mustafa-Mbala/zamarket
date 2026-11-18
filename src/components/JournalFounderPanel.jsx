@@ -35,17 +35,20 @@ export default function JournalFounderPanel() {
     </div>
     <div className="journal-stats-grid">
       {[
-        ['Article reads', total('views')], ['Engaged sessions', total('engaged')],
-        ['Likes', total('likes')], ['Approved comments', total('comments')],
-        ['Product clicks', total('product_clicks')], ['Share actions', total('share_clicks')],
-      ].map(([label, value]) => <div key={label}><strong>{value.toLocaleString('en-US')}</strong><span>{label}</span></div>)}
+        ['Opened', total('views'), 'Times an article was opened'],
+        ['Read most of it', total('engaged'), 'Stayed 18 seconds and scrolled past halfway'],
+        ['Tapped a product', total('product_clicks'), 'Went from an article to a product'],
+        ['Shared', total('share_clicks'), 'Tapped share on an article'],
+        ['Likes', total('likes'), ''],
+        ['Comments', total('comments'), 'Approved'],
+      ].map(([label, value, hint]) => <div key={label}><strong>{value.toLocaleString('en-US')}</strong><span>{label}</span>{hint && <small className="tiny muted">{hint}</small>}</div>)}
     </div>
-    <p className="tiny muted">Sessions and actions are counted approximately, once per browser session per article per day. Use Search Console for search impressions and rankings.</p>
+    <p className="tiny muted">Your team and affiliates are not counted, so testing a share or opening your own article does not change these. Opened counts every opening; the others count once per reader per article per day. Before 18 November, openings were not being recorded, so older articles start from zero. Search Console shows search impressions and rankings.</p>
     {metrics.length > 0 && <div className="journal-metric-articles">
       <h4>By article</h4>
       {metrics.map(p => <div key={p.slug}>
         <Link to={`/blog/${p.slug}`}>{p.title}</Link>
-        <span>{p.views} reads · {p.product_clicks} product clicks · {p.engaged} engaged sessions</span>
+        <span>{p.views} opened · {p.engaged} read most of it · {p.product_clicks} tapped a product · {p.share_clicks} shared</span>
       </div>)}
     </div>}
     <h4>Comments awaiting review {queue.length ? `(${queue.length})` : ''}</h4>
