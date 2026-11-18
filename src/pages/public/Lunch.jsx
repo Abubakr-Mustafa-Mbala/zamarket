@@ -8,9 +8,10 @@ import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import PhotoViewer from '../../components/PhotoViewer'
 import { PhotoSaver } from '../../components/vehicle/AffiliateTools'
-import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, lunchShareProduct, cleanTiers, workingWeeks, PACKAGES, packageDates, packagePrice, picksFromDates, matchPackage, dateRange, defaultDish } from '../../lib/lunch'
+import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings, lunchPostText, cleanTiers, workingWeeks, PACKAGES, packageDates, packagePrice, picksFromDates, matchPackage, dateRange, defaultDish } from '../../lib/lunch'
 import { loadDealDishes } from '../../lib/lunchData'
-import ShareProduct from '../../components/ShareProduct'
+import { shareAudience } from '../../components/ShareProduct'
+import ShareLunch from '../../components/ShareLunch'
 import DishCollage, { collagePhotos } from '../../components/DishCollage'
 import { whatsappLink } from '../../lib/vehicle'
 import { useDepartments, foodDepartment } from '../../lib/departments'
@@ -86,6 +87,10 @@ export default function LunchPage() {
       if (!alive) return
       if (!data) { setDeal(null); return }
       setDeal(data)
+      // Customer review screenshots: read on their own, so the page still
+      // works before the SQL update that adds them.
+      supabase.from('meal_deals').select('review_images').eq('id', data.id).maybeSingle()
+        .then(({ data: rv }) => { if (alive && rv?.review_images?.length) setDeal((x) => (x ? { ...x, review_images: rv.review_images } : x)) }, () => {})
       const ids = (data.dishes || []).map((d) => d.product_id)
       const [p, v, a, r] = await Promise.all([
         loadDealDishes(data).then((list) => ({ data: list })),
@@ -118,6 +123,8 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
   const [order, setOrder] = useState(null)
   const [viewer, setViewer] = useState(null)
   const proofs = (deal.proof_images || []).filter(Boolean)
+  const said = (deal.review_images || []).filter(Boolean)
+  const owner = ['founder', 'ops'].includes(role) || (role === 'vendor' && profile?.partner?.id === deal.vendor_id)
   const rated = reviews.filter((r) => r.product_rating)
   const rating = rated.length ? rated.reduce((t, r) => t + Number(r.product_rating || 0), 0) / rated.length : 0
   const affiliate = role === 'reseller' && profile?.partner?.code
@@ -135,6 +142,13 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           <span>Weekly lunch</span>
         </nav>
       )}
+      {owner && !preview && (
+        <div className="ln-owner">
+          <span>{role === 'vendor' ? 'This is your lunch offer.' : 'Seller\u2019s lunch offer.'} Change the dishes, photos, words or days any time.</span>
+          <Link className="ln-btn primary" to={role === 'vendor' ? '/vendor/lunch' : '/admin/lunch'}>Edit lunch offer</Link>
+        </div>
+      )}
+      {affiliate && !preview && <a className="ln-owner ln-owner-aff" href="#promote"><span>You can earn on this offer.</span><b>Promote it ↓</b></a>}
       <section className={`ln-hero ${collagePhotos(allDishes).length >= 2 ? 'has-collage' : ''}`}>
         {deal.cover_url && <img className="ln-hero-img" src={deal.cover_url} alt="" />}
         {collagePhotos(allDishes).length >= 2 && <DishCollage className="ln-hero-collage" cover={deal.cover_url} dishes={allDishes} />}
@@ -150,8 +164,7 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           </ul>
           <div className="ln-hero-cta">
             <a href="#order" className="ln-btn primary">Order weekly lunch</a>
-            {!preview && !affiliate && <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: allDishes, from, link })}
-              link={link} store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn ghost" label="Share" />}
+            {!preview && !affiliate && <ShareLunch deal={deal} vendorName={vendor?.business_name} menu={menu} from={from} link={link} audience={shareAudience(role)} />}
           </div>
         </div>
       </section>
@@ -177,13 +190,24 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
           <div className="ln-head"><h2>Who cooks your lunch</h2></div>
           {deal.about_cook && <p className="ln-story">{deal.about_cook}</p>}
           {proofs.length > 0 && (
-            <div className="ln-proof">
+            <div className={`ln-proof n${Math.min(proofs.length, 4)}`}>
               {proofs.map((src, i) => (
                 <button type="button" key={`${src}-${i}`} onClick={() => setViewer({ images: proofs, start: i, alt: 'From the kitchen' })} aria-label={`Open photo ${i + 1}`}><img src={src} alt="" loading="lazy" /></button>
               ))}
             </div>
           )}
           {vendor?.slug && !preview && <Link className="ln-link" to={`/${vendor.slug}`}>Visit {vendor.business_name} →</Link>}
+        </section>
+      )}
+
+      {said.length > 0 && (
+        <section className="ln-section">
+          <div className="ln-head"><h2>What customers said</h2><p>Real messages from people who ordered.</p></div>
+          <div className="ln-said">
+            {said.map((src, i) => (
+              <button type="button" key={`${src}-${i}`} onClick={() => setViewer({ images: said, start: i, alt: 'A message from a customer' })} aria-label={`Open message ${i + 1}`}><img src={src} alt="" loading="lazy" /></button>
+            ))}
+          </div>
         </section>
       )}
 
@@ -375,6 +399,8 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
   const [rate, setRate] = useState(null)
   const [photos, setPhotos] = useState(false)
   useEffect(() => { supabase.rpc('meal_deal_affiliate_rate', { p_deal: deal.id }).then(({ data }) => setRate(data)) }, [deal.id])
+  // Arriving from "Promote it" on the affiliate's products page.
+  useEffect(() => { if (window.location.hash === '#promote') setTimeout(() => document.getElementById('promote')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350) }, [])
   const earn = affiliateEarnings(rate, menu)
   const link = `${window.location.origin}/r/${code}/lunch/${deal.slug}`
   const post = lunchPostText({ deal, vendorName: vendor?.business_name, from, link })
@@ -382,7 +408,7 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
   const uniq = [...new Set(images)]
   const copy = async (t, msg) => { try { await navigator.clipboard.writeText(t); toast(msg) } catch { toast('Press and hold to copy', true) } }
   return (
-    <section className="ln-section ln-aff">
+    <section className="ln-section ln-aff" id="promote">
       <div className="ln-head"><h2>Promote this lunch plan</h2></div>
       {earn ? (
         <div className="ln-earn">
@@ -393,8 +419,7 @@ function LunchAffiliate({ deal, vendor, menu, from, code }) {
       ) : null}
       <p className="ln-muted">You earn on every lunch delivered to a customer you bring, every day, including when they book again. Earned daily, paid out with your other earnings.</p>
       <code className="ln-code">{link}</code>
-      <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: menu.flatMap((d) => d.dishes), from, link })} link={link} audience="affiliate"
-        store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn primary big" label="Make a poster to share" />
+      <ShareLunch deal={deal} vendorName={vendor?.business_name} menu={menu} from={from} link={link} audience="affiliate" className="ln-btn primary big" label="Make the offer poster" />
       <div className="ln-aff-actions">
         <button type="button" className="ln-btn ghost" onClick={() => copy(link, 'Link copied')}>Copy link</button>
         <button type="button" className="ln-btn ghost" onClick={() => copy(post, 'Post copied')}>Copy post</button>

@@ -170,3 +170,40 @@ test('video maker: budget phones build sideways with a rotate mark, else record 
   assert.match(r, /ctx\.setTransform\(0, -scale, scale, 0, 0, portraitW\)/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /fastEncoder\(\)\.then\(setFastWay/)
 })
+
+test('lunch: edit dish opens under the dish, reviews apart, owner can edit, shared as an offer', () => {
+  const ed = read('src/pages/shared/LunchDeals.jsx')
+  assert.match(ed, /\{editDish\?\.id === p\.id && <LunchDishForm key=\{p\.id\}/)
+  assert.match(ed, /scrollIntoView/)
+  assert.match(ed, /What customers said/)
+  assert.match(ed, /It's a review/)
+  const page = read('src/pages/public/Lunch.jsx')
+  assert.match(page, /className="ln-said"/)
+  assert.match(page, /Edit lunch offer/)
+  assert.match(page, /<ShareLunch /)
+  assert.doesNotMatch(page, /<ShareProduct /)
+  assert.match(read('src/components/LunchShop.jsx'), /Edit this offer/)
+  // Posters never carry kitchen photos or customer messages.
+  assert.doesNotMatch(read('src/lib/lunch.js'), /\.\.\.\(deal\.proof_images \|\| \[\]\)\]\.filter/)
+  assert.match(read('src/lib/lunchPoster.js'), /WEEKLY LUNCH OFFER/)
+  assert.match(read('supabase/run-in-supabase.sql'), /add column if not exists review_images text\[\]/)
+})
+
+test('lunch: affiliates see lunch offers with earnings; highlights on home and store', () => {
+  const r = read('src/pages/reseller/Reseller.jsx')
+  assert.match(r, /<LunchOffersToSell \/>/)
+  assert.match(r, /meal_deal_affiliate_rate/)
+  const m = read('src/pages/public/Marketplace.jsx')
+  assert.match(m, /<OfferHighlights \/>/)
+  assert.match(m, /<OfferHighlights vendorId=\{store\.id\} \/>/)
+  assert.match(read('src/components/OfferHighlights.jsx'), /See the offer and order/)
+})
+
+test('video maker: your own nasheed under silent videos, looped and faded', () => {
+  const s = read('src/lib/videoSounds.js')
+  assert.match(s, /src\.loop = true/)
+  assert.match(s, /linearRampToValueAtTime\(0, length\)/)
+  const r = read('src/lib/videoRender.js')
+  assert.match(r, /if \(!voice && spec\.music\?\.blob\)/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /<SoundPicker /)
+})

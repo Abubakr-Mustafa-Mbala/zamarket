@@ -125,7 +125,8 @@ async function pump() {
     const { renderJob } = await import('./videoRender')
     const r = await renderJob(job.spec, (p) => { job.progress = p; emit() })
     Object.assign(job, { status: 'ready', blob: r.blob, seconds: r.seconds, size: r.blob.size, ext: 'mp4', progress: 1, finishedAt: Date.now() })
-    delete job.spec.audio // the voice is inside the video now
+    delete job.spec.audio // the voice (or the sound) is inside the video now
+    delete job.spec.music
     await save(job)
   } catch (e) {
     console.warn('[video] making failed', e)

@@ -22,6 +22,7 @@ import PromoKit from '../../components/PromoKit'
 import PhotoViewer from '../../components/PhotoViewer'
 import LunchPromo from '../../components/LunchPromo'
 import LunchShop, { CategoryLunch } from '../../components/LunchShop'
+import OfferHighlights from '../../components/OfferHighlights'
 import VehicleCard from '../../components/vehicle/VehicleCard'
 import TrustPanel from '../../components/TrustPanel'
 import OfferingCard from '../../components/OfferingCard'
@@ -644,6 +645,7 @@ export function PublicShell() {
           so someone who tapped a product saw a photo and had to hunt for how
           to buy it. */}
       {pathname === '/' && <CategoryRail />}
+      {pathname === '/' && <div className="hl-wrap"><OfferHighlights /></div>}
       <main className={pathname === '/affiliates' ? 'shop-main affiliate-shop-main' : 'shop-main'} id="market-main">
         {/* Only the page swaps; the header, search and nav stay put. */}
         {/* The boundary matters most here: without it a single failed page
@@ -1448,7 +1450,7 @@ export function StorePage() {
       verified={verified}
       share={<ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />}
       renderProduct={(p) => <OfferingCard p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />}
-      special={<><LunchShop vendorId={store.id} vendor={store} />{special.map(([kind, title]) => (
+      special={<><OfferHighlights vendorId={store.id} /><LunchShop vendorId={store.id} vendor={store} />{special.map(([kind, title]) => (
         <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
           <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>
           <div className={kind === 'vehicle' ? 'vx-grid' : 'zsv-grid'}>

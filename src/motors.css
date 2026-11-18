@@ -716,3 +716,12 @@
 .vx-myvideo-bar span { display: block; height: 100%; background: var(--vx-accent); transition: width .25s; }
 .vx-myvideo-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .vx-myvideo-error { color: #dc2626; }
+/* Background sound (your own nasheeds) */
+.vx-sound-list { flex-wrap: wrap; }
+.vx-sound-list button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vx-sound-add { display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 999px; border: 2px dashed var(--vx-accent); color: var(--vx-accent); font-weight: 800; cursor: pointer; }
+.vx-sound-add.busy { opacity: .6; }
+.vx-sound-part { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.vx-sound-part label { display: flex; flex-direction: column; gap: 6px; }
+.vx-sound-part input[type=range] { width: 100%; accent-color: var(--vx-accent); }
+.vx-sound-actions { display: flex; gap: 8px; flex-wrap: wrap; }

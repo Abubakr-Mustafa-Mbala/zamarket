@@ -147,7 +147,9 @@ export function lunchPostText({ deal, vendorName, from, link }) {
 export function lunchShareProduct({ deal, vendorName, dishes = [], from = 0, link }) {
   return {
     offering_type: 'lunch', name: deal.title, price: from, category: 'Lunch at work',
-    images: [...new Set([deal.cover_url, ...dishes.map((x) => x.images?.[0]), ...(deal.proof_images || [])].filter(Boolean))],
+    // Dish photos and the cover only: kitchen photos and customer messages
+    // are never put on a poster.
+    images: [...new Set([deal.cover_url, ...dishes.map((x) => x.images?.[0])].filter(Boolean))],
     description: deal.tagline || '', benefits: [deal.tagline, deal.in_the_box].filter(Boolean),
     cutoff_hour: deal.cutoff_hour, vendor_name: vendorName,
     share_caption: lunchPostText({ deal, vendorName, from, link }),

@@ -9,6 +9,7 @@ import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
+import { listSounds, addSound, removeSound, savedChoice, saveChoice } from '../../lib/videoSounds'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -55,6 +56,12 @@ export default function VideoMaker() {
   const [elapsed, setElapsed] = useState(0)
   const ctrl = useRef(null)
   const [videos, setVideos] = useState([])
+  // Background sound for videos without a voice (your own nasheeds).
+  const [sounds, setSounds] = useState([])
+  const [sound, setSoundState] = useState(savedChoice)
+  useEffect(() => { listSounds().then(setSounds) }, [])
+  const setSound = (c) => { setSoundState(c); saveChoice(c) }
+  const music = sound?.id ? sounds.find((x) => x.id === sound.id) : null
   // Whether this phone can build videos quickly (checked once, remembered).
   const [fastWay, setFastWay] = useState(undefined)
   useEffect(() => { fastEncoder().then(setFastWay, () => setFastWay(null)) }, [videos.some((v) => v.slow)])
@@ -170,6 +177,7 @@ export default function VideoMaker() {
   const spec = () => ({
     title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion,
     script: { slides: scenes, end: parts.end, endSay: parts.endSay, caption: parts.caption },
+    ...(music ? { music: { blob: music.blob, start: sound.start || 0, name: music.name } } : {}),
   })
 
   // Silent: hand the video to My videos and carry on. It is built in the
@@ -333,6 +341,7 @@ export default function VideoMaker() {
               <div className="vx-tabs">{PACES.map((p) => <button key={p} type="button" disabled={!!busy} className={secs === p ? 'on' : ''} onClick={() => { setSecs(p); try { localStorage.setItem('zm-video-pace', String(p)) } catch { /* ignore */ } }}>{p}s</button>)}</div>
               <small className="vx-muted">With your voice, each scene waits for you instead.</small>
             </div>
+            <SoundPicker sounds={sounds} setSounds={setSounds} sound={sound} setSound={setSound} music={music} fast={fast()} toast={toast} busy={!!busy} />
             <section className="vx-card-block">
               <div className="between"><h3>Voice-over script</h3><button type="button" className="vx-btn ghost" onClick={() => copy(script.voice, 'Script')}>Copy</button></div>
               <p className="vx-video-script">{script.voice}</p>
@@ -346,6 +355,70 @@ export default function VideoMaker() {
         </div>
       )}
     </div>
+  )
+}
+
+const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
+
+// Your own nasheeds or qasa'id (voices only), added from the phone once and
+// chosen for each video made without your voice. You pick where it starts;
+// it loops to the length of the video and fades out at the end.
+function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, toast, busy }) {
+  const player = useRef(null)
+  const [adding, setAdding] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const timer = useRef(0)
+  const url = useMemo(() => (music ? URL.createObjectURL(music.blob) : null), [music])
+  useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
+  const stop = () => { clearTimeout(timer.current); player.current?.pause(); setPlaying(false) }
+  const listen = () => {
+    const a = player.current
+    if (!a) return
+    if (playing) return stop()
+    a.currentTime = sound?.start || 0
+    a.play().then(() => { setPlaying(true); timer.current = setTimeout(stop, 10000) }, () => toast('This phone cannot play that sound', true))
+  }
+  const add = async (file) => {
+    if (!file) return
+    setAdding(true)
+    try {
+      const s = await addSound(file)
+      setSounds(await listSounds())
+      setSound({ id: s.id, start: 0 })
+      toast(`${s.name} added`)
+    } catch (e) { toast(e.message, true) }
+    setAdding(false)
+  }
+  const remove = async () => {
+    if (!music || !window.confirm(`Remove "${music.name}" from this phone?`)) return
+    stop(); await removeSound(music.id); setSounds(await listSounds()); setSound(null)
+  }
+  return (
+    <section className="vx-card-block vx-sound">
+      <h3>Background sound</h3>
+      <p className="vx-muted tiny">For videos without your voice. Add a nasheed or qasida with voices only, from your phone. It plays for the whole video, from the part you choose.</p>
+      <div className="vx-tabs vx-sound-list">
+        <button type="button" disabled={busy} className={!music ? 'on' : ''} onClick={() => { stop(); setSound(null) }}>No sound</button>
+        {sounds.map((x) => <button key={x.id} type="button" disabled={busy} className={music?.id === x.id ? 'on' : ''} onClick={() => { stop(); setSound({ id: x.id, start: 0 }) }}>♪ {x.name}</button>)}
+        <label className={`vx-sound-add ${adding ? 'busy' : ''}`}>{adding ? 'Adding…' : '+ Add from phone'}<input type="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" hidden onChange={(e) => { add(e.target.files?.[0]); e.target.value = '' }} /></label>
+      </div>
+      {music && (
+        <div className="vx-sound-part">
+          <label>
+            <span>Starts at <b>{mmss(sound.start || 0)}</b> of {mmss(music.seconds)}</span>
+            <input type="range" min={0} max={Math.max(0, Math.floor(music.seconds - 3))} step={1} value={sound.start || 0}
+              onChange={(e) => { setSound({ ...sound, start: Number(e.target.value) }); if (playing && player.current) player.current.currentTime = Number(e.target.value) }} />
+          </label>
+          <div className="vx-sound-actions">
+            <button type="button" className="vx-btn outline" onClick={listen}>{playing ? '■ Stop' : '▶ Listen from here'}</button>
+            <button type="button" className="vx-btn ghost" onClick={remove}>Remove from phone</button>
+          </div>
+          <audio ref={player} src={url || undefined} preload="auto" onEnded={stop} />
+          {!quick && <p className="vx-muted tiny">This phone makes videos the slower way, which cannot add a sound yet.</p>}
+        </div>
+      )}
+      <p className="vx-muted tiny">Use recordings you are allowed to share. TikTok and Facebook may mute a sound they recognise.</p>
+    </section>
   )
 }
 

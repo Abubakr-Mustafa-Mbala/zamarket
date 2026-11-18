@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
@@ -104,6 +104,14 @@ function DealEditor({ deal, vendorId, onSaved }) {
   const [pct, setPct] = useState('')
   const [cap, setCap] = useState(null)
   const [editDish, setEditDish] = useState(null)
+  // Customer reviews (screenshots from WhatsApp) are kept apart from kitchen
+  // photos. Read separately, so nothing breaks before the SQL update is run.
+  const [reviewsOk, setReviewsOk] = useState(true)
+  useEffect(() => {
+    if (!deal.id) return
+    supabase.from('meal_deals').select('review_images').eq('id', deal.id).maybeSingle()
+      .then(({ data, error }) => { if (error) setReviewsOk(false); else setD((x) => ({ ...x, review_images: data?.review_images || [] })) })
+  }, [deal.id])
   const set = (k) => (v) => setD((x) => ({ ...x, [k]: v }))
 
   const loadProducts = () => supabase.from('products').select('id,name,price,vendor_price,images,order_days,daily_limit,lead_time_days,fulfilment,status,benefits,vendor_id,slug,description,lunch_only').eq('vendor_id', vendorId).order('name')
@@ -144,6 +152,7 @@ function DealEditor({ deal, vendorId, onSaved }) {
       try {
         const url = await uploadVehiclePhoto(f)
         if (into === 'cover') set('cover_url')(url)
+        else if (into === 'review') setD((x) => ({ ...x, review_images: [...(x.review_images || []), url] }))
         else setD((x) => ({ ...x, proof_images: [...(x.proof_images || []), url] }))
       } catch (e) { toast(e.message, true) }
       setUploading((n) => Math.max(0, n - 1))
@@ -167,6 +176,7 @@ function DealEditor({ deal, vendorId, onSaved }) {
       if (['published', 'suspended'].includes(d.status) && !window.confirm('Your changes go to ZaMarket for a quick check. The lunch plan is hidden from customers until approved. Continue?')) { setBusy(''); return }
       row.status = d.status === 'rejected' ? 'draft' : 'submitted'
     }
+    if (reviewsOk) row.review_images = d.review_images || []
     let res
     if (isNew) res = await supabase.from('meal_deals').insert({ ...row, vendor_id: vendorId, slug: `${slugify(row.title).slice(0, 60) || 'lunch'}-${rand()}`, status: status || 'draft' }).select('id').single()
     else res = await supabase.from('meal_deals').update(row).eq('id', d.id).select('id').single()
@@ -235,7 +245,7 @@ function DealEditor({ deal, vendorId, onSaved }) {
           <section className="ln-section">
             <div className="ln-head"><h2>2. The dishes</h2><p>Add each lunch dish here: its photo, price, the weekday it is cooked and how many you can make. Lunch dishes are not shown in your shop; customers get them only through this lunch plan. You can also add a made-to-order product you already sell.</p></div>
             <button type="button" className="ln-btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setEditDish({})}>Add a lunch dish</button>
-            {editDish && <LunchDishForm dish={editDish} vendorId={vendorId} live={deal.status === 'published'} isStaff={isStaff}
+            {editDish && !editDish.id && <LunchDishForm key="new" dish={editDish} vendorId={vendorId} live={deal.status === 'published'} isStaff={isStaff}
               onClose={() => setEditDish(null)} onSaved={(id) => { setEditDish(null); loadProducts(); if (id && !picked.has(id)) set('dishes')([...(d.dishes || []), { product_id: id, kind: 'box' }]) }} />}
             <div className="ln-dish-pick">
               {dishes.length === 0 && <p className="ln-muted">No made-to-order products yet. Add each dish as a product, set it to "Made to order", choose the days you cook it, and set how many you can make a day.</p>}
@@ -243,11 +253,14 @@ function DealEditor({ deal, vendorId, onSaved }) {
                 const on = picked.has(p.id)
                 const problems = [!p.images?.length && 'no photo', !p.order_days?.length && 'no cooking days', !p.daily_limit && 'no daily limit', p.status !== 'published' && !p.lunch_only && 'not live yet'].filter(Boolean)
                 return (
-                  <div key={p.id} className={`ln-dish-row ${on ? 'on' : ''}`}>
+                  <div key={p.id} className="ln-dish-wrap">
+                  <div className={`ln-dish-row ${on ? 'on' : ''}`}>
                     {p.images?.[0] ? <img src={p.images[0]} alt="" /> : <span className="ph" />}
                     <span>
                       <strong>{p.name}{p.lunch_only && <em className="ln-tag">Lunch only</em>}</strong>
-                      {p.lunch_only && <button type="button" className="ln-link ln-edit" onClick={() => setEditDish(p)}>Edit dish</button>}
+                      {p.lunch_only
+                        ? <button type="button" className="ln-link ln-edit" onClick={() => setEditDish(editDish?.id === p.id ? null : p)}>{editDish?.id === p.id ? 'Close' : 'Edit dish'}</button>
+                        : <Link className="ln-link ln-edit" to={isStaff ? '/admin/products' : '/vendor/products'}>Edit in Products</Link>}
                       <small>{Number(p.price) > 0 ? money(p.price, { whole: true }) : 'Price set when approved'} · {p.order_days?.length ? p.order_days.map((n) => DAYS[n]).join(', ') : 'Mon–Fri'} · {p.daily_limit ? `${p.daily_limit} a day` : 'no limit'}</small>
                       {problems.length > 0 && <small className="bad"> · {problems.join(', ')}</small>}
                       {on && (
@@ -259,6 +272,9 @@ function DealEditor({ deal, vendorId, onSaved }) {
                       )}
                     </span>
                     <button type="button" className={`ln-btn ${on ? 'ghost' : 'primary'}`} style={{ minHeight: 38 }} onClick={() => toggleDish(p)}>{on ? 'Remove' : 'Add'}</button>
+                  </div>
+                  {editDish?.id === p.id && <LunchDishForm key={p.id} dish={p} vendorId={vendorId} live={deal.status === 'published'} isStaff={isStaff}
+                    onClose={() => setEditDish(null)} onSaved={() => { setEditDish(null); loadProducts() }} />}
                   </div>
                 )
               })}
@@ -294,13 +310,32 @@ function DealEditor({ deal, vendorId, onSaved }) {
             <F label="About you and your kitchen" wide hint="Who you are, how long you have cooked, how you keep things clean, your health permit or food-handler certificate if you have one.">
               <textarea value={d.about_cook || ''} onChange={(e) => set('about_cook')(e.target.value)} maxLength={1500} />
             </F>
-            <div className="ln-field"><span>Kitchen, packing and happy-customer photos</span>
+            <div className="ln-field"><span>Kitchen and packing photos</span>
               <div className="ln-thumbs">
-                {(d.proof_images || []).map((src, i) => <div key={`${src}-${i}`}><img src={src} alt="" /><button type="button" onClick={() => set('proof_images')(d.proof_images.filter((_, k) => k !== i))} aria-label="Remove">✕</button></div>)}
+                {(d.proof_images || []).map((src, i) => (
+                  <div key={`${src}-${i}`}>
+                    <img src={src} alt="" />
+                    <button type="button" onClick={() => set('proof_images')(d.proof_images.filter((_, k) => k !== i))} aria-label="Remove">✕</button>
+                    {reviewsOk && <button type="button" className="ln-thumb-move" onClick={() => setD((x) => ({ ...x, proof_images: x.proof_images.filter((_, k) => k !== i), review_images: [...(x.review_images || []), src] }))}>It's a review</button>}
+                  </div>
+                ))}
                 <label>{uploading ? 'Uploading…' : 'Add photos'}<input type="file" accept="image/*" multiple hidden onChange={(e) => { upload(e.target.files, 'proof'); e.target.value = '' }} /></label>
               </div>
-              <small className="ln-hint">Only real photos. Ask before posting anyone's face.</small>
+              <small className="ln-hint">Your kitchen, cooking and packed lunches. Only real photos. Ask before posting anyone's face.{reviewsOk ? ' A customer message by mistake here? Tap "It\'s a review" to move it.' : ''}</small>
             </div>
+          </section>
+
+          <section className="ln-section">
+            <div className="ln-head"><h2>5. What customers said</h2><p>Screenshots of real messages from people who ordered (WhatsApp, SMS). They show whole, not cut, in their own section. Never posters or shared photos.</p></div>
+            {reviewsOk ? (
+              <div className="ln-field">
+                <div className="ln-thumbs ln-thumbs-tall">
+                  {(d.review_images || []).map((src, i) => <div key={`${src}-${i}`}><img src={src} alt="" /><button type="button" onClick={() => set('review_images')(d.review_images.filter((_, k) => k !== i))} aria-label="Remove">✕</button></div>)}
+                  <label>{uploading ? 'Uploading…' : 'Add screenshots'}<input type="file" accept="image/*" multiple hidden onChange={(e) => { upload(e.target.files, 'review'); e.target.value = '' }} /></label>
+                </div>
+                <small className="ln-hint">Only real messages. Cover a customer's number or face if they did not agree to show it.</small>
+              </div>
+            ) : <p className="ln-muted">Run the latest SQL update in Supabase to turn this on.</p>}
           </section>
 
           {isStaff && !isNew && (
@@ -359,6 +394,8 @@ function LunchDishForm({ dish, vendorId, live, isStaff, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [up, setUp] = useState(false)
   const lockedName = !isStaff && dish.status === 'published'
+  const box = useRef(null)
+  useEffect(() => { box.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }, [])
   const addPhoto = async (files) => {
     setUp(true)
     for (const file of [...files].filter((x) => x.type?.startsWith('image/'))) {
@@ -392,7 +429,7 @@ function LunchDishForm({ dish, vendorId, live, isStaff, onClose, onSaved }) {
     onSaved?.(res.data?.id)
   }
   return (
-    <div className="ln-dish-form">
+    <div className="ln-dish-form" ref={box}>
       <div className="ln-fields">
         <label className="ln-field"><span>Dish name</span><input value={f.name} disabled={lockedName} maxLength={80} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="e.g. Grilled chicken and rice" /></label>
         <label className="ln-field"><span>What you receive for one lunch (K)</span><input inputMode="decimal" value={f.take} disabled={lockedName} onChange={(e) => setF({ ...f, take: e.target.value.replace(/[^\d.]/g, '') })} placeholder="e.g. 60" /><small className="ln-hint">Customers see the shop price, worked out the same way as your other products.</small></label>

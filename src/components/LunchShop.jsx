@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { money } from '../lib/format'
-import { upcomingMenu, fromPrice, lunchShareProduct, workingWeeks, packagePrice, defaultDish } from '../lib/lunch'
+import { upcomingMenu, fromPrice, workingWeeks, packagePrice, defaultDish } from '../lib/lunch'
 import { loadDealDishes } from '../lib/lunchData'
 import { DEAL_COLS } from '../pages/public/Lunch'
-import ShareProduct from './ShareProduct'
+import { shareAudience } from './ShareProduct'
+import ShareLunch from './ShareLunch'
+import { useAuth } from '../lib/auth'
 import DishCollage, { collagePhotos } from './DishCollage'
 import '../lunch.css'
 
@@ -64,6 +66,8 @@ export function CategoryLunch() {
 }
 
 export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
+  const { role, profile } = useAuth() || {}
+  const owner = ['founder', 'ops'].includes(role) || (role === 'vendor' && profile?.partner?.id === deal.vendor_id)
   const [products, setProducts] = useState([])
   const [availability, setAvailability] = useState([])
   useEffect(() => {
@@ -164,8 +168,8 @@ export function WeeklyLunchOffer({ deal, vendor, preview = false }) {
 
       <div className="ln-offer-cta">
         <Link to={to('week')} className="ln-btn primary big ln-cta">{ICONS.cloche}Order your weekly lunch today{ICONS.arrow}</Link>
-        {!preview && <ShareProduct product={lunchShareProduct({ deal, vendorName: vendor?.business_name, dishes: products, from, link })} link={link}
-          store={vendor ? { business_name: vendor.business_name, logo_url: vendor.logo_url, location: vendor.town } : null} className="ln-btn ghost" label="Share" />}
+        {!preview && <ShareLunch deal={deal} vendorName={vendor?.business_name} menu={menu} from={from} link={link} audience={shareAudience(role)} />}
+        {!preview && owner && <Link to={role === 'vendor' ? '/vendor/lunch' : '/admin/lunch'} className="ln-btn ghost">Edit this offer</Link>}
       </div>
     </section>
   )

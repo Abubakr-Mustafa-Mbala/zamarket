@@ -15,6 +15,48 @@ import AffiliatePlan from '../../components/AffiliatePlan'
 import Statement from '../../components/Statement'
 import { ManualSale } from '../admin/Orders'
 import { offerCopy, DEAL_TYPES } from '../../lib/offers'
+import { DEAL_COLS } from '../public/Lunch'
+import { loadDealDishes } from '../../lib/lunchData'
+import { upcomingMenu, affiliateEarnings, fromPrice } from '../../lib/lunch'
+
+// Lunch offers, at the top of "Products to sell": a whole weekly offer, not
+// one product, so it gets its own card. The estimate uses the real rate and
+// the real dish prices; the affiliate earns on every lunch delivered.
+function LunchOffersToSell() {
+  const { data } = useData(async () => {
+    const deals = (await supabase.from('meal_deals').select(DEAL_COLS).eq('status', 'published').order('created_at', { ascending: false })).data || []
+    return Promise.all(deals.map(async (d) => {
+      const [dishes, rate, vendor] = await Promise.all([
+        loadDealDishes(d),
+        supabase.rpc('meal_deal_affiliate_rate', { p_deal: d.id }).then((x) => x.data, () => null),
+        supabase.from('public_vendors').select('business_name').eq('id', d.vendor_id).maybeSingle().then((x) => x.data, () => null),
+      ])
+      const menu = upcomingMenu({ deal: d, products: dishes, availability: [], days: 14 })
+      return { deal: d, earn: affiliateEarnings(rate, menu), from: fromPrice(dishes, d), vendor: vendor?.business_name || '', photo: d.cover_url || dishes.find((p) => p.images?.[0])?.images[0] }
+    }))
+  }, [])
+  if (!data?.length) return null
+  return (
+    <section className="aff-lunch">
+      <h2>Weekly lunch offers</h2>
+      <p className="small muted">A whole week of homemade lunch for offices. You earn on every lunch delivered to a customer you bring, including when they book again.</p>
+      {data.map(({ deal, earn, from, vendor, photo }) => (
+        <Link key={deal.id} to={`/lunch/${deal.slug}#promote`} className="aff-lunch-card">
+          {photo ? <img src={photo} alt="" loading="lazy" /> : <span />}
+          <span className="aff-lunch-body">
+            <small>Weekly lunch offer{vendor ? ` · ${vendor}` : ''}</small>
+            <strong>{deal.title}</strong>
+            {from > 0 && <span className="small">From {money(from)} a lunch</span>}
+            {earn
+              ? <span className="save">You earn about {money(earn.perLunch)} a lunch · {money(earn.week)} for a customer&rsquo;s full week</span>
+              : <span className="small muted">Rate shown once ZaMarket sets it</span>}
+            <em>Promote it: poster, link, caption →</em>
+          </span>
+        </Link>
+      ))}
+    </section>
+  )
+}
 
 // The affiliate's own link, one tap from the top of the dashboard. Academy
 // used to hold this slot while also sitting in the bottom bar, and the link
@@ -119,6 +161,7 @@ export function ResellerProducts() {
   return (
     <div className="stack">
       <div className="page-head"><div><h1>Products to sell</h1><p>Sorted by what you earn. Tap one for ready-made messages, photos and your link.</p></div></div>
+      <LunchOffersToSell />
       {data.products.length === 0 ? <Empty title="No products yet">Check back soon.</Empty> : (
         <div className="product-grid">
           {[...data.products].sort((a, b) => earned(b) - earned(a)).map((p) => {

@@ -1,6 +1,7 @@
 import { drawFrame, videoLength, heldTime, setPace, setMotion, loadPhotos, endCard, W, H } from './listingVideo'
 import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
+import { soundBed } from './videoSounds'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
 // of recording the screen in real time. A 30-second video takes seconds, and
@@ -44,6 +45,13 @@ export async function renderJob(spec, onProgress) {
     timeAt = (t) => t
   }
 
+  // A nasheed under a video without a voice: from where you chose, looped
+  // to the video's length, faded in and out.
+  let bed = null
+  if (!voice && spec.music?.blob) {
+    try { bed = await soundBed(spec.music.blob, spec.music.start || 0, length) } catch (e) { console.warn('[video] sound skipped', e) }
+  }
+
   // Full HD when the phone can encode it; on phones whose encoder only takes
   // landscape, the frames are stored sideways with a "rotate 90°" mark.
   const shape = await fastEncoder()
@@ -63,9 +71,10 @@ export async function renderJob(spec, onProgress) {
   const video = new mb.CanvasSource(canvas, { codec: 'avc', fullCodecString: codec, bitrate: Math.max(w, h) > 1280 ? 8_000_000 : 5_000_000, keyFrameInterval: 2 })
   output.addVideoTrack(video, { frameRate: FPS, ...(rot ? { rotation: rot } : {}) })
   let sound = null
-  if (voice) { sound = new mb.AudioBufferSource({ codec: 'aac', bitrate: 128000 }); output.addAudioTrack(sound) }
+  const audio = voice || bed
+  if (audio) { sound = new mb.AudioBufferSource({ codec: 'aac', bitrate: 128000 }); output.addAudioTrack(sound) }
   await output.start()
-  if (sound) { await sound.add(voice); sound.close() }
+  if (sound) { await sound.add(audio); sound.close() }
 
   const frames = Math.ceil(length * FPS)
   try {
