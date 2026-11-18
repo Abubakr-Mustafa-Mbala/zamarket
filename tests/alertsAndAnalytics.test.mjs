@@ -134,3 +134,15 @@ test('weekly lunch lives in Food & cakes and the seller store, not a separate to
   assert.match(m, /<LunchShop vendorId=\{store\.id\}/)
   assert.match(read('src/pages/public/Lunch.jsx'), /className="crumbs ln-crumbs"/)
 })
+
+test('video maker: every video is finished as a real MP4 before saving or sharing', () => {
+  const f = read('src/lib/videoFinish.js')
+  const s = read('src/lib/listingVideo.js')
+  assert.match(f, /fastStart: 'in-memory'/)
+  assert.match(f, /codec: 'avc'/)
+  assert.match(f, /codec: 'aac'/)
+  assert.match(f, /registerAacEncoder/)
+  assert.match(s, /const done = await finishVideo\(blob\)/)
+  // Loaded only when needed, never in the main bundle.
+  assert.match(f, /await import\('mediabunny'\)/)
+})

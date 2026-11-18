@@ -1,4 +1,5 @@
 import { load, qrImage } from './posterKit'
+import { finishVideo, videoSeconds } from './videoFinish'
 import { money } from './format'
 import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts, rankFeatures } from './vehicle'
 
@@ -309,6 +310,7 @@ export async function prepare(script, link) {
 // checked (it must have data and play) before the real recording starts.
 // The first one that works is remembered on this device.
 const CANDIDATES = [
+  { mime: 'video/mp4;codecs=avc1.42E01F,mp4a.40.2', w: 720, h: 1280 },
   { mime: 'video/mp4;codecs=avc1.42E01F', w: 720, h: 1280 },
   { mime: 'video/mp4;codecs=avc1', w: 720, h: 1280 },
   { mime: 'video/webm;codecs=vp8', w: 720, h: 1280 },
@@ -317,6 +319,7 @@ const CANDIDATES = [
   { mime: 'video/mp4', w: 720, h: 1280 },
 ]
 const REMEMBER = 'zm-video-recorder-v2'
+
 const supported = (m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(m)
 
 export function bestMime() {
@@ -446,7 +449,13 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
     try { localStorage.removeItem(REMEMBER) } catch { /* ignore */ }
     throw new Error('The video did not come out right. Tap Make video again; it will try another way.')
   }
-  return { blob, ext: cfg.mime.includes('mp4') ? 'mp4' : 'webm', width: cfg.w, height: cfg.h }
+  // Rewrite it as a finished MP4 that WhatsApp, Status and the gallery accept.
+  onStage?.('Finishing the video…')
+  try {
+    const done = await finishVideo(blob)
+    if (done.size > 1500 && (await videoSeconds(done)) > 0.5) return { blob: done, ext: 'mp4', width: cfg.w, height: cfg.h, finished: true }
+  } catch (e) { console.warn('[video] finishing failed, keeping the recording', e) }
+  return { blob, ext: cfg.mime.includes('mp4') ? 'mp4' : 'webm', width: cfg.w, height: cfg.h, finished: false }
 }
 
 // ---- A video you arrange yourself ------------------------------------------
