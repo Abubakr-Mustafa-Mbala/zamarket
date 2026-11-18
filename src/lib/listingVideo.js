@@ -79,6 +79,13 @@ export const PACES = [3, 4, 5, 6]
 export function setPace(seconds) { SLIDE = Math.min(8, Math.max(2.5, Number(seconds) || 4)); END = Math.max(4, SLIDE + 1) }
 export const pace = () => SLIDE
 
+// How the photos move. Cars look great zooming in; a product photo is shown
+// whole and still, so nothing is cut off or swimming about.
+let MOTION = 'zoom'
+export const MOTIONS = [['zoom', 'Zoom in'], ['gentle', 'Gentle'], ['still', 'Still']]
+export const defaultMotion = (kind) => (kind === 'vehicle' ? 'zoom' : kind === 'lunch' ? 'gentle' : 'still')
+export function setMotion(m) { MOTION = MOTIONS.some(([k]) => k === m) ? m : 'zoom' }
+
 export const videoLength = (slides) => slides.length * SLIDE + END
 
 // Draws the video at time t (seconds).
@@ -90,13 +97,16 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   const local = t - i * SLIDE
   const s = slides[i]
   const img = imgs[i]
-  if (img) {
+  if (img && MOTION === 'still') drawWhole(ctx, img, s)
+  else if (img) {
     // Slow push in, alternating direction, so a still photo feels alive.
     // Photo-only scenes zoom in further, to show the details.
-    const z = s.line || s.kicker || s.type ? 1.04 + 0.08 * (local / SLIDE) : 1.02 + 0.3 * (local / SLIDE)
+    const p = local / SLIDE
+    const words = s.line || s.kicker || s.type
+    const z = MOTION === 'gentle' ? 1.02 + 0.05 * p : words ? 1.04 + 0.08 * p : 1.02 + 0.3 * p
     const r = Math.max(W / img.width, H / img.height) * z
     const dw = img.width * r; const dh = img.height * r
-    const dx = (W - dw) / 2 + (i % 2 ? 1 : -1) * 30 * (local / SLIDE)
+    const dx = (W - dw) / 2 + (MOTION === 'zoom' ? (i % 2 ? 1 : -1) * 30 * p : 0)
     ctx.drawImage(img, dx, (H - dh) / 2, dw, dh)
   }
   // Fade between slides.
@@ -125,6 +135,22 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   // Progress bar.
   ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(72, H - 90, W - 144, 8)
   ctx.fillStyle = '#b98cff'; ctx.fillRect(72, H - 90, (W - 144) * (t / (total + END)), 8)
+}
+
+// The whole photo, uncropped and still, over a soft darkened copy of itself.
+function drawWhole(ctx, img, s) {
+  const r = Math.max(W / img.width, H / img.height) * 1.1
+  ctx.save()
+  try { ctx.filter = 'blur(36px)' } catch { /* no filters */ }
+  ctx.drawImage(img, (W - img.width * r) / 2, (H - img.height * r) / 2, img.width * r, img.height * r)
+  ctx.restore()
+  ctx.fillStyle = 'rgba(18,11,30,.55)'; ctx.fillRect(0, 0, W, H)
+  const words = s.line || s.kicker || s.type
+  const top = 200; const bottom = words ? H - 600 : H - 200
+  const k = Math.min((W - 96) / img.width, (bottom - top) / img.height)
+  const dw = img.width * k; const dh = img.height * k
+  const x = (W - dw) / 2; const y = top + (bottom - top - dh) / 2
+  ctx.save(); roundRect(ctx, x, y, dw, dh, 28); ctx.clip(); ctx.drawImage(img, x, y, dw, dh); ctx.restore()
 }
 
 // A specifications card that grows into view, the rows arriving one by one.
@@ -373,8 +399,10 @@ export function videoParts(item, kind = 'product', link = '') {
     for (const p of (item.benefits || []).filter(Boolean)) blocks.push({ id: `b-${p}`, label: p, feature: true, scene: { kicker: '', line: p, say: `${p}.` } })
   }
   blocks.push({ id: 'words', label: 'My own words', scene: { kicker: '', line: '', sub: '', say: '' } })
-  const title = blocks.find((b) => b.id === 'title')
-  const starter = photos.slice(0, 10).map((p, i) => ({ id: sceneId(), photo: p, ...(i === 0 && title ? clean(title.scene) : { kicker: '', line: '', sub: '', say: '' }) }))
+  // The starting point is the full automatic video. A feature scene is marked
+  // so you can check its photo really shows it.
+  const feats = new Set(blocks.filter((b) => b.feature).map((b) => b.scene.line))
+  const starter = base.slides.map((sc) => ({ id: sceneId(), photo: sc.photo || null, ...clean(sc), ...(feats.has(sc.line) ? { feature: true } : {}) }))
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 

@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, pace, PACES, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, bestMime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
@@ -60,7 +60,12 @@ export default function VideoMaker() {
     ? `https://zamarket.shop/lunch/${pick.slug}`
     : code ? `https://zamarket.shop/r/${code}/${pick.slug || pick.id}` : `https://zamarket.shop/p/${pick.slug || pick.id}`) : ''
   const parts = useMemo(() => (pick ? videoParts(pick, kind, link) : null), [pick, kind, link])
-  const draftKey = pick ? `zm-video-draft-${kind}-${pick.id}` : ''
+  const draftKey = pick ? `zm-video-v3-${kind}-${pick.id}` : ''
+  const [editing, setEditing] = useState(false)
+  const [motion, setMotionState] = useState(() => defaultMotion(kind))
+  useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
+  setMotion(motion)
+  const chooseMotion = (m) => { setMotionState(m); try { localStorage.setItem(`zm-video-motion-${kind}`, m) } catch { /* ignore */ } }
   const [scenes, setScenes] = useState([])
   const [open, setOpen] = useState(null)
   const [choosing, setChoosing] = useState(null)
@@ -74,7 +79,7 @@ export default function VideoMaker() {
     let saved = null
     try { saved = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { saved = null }
     setScenes(Array.isArray(saved) && saved.length ? saved : parts.starter)
-    setOpen(null); setOut(null)
+    setOpen(null); setOut(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
   }, [parts])
@@ -99,13 +104,13 @@ export default function VideoMaker() {
     // A feature needs the photo that shows it: ask for it straight away.
     if (!sc.photo && block.scene.type !== 'specs') setChoosing({ id: sc.id, hint: block.feature ? `Choose the photo that shows “${block.label}”` : 'Choose a photo for this scene' })
   }
-  const restart = () => { if (window.confirm('Start again from the plain starting point? Your arrangement for this listing is replaced.')) { setScenes(parts.starter); setOpen(null) } }
+  const restart = () => { if (window.confirm('Go back to the automatic video? Your changes for this listing are replaced.')) { setScenes(parts.starter); setOpen(null) } }
 
   // A looping preview while nothing is recording. With a scene open, only
   // that scene plays, so you can see exactly what it looks like.
   useEffect(() => {
     if (!assets || !script || busy || !script.slides.length) return
-    setPace(secs)
+    setPace(secs); setMotion(motion)
     const ctx = canvas.current?.getContext('2d')
     if (!ctx) return
     const focus = open ? script.slides.findIndex((x) => x.id === open) : -1
@@ -120,11 +125,11 @@ export default function VideoMaker() {
     id = requestAnimationFrame(step)
     playing.current = id
     return () => cancelAnimationFrame(id)
-  }, [assets, script, busy, secs, open])
+  }, [assets, script, busy, secs, open, motion])
 
   const make = async (voice) => {
     if (!assets || !script.slides.length) return
-    setOpen(null)
+    setOpen(null); setMotion(motion)
     setBusy(voice ? 'voice' : 'silent'); setProgress(0); setOut(null); setScene(0)
     // With your voice you set the pace: Next moves on, Finish ends it.
     ctrl.current = voice ? voiceController(script.slides.length, setScene) : null
@@ -185,13 +190,6 @@ export default function VideoMaker() {
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · {bestMime().includes('mp4') ? 'MP4' : 'WebM'}</p>
-            <div className="vx-pace">
-              <span>Each scene stays</span>
-              <div className="vx-tabs">{PACES.map((p) => <button key={p} type="button" disabled={!!busy} className={secs === p ? 'on' : ''} onClick={() => { setSecs(p); try { localStorage.setItem('zm-video-pace', String(p)) } catch { /* ignore */ } }}>{p}s</button>)}</div>
-              <small className="vx-muted">With your voice, each scene waits for you instead.</small>
-            </div>
-            <SceneEditor parts={parts} scenes={scenes} open={open} setOpen={setOpen} update={update} move={move} remove={remove} add={add}
-              restart={restart} choosing={choosing} setChoosing={setChoosing} busy={!!busy} />
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Making…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
@@ -205,6 +203,25 @@ export default function VideoMaker() {
                 {out.ext === 'webm' && <p className="vx-muted tiny">This browser saves WebM. If TikTok refuses it, open it in CapCut and export, or make it in Chrome on Android, which saves MP4.</p>}
               </div>
             )}
+            {!editing ? (
+              <section className="vx-card-block vx-change">
+                <h3>Something not right?</h3>
+                <p className="vx-muted tiny">The video is made for you from the listing. If a photo, the words or the specifications should be different, change just that scene.</p>
+                <button type="button" className="vx-btn outline" disabled={!!busy} onClick={() => setEditing(true)}>Change scenes ({scenes.length})</button>
+              </section>
+            ) : (
+              <SceneEditor parts={parts} scenes={scenes} open={open} setOpen={setOpen} update={update} move={move} remove={remove} add={add}
+                restart={restart} choosing={choosing} setChoosing={setChoosing} busy={!!busy} close={() => { setEditing(false); setOpen(null) }} />
+            )}
+            <div className="vx-pace">
+              <span>Photos</span>
+              <div className="vx-tabs">{MOTIONS.map(([m, l]) => <button key={m} type="button" disabled={!!busy} className={motion === m ? 'on' : ''} onClick={() => chooseMotion(m)}>{l}</button>)}</div>
+            </div>
+            <div className="vx-pace">
+              <span>Each scene stays</span>
+              <div className="vx-tabs">{PACES.map((p) => <button key={p} type="button" disabled={!!busy} className={secs === p ? 'on' : ''} onClick={() => { setSecs(p); try { localStorage.setItem('zm-video-pace', String(p)) } catch { /* ignore */ } }}>{p}s</button>)}</div>
+              <small className="vx-muted">With your voice, each scene waits for you instead.</small>
+            </div>
             <section className="vx-card-block">
               <div className="between"><h3>Voice-over script</h3><button type="button" className="vx-btn ghost" onClick={() => copy(script.voice, 'Script')}>Copy</button></div>
               <p className="vx-video-script">{script.voice}</p>
@@ -225,14 +242,15 @@ const TYPES = [['', 'Photo with words'], ['photo', 'Photo only'], ['specs', 'Spe
 
 // The scenes, in order. Tap one to change its photo, words and what you
 // will say; add scenes from the listing's own details.
-function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, restart, choosing, setChoosing, busy }) {
+function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, restart, choosing, setChoosing, busy, close }) {
+  const [adding, setAdding] = useState(false)
   if (!parts) return null
   const specsBlock = parts.blocks.find((b) => b.id === 'specs')
   const used = new Set(scenes.map((x) => x.line))
   return (
     <section className="vx-card-block vx-scenes">
-      <div className="between"><h3>Your scenes</h3><button type="button" className="vx-btn ghost" disabled={busy} onClick={restart}>Start again</button></div>
-      <p className="vx-muted tiny">The video plays these in order. Nothing is added unless you add it. Tap a scene to choose its photo and words.</p>
+      <div className="between"><h3>Scenes</h3><button type="button" className="vx-btn ghost" onClick={close}>Done</button></div>
+      <p className="vx-muted tiny">Tap a scene to change its photo, words or specifications. The video above shows that scene while you change it.</p>
       <ol className="vx-scene-list">
         {scenes.map((sc, i) => {
           const isOpen = open === sc.id
@@ -244,7 +262,7 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                 <button type="button" className="vx-scene-main" disabled={busy} onClick={() => setOpen(isOpen ? null : sc.id)}>
                   <span className="vx-scene-n">{i + 1}</span>
                   {sc.photo ? <img src={sc.photo} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
-                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? 'Specifications card' : sc.line || 'Photo only'}</strong><small>{kind}{sc.say ? ' · has words to say' : ''}</small></span>
+                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? 'Specifications card' : sc.line || 'Photo only'}</strong><small>{sc.feature && !sc.checked ? <em className="vx-scene-check">Check the photo shows it</em> : kind}</small></span>
                 </button>
                 <span className="vx-scene-tools">
                   <button type="button" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}>↑</button>
@@ -259,9 +277,10 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                     disabled={t === 'specs' && !specsBlock}>{l}</button>)}</div>
 
                   <span className="vx-field-label">Photo</span>
+                  {sc.feature && !sc.checked && choosing?.id !== sc.id && <p className="vx-scene-hint">Does this photo show “{sc.line}”? If not, tap the one that does.</p>}
                   {choosing?.id === sc.id && <p className="vx-scene-hint">{choosing.hint}</p>}
                   <div className="vx-photo-strip">
-                    {parts.photos.map((p) => <button key={p} type="button" className={sc.photo === p ? 'on' : ''} onClick={() => { update(sc.id, { photo: p }); setChoosing(null) }}><img src={p} alt="" /></button>)}
+                    {parts.photos.map((p) => <button key={p} type="button" className={sc.photo === p ? 'on' : ''} onClick={() => { update(sc.id, { photo: p, checked: true }); setChoosing(null) }}><img src={p} alt="" /></button>)}
                     <button type="button" className={!sc.photo ? 'on none' : 'none'} onClick={() => { update(sc.id, { photo: null }); setChoosing(null) }}>None</button>
                   </div>
 
@@ -293,21 +312,28 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
       </ol>
       {!scenes.length && <p className="vx-muted">No scenes yet. Add one below.</p>}
 
+      {!adding ? (
+        <div className="vx-scene-foot">
+          <button type="button" className="vx-btn outline" disabled={busy} onClick={() => setAdding(true)}>+ Add a scene</button>
+          <button type="button" className="vx-btn ghost" disabled={busy} onClick={restart}>Back to automatic</button>
+        </div>
+      ) : (
       <div className="vx-add">
-        <span className="vx-field-label">Add a scene{open ? ' after the open one' : ''}</span>
+        <div className="between"><span className="vx-field-label">Add a scene{open ? ' after the open one' : ''}</span><button type="button" className="vx-btn ghost" onClick={() => setAdding(false)}>Close</button></div>
         <div className="vx-add-chips">
-          <button type="button" disabled={busy} onClick={() => add({ label: 'Photo', scene: { kicker: '', line: '', sub: '', say: '' } })}>+ Photo</button>
-          {parts.blocks.filter((b) => !b.feature).map((b) => <button key={b.id} type="button" disabled={busy} onClick={() => add(b)}>+ {b.label}</button>)}
+          <button type="button" disabled={busy} onClick={() => { add({ label: 'Photo', scene: { kicker: '', line: '', sub: '', say: '' } }); setAdding(false) }}>+ Photo</button>
+          {parts.blocks.filter((b) => !b.feature).map((b) => <button key={b.id} type="button" disabled={busy} onClick={() => { add(b); setAdding(false) }}>+ {b.label}</button>)}
         </div>
         {parts.blocks.some((b) => b.feature) && (
           <>
             <span className="vx-field-label">Features from the listing</span>
             <div className="vx-add-chips">
-              {parts.blocks.filter((b) => b.feature).map((b) => <button key={b.id} type="button" className={used.has(b.scene.line) ? 'used' : ''} disabled={busy} onClick={() => add(b)}>+ {b.label}</button>)}
+              {parts.blocks.filter((b) => b.feature).map((b) => <button key={b.id} type="button" className={used.has(b.scene.line) ? 'used' : ''} disabled={busy} onClick={() => { add(b); setAdding(false) }}>+ {b.label}</button>)}
             </div>
           </>
         )}
       </div>
+      )}
     </section>
   )
 }
