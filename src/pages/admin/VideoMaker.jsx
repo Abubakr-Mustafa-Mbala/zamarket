@@ -4,7 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import { openMic } from '../../lib/studioVoice'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice, upcomingMenu } from '../../lib/lunch'
@@ -134,8 +134,24 @@ export default function VideoMaker() {
   const link = pick ? (kind === 'market' ? pick.link : kind === 'lunch'
     ? `https://zamarket.shop/lunch/${pick.slug}`
     : code ? `https://zamarket.shop/r/${code}/${pick.slug || pick.id}` : `https://zamarket.shop/p/${pick.slug || pick.id}`) : ''
-  const parts = useMemo(() => (pick ? videoParts(pick, kind, link) : null), [pick, kind, link])
-  const draftKey = pick ? `zm-video-v4-${kind}-${pick.id}` : ''
+  // The seller's name shows only if you choose it, per seller: by default the
+  // video shows only ZaMarket.
+  const [named, setNamed] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem('zm-video-named') || '[]')) } catch { return new Set() } })
+  const sellerName = kind === 'market' || kind === 'vehicle' ? '' : String(pick?.vendor_name || '').trim()
+  const sellerKey = pick ? String(pick.vendor_id || sellerName) : ''
+  const showSeller = !!sellerName && named.has(sellerKey)
+  const nameSeller = (on) => {
+    const n = new Set(named); if (on) n.add(sellerKey); else n.delete(sellerKey)
+    setNamed(n); try { localStorage.setItem('zm-video-named', JSON.stringify([...n])) } catch { /* ignore */ }
+  }
+  const subject = useMemo(() => {
+    if (!pick || showSeller || !sellerName) return pick
+    const esc = sellerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const scrub = (x) => (typeof x === 'string' ? x.replace(new RegExp(`\\s*(?:by|from|·|-|–)?\\s*${esc}(?:['’]s)?`, 'gi'), '').trim() : x)
+    return { ...pick, vendor_name: '', title: scrub(pick.title), name: scrub(pick.name) || pick.name, tagline: scrub(pick.tagline) }
+  }, [pick, showSeller, sellerName])
+  const parts = useMemo(() => (subject ? videoParts(subject, kind, link) : null), [subject, kind, link])
+  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   // The full video, or the ~30-second ad cut of it.
@@ -162,15 +178,18 @@ export default function VideoMaker() {
   // video as an offer, from the plan's own facts and photos.
   const aiKind = kind === 'vehicle' || kind === 'product' || kind === 'lunch'
   const [aiCaption, setAiCaption] = useState('')
-  const lunchKey = pick && kind === 'lunch' ? `zm-lunch-ai-v1-${pick.id}-${JSON.stringify([pick.title, pick.dishes, pick.cover_url, pick.in_the_box, pick.group_discounts, pick.day_discounts, pick.trial_first, pick.guarantee, pick.cutoff_hour, pick.delivery_windows]).length}` : ''
+  const lunchKey = pick && kind === 'lunch' ? `zm-lunch-ai-v2-${pick.id}-${showSeller ? 'named' : 'za'}-${JSON.stringify([pick.title, pick.dishes, pick.cover_url, pick.in_the_box, pick.group_discounts, pick.day_discounts, pick.trial_first, pick.guarantee, pick.cutoff_hour, pick.delivery_windows]).length}` : ''
   const applyLunch = (r) => {
     const written = (r.scenes || []).map((x) => sceneFrom({ scene: { kicker: x.kicker, line: x.line, sub: x.sub, say: x.say } }, x.photo_url || null))
     // The offer card goes after the food; the booking steps and "need another
     // day?" close the video, whatever the AI wrote.
+    // The 12:30 opening first; then the AI's scenes about the food, the cook
+    // and the savings; then the week menu, the delivery and the offer card;
+    // the booking steps and "need another day?" close it.
     const fixed = parts.starter.filter((x) => x.fixed)
-    const offer = fixed.filter((x) => x.type === 'offer')
-    const after = Math.min(written.length, 2 + Math.min(3, (pick.dishList || []).length))
-    const list = [...written.slice(0, after), ...offer, ...written.slice(after), ...fixed.filter((x) => x.type !== 'offer')].map((x) => ({ ...x, id: x.id || sceneFrom({ scene: {} }).id }))
+    const slot = (n) => fixed.filter((x) => (x.slot || (x.type === 'offer' ? 'after' : 'close')) === n)
+    const food = Math.min(written.length, 2)
+    const list = [...slot('open'), ...written.slice(0, food), ...slot('after'), ...written.slice(food), ...slot('close')].map((x) => ({ ...x, id: x.id || sceneFrom({ scene: {} }).id }))
     setScenes(list); setOpen(null)
     setAiCaption(r.caption ? `${r.caption}\n${link}` : '')
     setAi({ state: 'done', lunch: true, count: list.length })
@@ -181,7 +200,7 @@ export default function VideoMaker() {
     if (cached?.scenes?.length) return applyLunch(cached)
     setAi({ state: 'writing' })
     try {
-      const r = await askAssist({ task: 'lunch_video', deal_id: pick.id })
+      const r = await askAssist({ task: 'lunch_video', deal_id: pick.id, hide_seller: !showSeller })
       try { localStorage.setItem(lunchKey, JSON.stringify(r)) } catch { /* full */ }
       if (touched.current) { setAi({ state: 'done', lunch: true, count: (r.scenes || []).length, late: true }); return }
       applyLunch(r)
@@ -255,7 +274,7 @@ export default function VideoMaker() {
   const cut = useMemo(() => (short ? adCut(scenes, secs) : scenes), [short, scenes, secs])
   const inCut = useMemo(() => new Set(cut.map((x) => x.id)), [cut])
   const script = useMemo(() => (parts ? { slides: cut, end: parts.end, endSay: parts.endSay, caption: aiCaption || parts.caption, voice: voiceFor(cut, parts.endSay) } : null), [parts, cut, aiCaption])
-  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' || x.type === 'offer' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
+  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => sceneImages(x, (u) => cache.current.get(u))), end } : null), [script, end, loaded])
 
   // Editing scenes
   const update = (id, patch) => { touched.current = true; setScenes((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x))) }
@@ -461,6 +480,13 @@ export default function VideoMaker() {
               <span>Photos</span>
               <div className="vx-tabs">{MOTIONS.map(([m, l]) => <button key={m} type="button" disabled={!!busy} className={motion === m ? 'on' : ''} onClick={() => chooseMotion(m)}>{l}</button>)}</div>
             </div>
+            {sellerName && (
+              <div className="vx-pace">
+                <span>Seller’s name</span>
+                <div className="vx-tabs">{[[false, 'Only ZaMarket'], [true, `Show ${sellerName.length > 22 ? `${sellerName.slice(0, 20)}…` : sellerName}`]].map(([v, l]) => <button key={String(v)} type="button" disabled={!!busy} className={showSeller === v ? 'on' : ''} onClick={() => nameSeller(v)}>{l}</button>)}</div>
+                <small className="vx-muted">{showSeller ? `The video names ${sellerName}. Remembered for this seller.` : 'The video shows only ZaMarket; the seller is not named in the words, the voice or the caption. Remembered for this seller.'}</small>
+              </div>
+            )}
             <div className="vx-pace">
               <span>Your voice</span>
               <div className="vx-tabs">{[[true, 'Studio voice'], [false, 'As recorded']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={studio === v ? 'on' : ''} onClick={() => chooseStudio(v)}>{l}</button>)}</div>

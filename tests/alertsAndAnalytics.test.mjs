@@ -270,8 +270,7 @@ test('video maker: brand colours, toned-down split, fuller product and lunch sto
   assert.match(lv, /function lunchScript/)
   assert.match(lv, /kicker: 'Homemade'/)
   assert.match(lv, /step\(1, 'package', 'Choose your package'/)
-  assert.match(lv, /if \(item\.trial_first\)/)
-  assert.match(lv, /if \(item\.guarantee\)/)
+  assert.match(lv, /if \(item\.trial_first \|\| item\.guarantee\)/)
   assert.match(lv, /function sentences/)
 })
 

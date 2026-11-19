@@ -46,12 +46,12 @@ export function videoScript(item, kind = 'product', link = '') {
   // (sizes, colours…), how it is made or sent, real reviews, the seller.
   const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
   const was = Number(item.normal_price) > Number(item.price) ? money(item.normal_price, { whole: true }) : ''
-  const points = (item.benefits || []).map((x) => String(x || '').trim()).filter(Boolean).slice(0, 6)
+  const points = (item.benefits || []).map((x) => String(x || '').replace(/^[\s\u2022*\u00b7\u2013\u2014-]+/, '').trim()).filter(Boolean).slice(0, 6)
   const lines = sentences(item.description).filter((x) => !points.some((p) => p.toLowerCase() === x.toLowerCase())).slice(0, Math.max(1, 4 - Math.min(points.length, 3)))
   const opts = (Array.isArray(item.options) ? item.options : []).filter((o) => o?.name && o?.choices?.length).slice(0, 2)
   slides.push({ kicker: item.vendor_name || 'On ZaMarket', line: item.name, sub: [price, was ? `was ${was}` : ''].filter(Boolean).join(' · '), say: `${item.name}${item.vendor_name ? ` from ${item.vendor_name}` : ''}.${price ? ` ${price}.` : ''}` })
-  points.forEach((x, i) => slides.push({ kicker: i === 0 ? 'Why people love it' : '', line: x, sub: '', say: `${x}.` }))
-  lines.forEach((x, i) => slides.push({ kicker: i === 0 ? 'About it' : '', line: x, sub: '', say: `${x}` }))
+  points.forEach((x, i) => slides.push({ kicker: i === 0 ? 'Why people love it' : '', line: shortLine(x), sub: '', say: `${x.replace(/[.!]+$/, '')}.` }))
+  lines.forEach((x, i) => slides.push({ kicker: i === 0 ? 'About it' : '', line: shortLine(x), sub: '', say: `${x}.` }))
   opts.forEach((o) => slides.push({ kicker: `Choose your ${String(o.name).toLowerCase()}`, line: o.choices.slice(0, 5).map((c) => (typeof c === 'string' ? c : c?.label || c?.name || '')).filter(Boolean).join(' · '), sub: '', say: `Choose your ${String(o.name).toLowerCase()}.` }))
   if (item.fulfilment === 'made_to_order') slides.push({ kicker: 'Made for you', line: 'Made to order', sub: item.lead_time_days ? `Ready in ${item.lead_time_days} day${item.lead_time_days > 1 ? 's' : ''}` : '', say: `It is made to order${item.lead_time_days ? `, ready in ${item.lead_time_days} day${item.lead_time_days > 1 ? 's' : ''}` : ''}.` })
   if (Number(item.review_count) > 0 && Number(item.rating) > 0) slides.push({ kicker: 'Reviews', line: `Rated ${Number(item.rating).toFixed(1)} out of 5`, sub: `${item.review_count} review${item.review_count > 1 ? 's' : ''} on ZaMarket`, say: `Rated ${Number(item.rating).toFixed(1)} out of 5 by customers on ZaMarket.` })
@@ -82,17 +82,24 @@ function lunchScript(item, link) {
   const team = cleanTiers(item.group_discounts)
   const week = cleanTiers(item.day_discounts)
   const slides = []
-  slides.push({ kicker: `Weekly lunch${seller ? ` · ${seller}` : ''}`, line: 'Your lunch, sorted for the week', sub: from ? `From ${from} a lunch` : '', photo: item.cover_url, say: 'Busy at work? Your lunch, sorted for the whole week.' })
-  slides.push({ kicker: 'Homemade', line: 'Cooked fresh for the day you booked', sub: seller ? `By ${seller}` : '', photo: kitchen || dishPics[1], say: `Every lunch is homemade${seller ? ` by ${seller}` : ''}, cooked for the day you booked, never the day before.` })
-  if (dishPics.length > 1) slides.push({ type: 'collage', photos: dishPics.slice(0, 4), kicker: 'On the menu', line: `${dishes.length} homemade dish${dishes.length > 1 ? 'es' : ''}`, sub: '', say: `On the menu: ${dishes.slice(0, 3).map((d) => d.name).join(', ')}.` })
-  dishes.slice(0, 2).forEach((d) => slides.push({ kicker: '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0], say: `${d.name}.` }))
-  slides.push(...offerScenes(item, dishPics).slice(0, 1))
-  if (item.in_the_box) slides.push({ kicker: 'In every box', line: String(item.in_the_box).replace(/\s+/g, ' ').slice(0, 70), sub: '', photo: dishPics[1] || item.cover_url, say: `In every box: ${String(item.in_the_box).replace(/\s+/g, ' ').slice(0, 140)}.` })
-  if (team.length) slides.push({ kicker: 'For your team', line: `${team[0].min}+ lunches in one delivery: ${team[0].pct}% off`, sub: '', photo: dishPics[0] || item.cover_url, say: `Ordering for your team? ${team[0].min} or more lunches in one delivery get ${team[0].pct} percent off.` })
-  if (week.length) slides.push({ kicker: 'Book more days, pay less', line: `${week[week.length - 1].min} days or more: ${week[week.length - 1].pct}% off`, sub: '', photo: dishPics[1] || item.cover_url, say: `Book ${week[week.length - 1].min} days or more and save ${week[week.length - 1].pct} percent.` })
-  if (item.trial_first) slides.push({ kicker: 'First time?', line: 'Pay for one lunch, taste it first', sub: 'Then the rest of the week', photo: dishPics[2] || item.cover_url, say: 'Ordering for the first time? Pay for your first lunch, and the other days after you have tasted it.' })
-  if (item.guarantee) slides.push({ kicker: 'Our promise', line: 'Late or not as described? That lunch is free', sub: '', photo: item.cover_url, say: 'If your lunch is late or not as described, tell us the same day and that lunch is free.' })
-  slides.push(...offerScenes(item, dishPics).slice(1))
+  const fixed = offerScenes(item, dishPics)
+  const at = (slot) => fixed.filter((x) => x.slot === slot)
+  // 12:30, what's for lunch? Already sorted: the cover rises in.
+  slides.push(...at('open'))
+  slides.push({ kicker: 'Homemade', line: 'Cooked fresh for the day you booked', sub: seller ? `By ${seller}` : '', photo: kitchen || dishPics[1] || item.cover_url, say: `Every lunch is homemade${seller ? ` by ${seller}` : ''}, cooked for the day you booked, never the day before.` })
+  // The food, big: the best dish full screen (the week menu shows the rest).
+  const hasMenu = at('after').some((x) => x.type === 'menu')
+  dishes.filter((d) => d.images?.[0]).slice(0, hasMenu ? 1 : 2).forEach((d) => slides.push({ kicker: 'On the menu', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images[0], say: `${d.name}.` }))
+  if (!hasMenu && dishPics.length > 2) slides.push({ type: 'collage', photos: dishPics.slice(0, 4), kicker: 'On the menu', line: `${dishes.length} homemade dishes`, sub: '', say: `On the menu: ${dishes.slice(0, 3).map((d) => d.name).join(', ')}.` })
+  // The week, the delivery, the offer.
+  slides.push(...at('after'))
+  if (item.in_the_box) slides.push({ kicker: 'In every box', line: shortLine(String(item.in_the_box), 60), sub: '', photo: dishPics[1] || item.cover_url, say: `In every box: ${String(item.in_the_box).replace(/\s+/g, ' ').slice(0, 140)}.` })
+  // Saving more, in one scene.
+  const saves = [team.length ? `${team[0].min}+ lunches in one delivery: ${team[0].pct}% off` : '', week.length ? `${week[week.length - 1].min}+ days booked: ${week[week.length - 1].pct}% off` : ''].filter(Boolean)
+  if (saves.length) slides.push({ kicker: 'Pay less', line: saves[0], sub: saves[1] || '', photo: dishPics[0] || item.cover_url, say: [team.length ? `Ordering for your team? ${team[0].min} or more lunches in one delivery get ${team[0].pct} percent off.` : '', week.length ? `Book ${week[week.length - 1].min} days or more and save ${week[week.length - 1].pct} percent.` : ''].filter(Boolean).join(' ') })
+  // Nothing to lose, in one scene.
+  if (item.trial_first || item.guarantee) slides.push({ kicker: 'Nothing to lose', line: item.trial_first ? 'First time? Taste one lunch first' : 'Late or not as described? That lunch is free', sub: item.trial_first && item.guarantee ? 'Late or not as described? It is free' : '', photo: dishPics[2] || item.cover_url, say: [item.trial_first ? 'Ordering for the first time? Pay for your first lunch, and the other days after you have tasted it.' : '', item.guarantee ? 'And if a lunch is late or not as described, tell us the same day and that lunch is free.' : ''].filter(Boolean).join(' ') })
+  slides.push(...at('close'))
   const voice = slides.map((x) => x.say).filter(Boolean).join(' ')
   const out = slides.map((x) => ({ kicker: '', line: '', sub: '', ...x }))
   return withEnd({ cta: 'Order your weekly lunch', foot: 'Delivered to your office or door', title: seller ? `Weekly lunch by ${seller}` : 'Weekly lunch', price: from ? `From ${from} a lunch` : '' }, finish(out, [item.cover_url, ...dishPics].filter(Boolean), `${voice} Order on zamarket dot shop.`,
@@ -107,19 +114,33 @@ export function offerScenes(item, dishPics = []) {
   const cutoff = item.cutoff_hour || 18
   const team = cleanTiers(item.group_discounts)
   const week = o.week || []
+  const from = item.from ? money(item.from, { whole: true }) : ''
+  const windows = item.delivery_windows || []
+  const when = o.window || (windows.length ? `${windows[0].split('–')[0]}–${windows[windows.length - 1].split('–')[1] || ''}`.replace(/–$/, '') : '')
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((l) => { const w = week.find((x) => x.label === l); return w ? { label: l, dish: w.dish } : { label: l, open: false } })
   const photos = [...new Set([...dishPics, item.cover_url].filter(Boolean))].slice(0, 3)
-  const offer = { type: 'offer', fixed: true, kicker: 'WEEKLY LUNCH OFFER', line: 'Your lunch, sorted for the week', week, pkgs: o.pkgs || [], next: !!o.next, photos, photo: photos[0] || null,
+  const offer = { type: 'offer', fixed: true, slot: 'after', kicker: 'WEEKLY LUNCH OFFER', line: 'Your lunch, sorted for the week', week, pkgs: o.pkgs || [], next: !!o.next, photos, photo: photos[0] || null,
     say: o.pkgs?.length ? `Here is the offer. The full working week is ${money(o.pkgs[0].total, { whole: true })}, or choose your own days.` : 'Here is the offer: pick the full week, or just the days you want.' }
-  const step = (n, how, line, sub, say, demo = {}) => ({ type: 'howto', fixed: true, step: n, steps: 5, how, line, sub, say, demo, photo: null, kicker: '' })
+  // The real menu, day by day, each day with its own dish photo.
+  const menuDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((l) => { const w = week.find((x) => x.label === l); return w ? { label: l, dish: w.dish || '', photo: w.photo || null } : { label: l, open: false } })
+  const menuPhotos = [...new Set(menuDays.map((d) => d.photo).filter(Boolean))]
+  const cooking = menuDays.filter((d) => d.open !== false && d.dish)
+  const menu = cooking.length >= 2 ? { type: 'menu', fixed: true, slot: 'after', kicker: 'This week’s menu', line: 'Your week, sorted', week: menuDays.map((d) => ({ ...d, pi: d.photo ? menuPhotos.indexOf(d.photo) : -1 })), photos: menuPhotos, photo: null, sub: '',
+    say: `Here is the week: ${cooking.slice(0, 3).map((d) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday' })[d.label]}, ${d.dish}`).join('; ')}${cooking.length > 3 ? ', and more' : ''}.` } : null
+  const route = { type: 'route', fixed: true, slot: 'after', kicker: 'Delivered to you', line: 'To your office or door', when, order: `${cutoff}:00 the day before`, area: String(item.delivery_area || '').replace(/\s+/g, ' ').slice(0, 140), photo: null, sub: '',
+    say: `We bring it to your office or your door${when ? `, between ${when}` : ''}. Just order by ${cutoff} hundred hours the day before.` }
+  const clock = { type: 'clock', fixed: true, slot: 'open', kicker: 'Weekly lunch', ask: 'What’s for lunch today?', line: 'Your lunch, sorted for the week', sub: from ? `From ${from} a lunch` : '', photo: item.cover_url || dishPics[0] || null,
+    say: 'Twelve thirty. What’s for lunch today? With ZaMarket, it is already sorted, for the whole week.' }
+  const step = (n, how, line, sub, say, demo = {}) => ({ type: 'howto', fixed: true, slot: 'close', step: n, steps: 3, how, line, sub, say, demo, photo: null, kicker: '' })
   return [
+    clock,
+    ...(menu ? [menu] : []),
+    route,
     offer,
-    step(1, 'package', 'Choose your package', 'Full week, Mon to Thu, two weeks or your days', 'Booking takes a minute. First, open the link and choose your package.', { pkgs: o.pkgs || [] }),
-    step(2, 'days', 'Tap the days you want', 'Each day shows that day\u2019s dish', 'Then tap the days you want. Each day shows what is cooking.', { days }),
-    step(3, 'count', 'How many lunches a day', 'Ordering for colleagues too? Add more', team.length ? `Ordering for colleagues? Add more lunches, and ${team[0].min} or more in one delivery get ${team[0].pct} percent off.` : 'Ordering for colleagues? Just add more lunches.', { team: team.length ? `${team[0].min}+ lunches in one delivery: ${team[0].pct}% off` : '' }),
-    step(4, 'details', 'Where we bring it', o.window ? `Office or home · delivered ${o.window}` : 'Your office or home, with a landmark', `Tell us where to bring it: your office or your home${o.window ? `. It arrives between ${o.window}` : ''}.`, {}),
-    step(5, 'pay', 'Choose how you pay, and order', `Order by ${cutoff}:00 the day before`, `Choose mobile money and place your order, by ${cutoff} hundred hours the day before. We call you to confirm.`, { total: o.pkgs?.[0]?.total || 0 }),
-    { fixed: true, kicker: 'Need another day?', line: 'Saturday or Sunday too? Send a request', sub: 'We reply on WhatsApp', photo: dishPics[0] || item.cover_url, say: 'Need lunch on Saturday, Sunday or another day? Send a request on the shop page, and we reply on WhatsApp.' },
+    step(1, 'package', 'Choose your package', 'Full week, Mon to Thu, two weeks or your days', 'Booking takes a minute. Open the link and choose your package.', { pkgs: o.pkgs || [] }),
+    step(2, 'days', 'Tap the days you want', team.length ? `Ordering for colleagues? ${team[0].min}+ get ${team[0].pct}% off` : 'Each day shows that day’s dish', 'Tap the days you want; each day shows what is cooking.', { days }),
+    step(3, 'pay', 'Choose how you pay, and order', `Order by ${cutoff}:00 the day before`, 'Choose mobile money and place your order. We call you to confirm.', { total: o.pkgs?.[0]?.total || 0 }),
+    { fixed: true, slot: 'close', kicker: 'Need another day?', line: 'Saturday or Sunday too? Send a request', sub: 'We reply on WhatsApp', photo: dishPics[0] || item.cover_url, say: 'Need lunch on Saturday, Sunday or another day? Send a request on the shop page, and we reply on WhatsApp.' },
   ]
 }
 
@@ -240,6 +261,7 @@ function lookOf(slides, i) {
   if (s.type === 'specs') return 'specs'
   if (s.type === 'collage') return 'collage'
   if (s.type === 'offer') return 'offer'
+  if (s.type === 'clock' || s.type === 'menu' || s.type === 'route') return s.type
   if (s.type === 'howto') return 'howto'
   if (i === 0 && isWords(s)) return 'hero'
   if (!isWords(s)) return 'photo'
@@ -259,6 +281,9 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (look === 'collage') { const list = imgs[i]; drawCollage(ctx, Array.isArray(list) ? list.filter(Boolean) : [list].filter(Boolean), s, local); return wordsBottom(ctx, s, local, { gradient: false }) }
   if (look === 'offer') return drawOffer(ctx, s, Array.isArray(imgs[i]) ? imgs[i].filter(Boolean) : [], local)
   if (look === 'howto') return drawHowto(ctx, s, local)
+  if (look === 'clock') return drawClock(ctx, s, img, local)
+  if (look === 'menu') return drawMenu(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
+  if (look === 'route') return drawRoute(ctx, s, local)
   if (look === 'specs') { if (img) { ctx.save(); ctx.globalAlpha = 0.55; fill(ctx, img, 0, 0, W, H, 1.08); ctx.restore() } drawSpecs(ctx, s, local); return }
   if (!img) { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#241E45'); g.addColorStop(1, '#0E1013'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H) }
 
@@ -309,10 +334,8 @@ function drawScene(ctx, slides, imgs, i, local) {
     const k = back((local - 0.15) / 0.55)
     if (k <= 0) return
     ctx.save(); ctx.globalAlpha = Math.min(1, k)
-    ctx.font = '900 76px Inter, Arial, sans-serif'
-    ctx.font = `900 ${(s.line || '').length > 26 ? 62 : 76}px Inter, Arial, sans-serif`
-    const lh = (s.line || '').length > 26 ? 74 : 88
-    const lines = wrapText(ctx, s.line || s.kicker, W - 100 - 168 - 50).slice(0, 3)
+    const { lines, size } = fitText(ctx, s.line || s.kicker, W - 100 - 168 - 50, { from: (s.line || '').length > 26 ? 64 : 76, to: 42, lines: 3 })
+    const lh = Math.round(size * 1.16)
     const bw = Math.min(W - 100, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 230)
     const bh = 70 + lines.length * lh + (s.sub ? 70 : 0)
     const bx = (W - bw) / 2; const by = H - 380 - bh
@@ -360,6 +383,181 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (img) { if (still) drawWhole(ctx, img, s); else fill(ctx, img, 0, 0, W, H, soft ? 1.02 + 0.05 * p : 1.04 + 0.1 * p, (i % 2 ? 1 : -1) * 30 * p) }
   if (no && feats.length > 1) counter(ctx, no, feats.length, W - 72, 230, local, 'right')
   wordsBottom(ctx, s, local, { bar: true })
+}
+
+// ---- Lunch: the 12:30 opening, the week menu, the delivery --------------------
+function scene(ctx, top = '#241E45') {
+  const g = ctx.createLinearGradient(0, 0, W * 0.3, H)
+  g.addColorStop(0, top); g.addColorStop(1, '#0E1013')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+}
+function heading(ctx, s, local, y = 300) {
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  const k = ease((local - 0.05) / 0.45)
+  ctx.globalAlpha = k
+  ctx.fillStyle = '#A892FF'; ctx.font = '800 40px Inter, Arial, sans-serif'; ctx.fillText(String(s.kicker || '').toUpperCase(), 72 + (1 - k) * 40, y)
+  const f = fitText(ctx, s.line || '', W - 144, { from: 76, to: 52, lines: 2 })
+  ctx.fillStyle = '#fff'
+  f.lines.forEach((l, j) => ctx.fillText(l, 72, y + 92 + j * Math.round(f.size * 1.18)))
+  ctx.restore()
+  return y + 92 + (f.lines.length - 1) * Math.round(f.size * 1.18)
+}
+
+// "12:30. What's for lunch today?" on a clock whose hands run to lunchtime,
+// then the cover photo rises in: already sorted, for the week.
+function drawClock(ctx, s, img, local) {
+  scene(ctx)
+  if (img) { ctx.save(); ctx.globalAlpha = 0.2; ctx.drawImage(backdrop(img), 0, 0, W, H); ctx.restore() }
+  const T = Math.min(2, SLIDE * 0.5)
+  const cx = W / 2; const cy = 760; const R = 270
+  const run = ease(Math.min(1, local / (T * 0.75)))
+  const mins = 40 + 50 * run // 11:40 → 12:30
+  ctx.save()
+  ctx.globalAlpha = ease(local / 0.3)
+  ctx.fillStyle = 'rgba(21,24,28,.92)'; ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#8A6CFF'; ctx.lineWidth = 12; ctx.stroke()
+  for (let h = 0; h < 12; h += 1) {
+    const a = h / 12 * Math.PI * 2; const r1 = h % 3 ? R - 40 : R - 58
+    ctx.strokeStyle = h % 3 ? 'rgba(255,255,255,.45)' : '#fff'; ctx.lineWidth = h % 3 ? 6 : 10; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(cx + Math.sin(a) * r1, cy - Math.cos(a) * r1); ctx.lineTo(cx + Math.sin(a) * (R - 22), cy - Math.cos(a) * (R - 22)); ctx.stroke()
+  }
+  const hand = (turn, len, width, colour) => { const a = turn * Math.PI * 2; ctx.strokeStyle = colour; ctx.lineWidth = width; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(a) * len, cy - Math.cos(a) * len); ctx.stroke() }
+  hand(((11 + mins / 60) % 12) / 12, R * 0.52, 18, '#fff')
+  hand((mins % 60) / 60, R * 0.8, 10, '#A892FF')
+  ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI * 2); ctx.fill()
+  // The time, and the question.
+  const hh = mins >= 60 ? 12 : 11; const mm = String(Math.floor(mins % 60)).padStart(2, '0')
+  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#fff'; ctx.font = '900 150px Inter, Arial, sans-serif'; ctx.fillText(`${hh}:${mm}`, cx, cy + R + 200)
+  const q = ease((local - T * 0.55) / 0.4)
+  ctx.globalAlpha = q
+  const f = fitText(ctx, s.ask || 'What’s for lunch today?', W - 160, { weight: 800, from: 68, to: 48, lines: 2 })
+  ctx.fillStyle = '#C9BCFF'
+  f.lines.forEach((l, j) => ctx.fillText(l, cx, cy + R + 320 + j * Math.round(f.size * 1.2)))
+  ctx.restore()
+  if (local <= T) return
+  // Already sorted: the photo rises over the clock.
+  const k = ease((local - T) / 0.55)
+  ctx.save(); ctx.translate(0, (1 - k) * H)
+  if (img) fill(ctx, img, 0, 0, W, H, 1.04 + 0.05 * Math.min(1, (local - T) / SLIDE))
+  else scene(ctx, '#15181C')
+  ctx.restore()
+  if (k > 0.6) wordsBottom(ctx, s, local - T - 0.25, { bar: true })
+}
+
+// The week, day by day: each day's own dish, ticked in one after another.
+function drawMenu(ctx, s, imgs, local) {
+  scene(ctx)
+  heading(ctx, s, local)
+  const rows = (s.week || []).slice(0, 5)
+  const top = 500; const rowH = 228; const gap = 20
+  rows.forEach((d, j) => {
+    const k = ease((local - 0.35 - j * 0.2) / 0.45)
+    if (k <= 0) return
+    const y = top + j * (rowH + gap)
+    const open = d.open !== false && d.dish
+    ctx.save(); ctx.globalAlpha = k * (open ? 1 : 0.42); ctx.translate((1 - k) * 90, 0)
+    ctx.fillStyle = 'rgba(255,255,255,.06)'; roundRect(ctx, 56, y, W - 112, rowH, 34); ctx.fill()
+    ctx.strokeStyle = open ? 'rgba(138,108,255,.45)' : 'rgba(255,255,255,.12)'; ctx.lineWidth = 3; roundRect(ctx, 56, y, W - 112, rowH, 34); ctx.stroke()
+    // Day
+    ctx.fillStyle = open ? '#8A6CFF' : 'rgba(255,255,255,.15)'; roundRect(ctx, 86, y + rowH / 2 - 40, 132, 80, 40); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.font = '900 38px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(String(d.label || '').toUpperCase(), 152, y + rowH / 2 + 2)
+    // Dish photo
+    const img = d.pi >= 0 ? imgs[d.pi] : null
+    const px = 244; const ps = rowH - 40
+    if (img) { ctx.save(); roundRect(ctx, px, y + 20, ps, ps, 26); ctx.clip(); fill(ctx, img, px, y + 20, ps, ps); ctx.restore() }
+    else if (open) { ctx.fillStyle = 'rgba(138,108,255,.18)'; roundRect(ctx, px, y + 20, ps, ps, 26); ctx.fill() }
+    // Dish name, whole
+    const tx = img || open ? px + ps + 34 : px
+    const tw = W - 56 - 40 - tx - (open ? 90 : 0)
+    ctx.textAlign = 'left'
+    const f = fitText(ctx, open ? d.dish : 'No lunch this day', tw, { weight: open ? 800 : 600, from: 44, to: 30, lines: 3 })
+    ctx.fillStyle = open ? '#fff' : 'rgba(255,255,255,.75)'
+    const lh = Math.round(f.size * 1.18)
+    f.lines.forEach((l, i) => ctx.fillText(l, tx, y + rowH / 2 - ((f.lines.length - 1) * lh) / 2 + i * lh))
+    // Tick
+    if (open) {
+      const t = back((local - 0.6 - j * 0.2) / 0.35)
+      if (t > 0) {
+        const cx = W - 56 - 70; const cy = y + rowH / 2
+        ctx.save(); ctx.translate(cx, cy); ctx.scale(t, t)
+        ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(0, 0, 34, 0, Math.PI * 2); ctx.fill()
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+        ctx.beginPath(); ctx.moveTo(-14, 1); ctx.lineTo(-3, 12); ctx.lineTo(16, -10); ctx.stroke()
+        ctx.restore()
+      }
+    }
+    ctx.restore()
+  })
+}
+
+// From the kitchen to your office: a lunch box travels the route, then the
+// delivery time and the order-by time.
+function drawRoute(ctx, s, local) {
+  scene(ctx)
+  heading(ctx, s, local)
+  const y0 = 1010
+  const A = { x: 220, y: y0 }; const B = { x: W - 220, y: y0 }; const C = { x: W / 2, y: y0 - 300 }
+  const appear = ease((local - 0.2) / 0.4)
+  ctx.save(); ctx.globalAlpha = appear
+  // The road
+  ctx.setLineDash([22, 22]); ctx.lineDashOffset = -local * 60
+  ctx.strokeStyle = 'rgba(168,146,255,.65)'; ctx.lineWidth = 8; ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.moveTo(A.x + 60, A.y - 40); ctx.quadraticCurveTo(C.x, C.y, B.x - 60, B.y - 60); ctx.stroke()
+  ctx.setLineDash([])
+  // The kitchen: a small house
+  ctx.fillStyle = '#15181C'; ctx.strokeStyle = '#A892FF'; ctx.lineWidth = 7; ctx.lineJoin = 'round'
+  ctx.beginPath(); ctx.moveTo(A.x - 110, A.y - 60); ctx.lineTo(A.x, A.y - 160); ctx.lineTo(A.x + 110, A.y - 60); ctx.lineTo(A.x + 110, A.y + 90); ctx.lineTo(A.x - 110, A.y + 90); ctx.closePath(); ctx.fill(); ctx.stroke()
+  ctx.fillStyle = '#8A6CFF'; roundRect(ctx, A.x - 32, A.y + 6, 64, 84, 10); ctx.fill()
+  // The office: a tall building with windows
+  const arrived = ease((local - 2.2) / 0.4)
+  ctx.fillStyle = '#15181C'; roundRect(ctx, B.x - 110, B.y - 260, 220, 350, 14); ctx.fill(); ctx.stroke()
+  for (let r = 0; r < 5; r += 1) for (let c = 0; c < 3; c += 1) {
+    ctx.fillStyle = `rgba(168,146,255,${0.25 + 0.55 * arrived})`
+    roundRect(ctx, B.x - 80 + c * 58, B.y - 230 + r * 60, 42, 38, 6); ctx.fill()
+  }
+  ctx.fillStyle = '#fff'; ctx.font = '700 36px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+  ctx.fillText('Our kitchen', A.x, A.y + 150); ctx.fillText('Your office', B.x, B.y + 150)
+  ctx.restore()
+  // The lunch box on its way
+  const m = ease((local - 0.5) / 1.7)
+  if (m > 0) {
+    const t = m; const x = (1 - t) * (1 - t) * (A.x + 60) + 2 * (1 - t) * t * C.x + t * t * (B.x - 60)
+    const y = (1 - t) * (1 - t) * (A.y - 40) + 2 * (1 - t) * t * C.y + t * t * (B.y - 60)
+    const bob = Math.sin(local * 9) * 6 * (1 - arrived)
+    ctx.save(); ctx.translate(x, y - 50 + bob)
+    ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 10
+    ctx.fillStyle = '#8A6CFF'; roundRect(ctx, -70, -48, 140, 96, 20); ctx.fill()
+    ctx.shadowColor = 'transparent'
+    ctx.fillStyle = '#A892FF'; roundRect(ctx, -76, -56, 152, 26, 12); ctx.fill()
+    brandMark(ctx, -24, -20, 48)
+    ctx.restore()
+  }
+  // When it comes, and when to order.
+  const cards = [['Delivered', s.when || 'At lunchtime'], ['Order by', s.order || '18:00 the day before']]
+  cards.forEach(([label, value], j) => {
+    const k = ease((local - 1.2 - j * 0.25) / 0.45)
+    if (k <= 0) return
+    const x = 56 + j * ((W - 112) / 2 + 10); const w = (W - 112) / 2 - 10; const y = 1300
+    ctx.save(); ctx.globalAlpha = k; ctx.translate(0, (1 - k) * 40)
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; roundRect(ctx, x, y, w, 200, 30); ctx.fill()
+    ctx.strokeStyle = 'rgba(138,108,255,.45)'; ctx.lineWidth = 3; roundRect(ctx, x, y, w, 200, 30); ctx.stroke()
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = '#A892FF'; ctx.font = '800 32px Inter, Arial, sans-serif'; ctx.fillText(label.toUpperCase(), x + 34, y + 62)
+    const f = fitText(ctx, value, w - 68, { from: 54, to: 32, lines: 2 })
+    ctx.fillStyle = '#fff'
+    f.lines.forEach((l, i) => ctx.fillText(l, x + 34, y + 128 + i * Math.round(f.size * 1.15)))
+    ctx.restore()
+  })
+  if (s.area) {
+    const k = ease((local - 1.8) / 0.5)
+    ctx.save(); ctx.globalAlpha = k * 0.85; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    const f = fitText(ctx, s.area, W - 144, { weight: 600, from: 38, to: 28, lines: 3 })
+    ctx.fillStyle = '#fff'
+    f.lines.forEach((l, i) => ctx.fillText(l, 72, 1590 + i * Math.round(f.size * 1.3)))
+    ctx.restore()
+  }
 }
 
 // ---- The weekly lunch offer card (like the poster) ---------------------------
@@ -474,7 +672,7 @@ function drawHowto(ctx, s, local) {
   ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(110, 300, 46, 0, Math.PI * 2); ctx.fill()
   ctx.fillStyle = '#fff'; ctx.font = '900 52px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(s.step), 110, 318)
   ctx.textAlign = 'left'; ctx.font = '800 30px Inter, Arial, sans-serif'; ctx.fillStyle = '#A892FF'; ctx.fillText(`HOW TO BOOK · STEP ${s.step} OF ${steps}`, 180, 282)
-  ctx.font = '900 58px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(wrapText(ctx, s.line || '', W - 240)[0] || '', 180, 345)
+  { const f = fitText(ctx, s.line || '', W - 240, { from: 58, to: 36, lines: 1 }); ctx.fillStyle = '#fff'; ctx.fillText(f.lines[0] || '', 180, 345) }
   if (s.sub) { ctx.font = '600 34px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText(wrapText(ctx, s.sub, W - 240)[0] || '', 180, 400) }
   ctx.restore()
   // The phone
@@ -607,13 +805,13 @@ function wordsAt(ctx, s, local, y, { plain = false } = {}) {
   const k = ease((local - 0.15) / 0.5)
   if (s.kicker) { ctx.globalAlpha = k; ctx.fillStyle = '#A892FF'; ctx.font = '800 40px Inter, Arial, sans-serif'; ctx.fillText(s.kicker.toUpperCase(), 72 + (1 - k) * 40, y); y += 84 }
   ctx.globalAlpha = 1
-  ctx.font = `900 ${plain ? 84 : 80}px Inter, Arial, sans-serif`
-  const lines = wrapText(ctx, s.line || '', W - 144).slice(0, 3)
+  const { lines, size } = fitText(ctx, s.line || '', W - 144, { from: plain ? 84 : 80, to: 50, lines: 3 })
+  const lh = Math.round(size * 1.22)
   lines.forEach((l, j) => {
     const r = ease((local - 0.2 - j * 0.1) / 0.5)
-    ctx.save(); ctx.beginPath(); ctx.rect(0, y - 90, W, 112); ctx.clip()
-    ctx.fillStyle = '#fff'; ctx.fillText(l, 72, y + (1 - r) * 110)
-    ctx.restore(); y += 98
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y - size * 1.12, W, lh + 14); ctx.clip()
+    ctx.fillStyle = '#fff'; ctx.fillText(l, 72, y + (1 - r) * lh)
+    ctx.restore(); y += lh
   })
   if (s.sub) { const r = ease((local - 0.45) / 0.5); ctx.globalAlpha = r; ctx.fillStyle = '#C9BCFF'; ctx.font = '800 56px Inter, Arial, sans-serif'; ctx.fillText(s.sub, 72, y + 10) }
   ctx.restore()
@@ -627,9 +825,8 @@ function wordsBottom(ctx, s, local, { gradient = true, bar = false } = {}) {
     g.addColorStop(0, 'rgba(14,16,19,0)'); g.addColorStop(0.45, 'rgba(14,16,19,.72)'); g.addColorStop(1, 'rgba(14,16,19,.96)')
     ctx.fillStyle = g; ctx.fillRect(0, H * 0.45, W, H * 0.55)
   }
-  ctx.font = '900 82px Inter, Arial, sans-serif'
-  const n = Math.min(3, wrapText(ctx, s.line || '', W - 144).length)
-  const y = H - 300 - n * 98 - (s.sub ? 70 : 0)
+  const fitted = fitText(ctx, s.line || '', W - 144, { from: 80, to: 50, lines: 3 })
+  const y = H - 300 - fitted.lines.length * Math.round(fitted.size * 1.22) - (s.sub ? 70 : 0)
   if (bar) { const k = ease((local - 0.05) / 0.6); ctx.fillStyle = '#8A6CFF'; ctx.fillRect(72, y - (s.kicker ? 150 : 115), 140 * k, 10) }
   wordsAt(ctx, s, local, y)
 }
@@ -879,6 +1076,32 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath()
 }
 
+// The words of a scene at the largest size that shows ALL of them in the
+// lines given; never cut off mid-sentence.
+function fitText(ctx, text, maxW, { weight = 900, from = 80, to = 48, lines: most = 3 } = {}) {
+  let size = from; let lines = []
+  for (; size >= to; size -= 4) {
+    ctx.font = `${weight} ${size}px Inter, Arial, sans-serif`
+    lines = wrapText(ctx, text, maxW)
+    if (lines.length <= most) return { lines, size }
+  }
+  size = to; ctx.font = `${weight} ${size}px Inter, Arial, sans-serif`
+  return { lines: wrapText(ctx, text, maxW), size }
+}
+
+// A selling point short enough to read in a glance, and always a complete
+// phrase: a long one is cut where its first part ends (before "and", a dash,
+// a comma…), never in the middle ("…and adds extra").
+export function shortLine(x, max = 70) {
+  const t = String(x || '').replace(/^[\s\u2022*\u00b7\u2013\u2014-]+/, '').replace(/\s+/g, ' ').trim().replace(/[\s.!;:,]+$/, '')
+  if (t.length <= max) return t
+  const cuts = [/\s+[–—-]\s+/g, /:\s+/g, /;\s+/g, /\s+\(/g, /,\s+(?=(?:and|which|so|while|making|perfect|ideal|great|so that)\b)/gi, /\s+(?=(?:and|which|that|so|while|making|so that|with|for)\s)/gi, /,\s+/g]
+  // The longest complete first part that fits.
+  let best = -1
+  for (const re of cuts) for (const m of t.matchAll(re)) if (m.index >= 18 && m.index <= max && m.index > best) best = m.index
+  return best > 0 ? t.slice(0, best).replace(/[\s,;:]+$/, '') : t
+}
+
 function wrapText(ctx, text, max) {
   const words = String(text || '').split(/\s+/).filter(Boolean)
   const lines = []; let cur = ''
@@ -890,8 +1113,18 @@ function wrapText(ctx, text, max) {
   return lines
 }
 
+// The picture(s) a scene draws: one photo, or a list (grid, offer card, the
+// week menu, which keeps its places so each day keeps its own dish).
+export function sceneImages(x, get) {
+  if (x.type === 'menu') return (x.photos || []).map((u) => get(u) || null)
+  if (x.type === 'collage' || x.type === 'offer') return (x.photos || []).map(get).filter(Boolean)
+  return get(x.photo) || null
+}
+
 export async function prepare(script, link) {
-  const imgs = await Promise.all(script.slides.map((s) => (s.type === 'collage' || s.type === 'offer' ? Promise.all((s.photos || []).map(load)) : s.photo ? load(s.photo) : Promise.resolve(null))))
+  const cache = new Map()
+  await loadPhotos(script.slides.flatMap((x) => [x.photo, ...(x.photos || [])]), cache)
+  const imgs = script.slides.map((x) => sceneImages(x, (u) => cache.get(u)))
   const qr = link ? await qrImage(link, '#0E1013', '#ffffff') : null
   return { imgs, end: { qr, ...endText(script, link) } }
 }
@@ -1088,7 +1321,7 @@ export function videoParts(item, kind = 'product', link = '') {
     blocks.push({ id: 'how', label: 'How it works', scene: base.slides.find((x) => x.kicker === 'How it works') })
   } else {
     blocks.push({ id: 'title', label: 'Name and price', scene: base.slides[0] })
-    for (const p of (item.benefits || []).filter(Boolean)) blocks.push({ id: `b-${p}`, label: p, feature: true, scene: { kicker: '', line: p, say: `${p}.` } })
+    for (const p of (item.benefits || []).filter(Boolean)) blocks.push({ id: `b-${p}`, label: shortLine(p), feature: true, scene: { kicker: '', line: shortLine(p), say: `${String(p).replace(/^[\s\u2022*\u00b7\u2013\u2014-]+/, '').replace(/[.!]+$/, '')}.` } })
   }
   blocks.push({ id: 'words', label: 'My own words', scene: { kicker: '', line: '', sub: '', say: '' } })
   // The starting point is the full automatic video. A feature scene is marked
@@ -1098,7 +1331,7 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const KEEP = ['note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
+const KEEP = ['slot', 'ask', 'when', 'order', 'area', 'note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
 const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...Object.fromEntries(KEEP.filter((k) => sc[k] != null).map((k) => [k, sc[k]])) })
 
 // A new scene from a block, on a chosen photo.
@@ -1198,6 +1431,9 @@ export function adCut(scenes, secs = 4, target = 32) {
   const score = (s, i) => {
     if (i === 0) return 100
     if (s.type === 'offer') return 90
+    if (s.type === 'clock') return 100
+    if (s.type === 'menu') return 72
+    if (s.type === 'route') return 50
     if (s.type === 'specs') return s.kicker === 'Also has' ? 48 : 80
     if (s.type === 'howto') return s.step === 1 ? 46 : 5
     if (s.type === 'collage') return 58
