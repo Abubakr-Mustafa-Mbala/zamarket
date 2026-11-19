@@ -155,10 +155,17 @@ export default async function assist(request) {
         .map((f) => truncate(f, 60)).filter((f) => f.length >= 2))].slice(0, 12)
       if (!features.length) return respond(200, { photos: [], features: [], cover: 0 })
       // The photos come from the listing itself, never from the browser.
-      const qs = new URLSearchParams({ select: 'id,name,images', id: `eq.${id}`, status: 'eq.published', limit: '1' })
-      const found = await fetch(`${sb}/rest/v1/public_products?${qs}`, { headers: { apikey: anon, Authorization: `Bearer ${anon}` }, signal: AbortSignal.timeout(6500) })
-      if (!found.ok) return fail(503, 'Could not read the listing. Please try again.')
-      const row = (await found.json())?.[0]
+      // Read as the signed-in member of staff (as the video maker does), with
+      // the public listing as a second try.
+      const qs = new URLSearchParams({ select: 'id,name,images', id: `eq.${id}`, limit: '1' })
+      let row = null; let why = ''
+      for (const [path, headers] of [['products', authHeaders], ['public_products', { apikey: anon, Authorization: `Bearer ${anon}` }]]) {
+        try {
+          const found = await fetch(`${sb}/rest/v1/${path}?${qs}`, { headers, signal: AbortSignal.timeout(8000) })
+          if (found.ok) { row = (await found.json())?.[0] || null; if (row) break; why = 'not found' } else why = `${found.status} ${(await found.text()).slice(0, 120)}`
+        } catch (e) { why = e?.name === 'TimeoutError' ? 'timed out' : String(e?.message || e) }
+      }
+      if (!row) return fail(503, `Could not read the listing (${why}). Please try again.`)
       const images = (row?.images || []).filter((u) => typeof u === 'string' && /^https:\/\//.test(u)).slice(0, 12)
       if (!images.length) return fail(400, 'This listing has no photos')
       const { data, error } = await callModel(apiKey, {
