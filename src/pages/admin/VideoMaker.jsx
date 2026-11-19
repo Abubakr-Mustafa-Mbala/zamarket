@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice, upcomingMenu } from '../../lib/lunch'
@@ -137,6 +137,9 @@ export default function VideoMaker() {
   const draftKey = pick ? `zm-video-v4-${kind}-${pick.id}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
+  // The full video, or the ~30-second ad cut of it.
+  const [short, setShort] = useState(() => { try { return localStorage.getItem('zm-video-ad') === '1' } catch { return false } })
+  const chooseShort = (v) => { setShort(v); try { localStorage.setItem('zm-video-ad', v ? '1' : '0') } catch { /* ignore */ } }
   useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
   setMotion(motion)
   const chooseMotion = (m) => { setMotionState(m); try { localStorage.setItem(`zm-video-motion-${kind}`, m) } catch { /* ignore */ } }
@@ -245,7 +248,9 @@ export default function VideoMaker() {
     if (missing.length) loadPhotos(missing, cache.current).then(() => setLoaded((n) => n + 1))
   }, [scenes])
 
-  const script = useMemo(() => (parts ? { slides: scenes, end: parts.end, endSay: parts.endSay, caption: aiCaption || parts.caption, voice: voiceFor(scenes, parts.endSay) } : null), [parts, scenes, aiCaption])
+  const cut = useMemo(() => (short ? adCut(scenes, secs) : scenes), [short, scenes, secs])
+  const inCut = useMemo(() => new Set(cut.map((x) => x.id)), [cut])
+  const script = useMemo(() => (parts ? { slides: cut, end: parts.end, endSay: parts.endSay, caption: aiCaption || parts.caption, voice: voiceFor(cut, parts.endSay) } : null), [parts, cut, aiCaption])
   const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' || x.type === 'offer' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
 
   // Editing scenes
@@ -291,7 +296,7 @@ export default function VideoMaker() {
 
   const spec = () => ({
     title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion,
-    script: { slides: scenes, end: parts.end, endSay: parts.endSay, caption: script.caption },
+    script: { slides: script.slides, end: parts.end, endSay: parts.endSay, caption: script.caption },
     ...(music ? { music: { blob: music.blob, start: sound.start || 0, name: music.name } } : {}),
   })
 
@@ -445,12 +450,17 @@ export default function VideoMaker() {
                 <button type="button" className="vx-btn outline" disabled={!!busy} onClick={() => setEditing(true)}>Change scenes ({scenes.length})</button>
               </section>
             ) : (
-              <SceneEditor parts={parts} scenes={scenes} open={open} setOpen={setOpen} update={update} move={move} remove={remove} add={add}
+              <SceneEditor parts={parts} scenes={scenes} left={short ? scenes.filter((x) => !inCut.has(x.id)).map((x) => x.id) : []} open={open} setOpen={setOpen} update={update} move={move} remove={remove} add={add}
                 restart={restart} choosing={choosing} setChoosing={setChoosing} busy={!!busy} close={() => { setEditing(false); setOpen(null) }} />
             )}
             <div className="vx-pace">
               <span>Photos</span>
               <div className="vx-tabs">{MOTIONS.map(([m, l]) => <button key={m} type="button" disabled={!!busy} className={motion === m ? 'on' : ''} onClick={() => chooseMotion(m)}>{l}</button>)}</div>
+            </div>
+            <div className="vx-pace">
+              <span>Length</span>
+              <div className="vx-tabs">{[[false, 'Full video'], [true, '30-second ad']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={short === v ? 'on' : ''} onClick={() => chooseShort(v)}>{l}</button>)}</div>
+              <small className="vx-muted">{short ? `${script.slides.length} of ${scenes.length} scenes, about ${Math.round(videoLength(script.slides))} seconds: the opening, the best features and the price. For adverts and Reels.` : `All ${scenes.length} scenes, about ${Math.round(videoLength(script.slides))} seconds.`}</small>
             </div>
             <div className="vx-pace">
               <span>Each scene stays</span>
@@ -698,7 +708,7 @@ const TYPES = [['', 'Photo with words'], ['photo', 'Photo only'], ['collage', 'P
 
 // The scenes, in order. Tap one to change its photo, words and what you
 // will say; add scenes from the listing's own details.
-function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, restart, choosing, setChoosing, busy, close }) {
+function SceneEditor({ parts, scenes, left = [], open, setOpen, update, move, remove, add, restart, choosing, setChoosing, busy, close }) {
   const [adding, setAdding] = useState(false)
   if (!parts) return null
   const specsBlock = parts.blocks.find((b) => b.id === 'specs')
@@ -718,7 +728,7 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                 <button type="button" className="vx-scene-main" disabled={busy} onClick={() => setOpen(isOpen ? null : sc.id)}>
                   <span className="vx-scene-n">{i + 1}</span>
                   {sc.photo || sc.photos?.[0] ? <img src={sc.photo || sc.photos[0]} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
-                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? (sc.kicker === 'Also has' ? `Also has: ${(sc.rows || []).map((r) => r[0]).join(', ')}` : 'Specifications card') : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.seen ? <em className="vx-scene-ai">✨ AI saw this in the photo</em> : sc.ai === 'yes' && sc.checked ? <em className="vx-scene-ai">✓ AI: this photo shows it</em> : sc.feature && !sc.checked ? <em className="vx-scene-check">{sc.ai === 'maybe' ? 'AI is not sure: check the photo' : 'Check the photo shows it'}</em> : sc.kicker === 'Also has' ? 'Not seen in any photo' : kind}</small></span>
+                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? (sc.kicker === 'Also has' ? `Also has: ${(sc.rows || []).map((r) => r[0]).join(', ')}` : 'Specifications card') : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.seen ? <em className="vx-scene-ai">✨ AI saw this in the photo</em> : sc.ai === 'yes' && sc.checked ? <em className="vx-scene-ai">✓ AI: this photo shows it</em> : sc.feature && !sc.checked ? <em className="vx-scene-check">{sc.ai === 'maybe' ? 'AI is not sure: check the photo' : 'Check the photo shows it'}</em> : sc.kicker === 'Also has' ? 'Not seen in any photo' : kind}{left.includes(sc.id) && <em className="vx-scene-out"> · Not in the 30-second ad</em>}</small></span>
                 </button>
                 <span className="vx-scene-tools">
                   <button type="button" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}>↑</button>

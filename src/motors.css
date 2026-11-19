@@ -682,6 +682,7 @@
 .vx-add-chips button.used { opacity: .55; }
 .vx-video-focus { position: absolute; left: 10px; top: 10px; background: rgba(18,11,30,.8); color: #fff; font-size: .74rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
 .vx-scene-check { font-style: normal; color: #b45309; font-weight: 700; }
+.vx-scene-out { font-style: normal; color: var(--muted, #6b7280); font-weight: 600; }
 .vx-scene-foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
 .vx-change h3 { margin: 0 0 4px; }
 .vx-change .vx-btn { margin-top: 8px; }

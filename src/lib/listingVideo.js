@@ -37,7 +37,7 @@ export function videoScript(item, kind = 'product', link = '') {
       feats.length ? `It comes with ${feats.slice(0, 3).join(', ')}.` : '',
       'Photos, details and enquiries on zamarket dot shop. Link in the description.',
     ].filter(Boolean).join(' ')
-    return { ...finish(slides, photos, voice, captionFor(title, price, note, feats, link, ['#ZaMarketMotors', '#CarsForSaleZambia', '#Lusaka'])), end: { cta: 'Enquire on ZaMarket Motors', foot: 'Ask about it · viewings arranged' } }
+    return { ...finish(slides, photos, voice, captionFor(title, price, note, feats, link, ['#ZaMarketMotors', '#CarsForSaleZambia', '#Lusaka'])), end: { cta: 'Enquire on ZaMarket Motors', foot: 'Ask about it · viewings arranged', title, price: [price, note].filter(Boolean).join(' · ') } }
   }
   if (kind === 'lunch') return lunchScript(item, link)
   // A product: everything the listing really says, not only three points:
@@ -56,7 +56,7 @@ export function videoScript(item, kind = 'product', link = '') {
   if (Number(item.review_count) > 0 && Number(item.rating) > 0) slides.push({ kicker: 'Reviews', line: `Rated ${Number(item.rating).toFixed(1)} out of 5`, sub: `${item.review_count} review${item.review_count > 1 ? 's' : ''} on ZaMarket`, say: `Rated ${Number(item.rating).toFixed(1)} out of 5 by customers on ZaMarket.` })
   slides.push({ kicker: 'Order on ZaMarket', line: 'Delivered in Lusaka', sub: item.vendor_name ? `From ${item.vendor_name}` : '', say: 'Order on zamarket dot shop, delivered in Lusaka.' })
   const voice = slides.map((x) => x.say).filter(Boolean).join(' ')
-  return withEnd({ cta: 'See it and order on ZaMarket', foot: 'Delivered in Lusaka' }, finish(slides, photos, voice, captionFor(item.name, price, '', [...points, ...lines].slice(0, 5), link, ['#ZaMarket', '#Lusaka', '#ShopLocal']), 13))
+  return withEnd({ cta: 'See it and order on ZaMarket', foot: 'Delivered in Lusaka', title: item.name, price }, finish(slides, photos, voice, captionFor(item.name, price, '', [...points, ...lines].slice(0, 5), link, ['#ZaMarket', '#Lusaka', '#ShopLocal']), 13))
 }
 
 // Plain, short sentences from a description (no line over 80 characters).
@@ -94,7 +94,7 @@ function lunchScript(item, link) {
   slides.push(...offerScenes(item, dishPics).slice(1))
   const voice = slides.map((x) => x.say).filter(Boolean).join(' ')
   const out = slides.map((x) => ({ kicker: '', line: '', sub: '', ...x }))
-  return withEnd({ cta: 'Order your weekly lunch', foot: 'Delivered to your office or door' }, finish(out, [item.cover_url, ...dishPics].filter(Boolean), `${voice} Order on zamarket dot shop.`,
+  return withEnd({ cta: 'Order your weekly lunch', foot: 'Delivered to your office or door', title: seller ? `Weekly lunch by ${seller}` : 'Weekly lunch', price: from ? `From ${from} a lunch` : '' }, finish(out, [item.cover_url, ...dishPics].filter(Boolean), `${voice} Order on zamarket dot shop.`,
     captionFor(item.title || item.name, from ? `From ${from} a lunch` : '', '', ['Homemade, cooked fresh for the day you booked', 'Order once for the whole week', 'Delivered to your office or door', ...(team.length ? [`Team orders: ${team[0].min}+ lunches ${team[0].pct}% off`] : []), ...(item.trial_first ? ['First time? Taste one lunch first'] : [])], link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket']), 24))
 }
 
@@ -652,7 +652,8 @@ export function drawFrame(ctx, t, slides, imgs, end) {
   const total = slides.length * SLIDE
   ctx.fillStyle = '#0E1013'; ctx.fillRect(0, 0, W, H)
   if (t >= total) {
-    drawEnd(ctx, t - total, end)
+    const first = imgs?.[0]
+    drawEnd(ctx, t - total, end, Array.isArray(first) ? first[0] || null : first || null)
     // The last scene zooms away into the end card.
     const lt = t - total
     if (lt < TR && slides.length) {
@@ -754,6 +755,7 @@ function drawSpecs(ctx, s, local) {
   ctx.strokeStyle = 'rgba(138,108,255,.6)'; ctx.lineWidth = 3; roundRect(ctx, 56, top, W - 112, cardH, 40); ctx.stroke()
   ctx.textBaseline = 'middle'
   ctx.fillStyle = '#A892FF'; ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.fillText((s.kicker || 'Specifications').toUpperCase(), 110, top + 90)
+  if (s.note) { ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.font = '600 32px Inter, Arial, sans-serif'; ctx.fillText(s.note, 110, top + 140) }
   rows.forEach(([label, value], i) => {
     const appear = Math.min(1, Math.max(0, (local - 0.35 - i * 0.22) / 0.3))
     if (!appear) return
@@ -771,25 +773,76 @@ function drawSpecs(ctx, s, local) {
   ctx.restore()
 }
 
-function drawEnd(ctx, t, end) {
+function drawEnd(ctx, t, end, hero = null) {
   const g = ctx.createLinearGradient(0, 0, W, H)
   g.addColorStop(0, '#241E45'); g.addColorStop(1, '#0E1013')
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
   const a = Math.min(1, t / 0.4)
   ctx.save(); ctx.globalAlpha = a
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  // Logo and name
-  brandMark(ctx, W / 2 - 90, 190, 180)
-  ctx.fillStyle = '#fff'; ctx.font = '900 92px Inter, Arial, sans-serif'; ctx.fillText('ZaMarket', W / 2, 450)
-  ctx.fillStyle = '#A892FF'; ctx.font = '700 48px Inter, Arial, sans-serif'
-  wrapText(ctx, end.cta || 'See it on ZaMarket', W - 140).slice(0, 2).forEach((l, i) => ctx.fillText(l, W / 2, 550 + i * 60))
-  if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 250, 680, 500, 500, 40); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 215, 715, 430, 430) }
-  // The link, big enough to read and type: the address on its own line, the
-  // rest broken at / and - so it never runs off the screen.
   const link = end.link || 'zamarket.shop'
   const cut = link.indexOf('/')
   const site = cut > 0 ? link.slice(0, cut) : link
   const rest = cut > 0 ? link.slice(cut) : ''
+  if (hero) {
+    // The closing shot: the best photo once more, fading into the dark, with
+    // the name and the price on it, then where to find it.
+    const PH = 1000
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, PH); ctx.clip()
+    fill(ctx, hero, 0, 0, W, PH, 1.03 + 0.04 * Math.min(1, t / 6))
+    ctx.restore()
+    const fade = ctx.createLinearGradient(0, 420, 0, PH)
+    fade.addColorStop(0, 'rgba(14,16,19,0)'); fade.addColorStop(0.7, 'rgba(14,16,19,.82)'); fade.addColorStop(1, '#0E1013')
+    ctx.fillStyle = fade; ctx.fillRect(0, 420, W, PH - 420)
+    ctx.fillStyle = '#0E1013'; ctx.fillRect(0, PH, W, H - PH)
+    const top = ctx.createLinearGradient(0, 0, 0, 260)
+    top.addColorStop(0, 'rgba(14,16,19,.55)'); top.addColorStop(1, 'rgba(14,16,19,0)')
+    ctx.fillStyle = top; ctx.fillRect(0, 0, W, 260)
+    // Logo and name, as on every scene.
+    ctx.textAlign = 'left'; ctx.font = '900 52px Inter, Arial, sans-serif'
+    const za = ctx.measureText('Za').width; const bw = ctx.measureText('ZaMarket').width
+    ctx.fillStyle = 'rgba(14,16,19,.6)'; roundRect(ctx, 48, 70, bw + 160, 84, 42); ctx.fill()
+    brandMark(ctx, 70, 82, 60)
+    ctx.fillStyle = '#A892FF'; ctx.fillText('Za', 146, 113)
+    ctx.fillStyle = '#fff'; ctx.fillText('Market', 146 + za, 113)
+    ctx.textAlign = 'center'
+    if (end.title) {
+      let size = 66
+      do { ctx.font = `900 ${size}px Inter, Arial, sans-serif`; size -= 2 } while (size > 44 && ctx.measureText(end.title).width > W - 120)
+      const tl = wrapText(ctx, end.title, W - 120).slice(0, 2)
+      tl.forEach((l, i) => { ctx.fillStyle = '#fff'; ctx.fillText(l, W / 2, (end.price ? 790 : 860) - (tl.length - 1 - i) * (size + 12)) })
+    }
+    if (end.price) {
+      let size = 96
+      do { ctx.font = `900 ${size}px Inter, Arial, sans-serif`; size -= 4 } while (size > 52 && ctx.measureText(end.price).width > W - 120)
+      ctx.fillStyle = '#A892FF'; ctx.fillText(end.price, W / 2, 900)
+    }
+    ctx.fillStyle = '#C9BCFF'; ctx.font = '700 46px Inter, Arial, sans-serif'
+    ctx.fillText(wrapText(ctx, end.cta || 'See it on ZaMarket', W - 140)[0], W / 2, 1010)
+    if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 190, 1075, 380, 380, 34); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 162, 1103, 324, 324) }
+    const y0 = end.qr ? 1540 : 1180
+    ctx.fillStyle = '#fff'; ctx.font = '900 68px Inter, Arial, sans-serif'; ctx.fillText(site, W / 2, y0)
+    let y = y0 + 78
+    if (rest) {
+      const lines = fitLink(ctx, rest, W - 120)
+      ctx.fillStyle = '#C9BCFF'
+      lines.forEach((l, i) => ctx.fillText(l, W / 2, y + i * (lines.size + 12)))
+      y += lines.length * (lines.size + 12) + 20
+    }
+    ctx.fillStyle = 'rgba(255,255,255,.72)'; ctx.font = '600 38px Inter, Arial, sans-serif'
+    ctx.fillText(end.foot || 'Delivered in Lusaka', W / 2, Math.min(y + 10, 1800))
+    ctx.restore(); ctx.textAlign = 'left'
+    return
+  }
+  // Logo and name
+  brandMark(ctx, W / 2 - 90, 190, 180)
+  ctx.fillStyle = '#fff'; ctx.font = '900 92px Inter, Arial, sans-serif'; ctx.fillText('ZaMarket', W / 2, 450)
+  ctx.fillStyle = '#A892FF'; ctx.font = '700 48px Inter, Arial, sans-serif'
+  wrapText(ctx, end.cta || 'See it on ZaMarket', W - 140).slice(0, end.price ? 1 : 2).forEach((l, i) => ctx.fillText(l, W / 2, 550 + i * 60))
+  if (end.price) { ctx.fillStyle = '#fff'; ctx.font = '900 54px Inter, Arial, sans-serif'; ctx.fillText(end.price, W / 2, 620) }
+  if (end.qr) { ctx.fillStyle = '#fff'; roundRect(ctx, W / 2 - 250, 680, 500, 500, 40); ctx.fill(); ctx.drawImage(end.qr, W / 2 - 215, 715, 430, 430) }
+  // The link, big enough to read and type: the address on its own line, the
+  // rest broken at / and - so it never runs off the screen.
   ctx.fillStyle = '#C9BCFF'; ctx.font = '900 76px Inter, Arial, sans-serif'; ctx.fillText(site, W / 2, 1290)
   if (rest) {
     const lines = fitLink(ctx, rest, W - 120)
@@ -839,7 +892,7 @@ function wrapText(ctx, text, max) {
 export async function prepare(script, link) {
   const imgs = await Promise.all(script.slides.map((s) => (s.type === 'collage' || s.type === 'offer' ? Promise.all((s.photos || []).map(load)) : s.photo ? load(s.photo) : Promise.resolve(null))))
   const qr = link ? await qrImage(link, '#0E1013', '#ffffff') : null
-  return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' } }
+  return { imgs, end: { qr, ...endText(script, link) } }
 }
 
 // Which recorder this phone can really use. Some phones say they can record
@@ -1044,7 +1097,7 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const KEEP = ['rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
+const KEEP = ['note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
 const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...Object.fromEntries(KEEP.filter((k) => sc[k] != null).map((k) => [k, sc[k]])) })
 
 // A new scene from a block, on a chosen photo.
@@ -1060,8 +1113,9 @@ export async function loadPhotos(urls, cache) {
 }
 export async function endCard(script, link) {
   const qr = link ? await qrImage(link, '#0E1013', '#ffffff') : null
-  return { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' }
+  return { qr, ...endText(script, link) }
 }
+const endText = (script, link) => ({ link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '', title: script.end?.title || '', price: script.end?.price || '' })
 
 // ---- AI photo check ---------------------------------------------------------
 // After the AI has looked at the listing's photos (see netlify/functions/
@@ -1110,7 +1164,7 @@ export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10, 
   const cover = url(match.cover)
   if (cover && out[0] && !out[0].type) out[0] = { ...out[0], photo: cover }
   if (unseen.length) {
-    const card = { id: sceneId(), type: 'specs', kicker: 'Also has', rows: unseen.slice(0, 6).map((f) => [f, '✓']), line: '', sub: '', say: `It also has ${listOf(unseen)}.`, photo: cover || images[0] || null }
+    const card = { id: sceneId(), type: 'specs', kicker: 'Also has', note: 'Features listed by the seller', rows: unseen.slice(0, 6).map((f) => [f, '✓']), line: '', sub: '', say: `It also has ${listOf(unseen)}.`, photo: cover || images[0] || null }
     out.splice(lastFeature + 1, 0, card)
   }
   // Plain photo scenes: photos not used above, outside first, papers last,
@@ -1128,4 +1182,28 @@ export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10, 
     return { ...s, photo, say: s.say || (line ? `${line.replace(/[.!]+$/, '')}.` : '') }
   })
   return out
+}
+
+// ---- The short ad ------------------------------------------------------------
+// A 20–35 second cut for paid adverts and Reels: the opening, the offer or the
+// specifications, the strongest features and a photo or two, in the same order
+// as the full video, then the end card with the price. Nothing new is added:
+// it only leaves scenes out.
+export function adCut(scenes, secs = 4, target = 32) {
+  if (!Array.isArray(scenes) || !scenes.length) return scenes || []
+  const end = Math.max(4, secs + 1)
+  const room = Math.max(3, Math.floor((target - end) / secs))
+  if (scenes.length <= room) return scenes
+  const score = (s, i) => {
+    if (i === 0) return 100
+    if (s.type === 'offer') return 90
+    if (s.type === 'specs') return s.kicker === 'Also has' ? 48 : 80
+    if (s.type === 'howto') return s.step === 1 ? 46 : 5
+    if (s.type === 'collage') return 58
+    if (s.kicker === 'Need another day?') return 44
+    if (isWords(s)) return (s.feature || s.seen ? 66 : 56) - i * 0.2
+    return 40 - i * 0.2
+  }
+  const keep = new Set(scenes.map((s, i) => [score(s, i), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, room).map((x) => x[1]))
+  return scenes.filter((_, i) => keep.has(i))
 }
