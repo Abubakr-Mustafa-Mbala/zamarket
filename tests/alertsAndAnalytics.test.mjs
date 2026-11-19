@@ -230,7 +230,7 @@ test('video maker: AI checks which photo shows each feature before the video is 
   assert.match(lv, /export function applyPhotoMatch/)
   assert.match(lv, /kicker: 'Also has'/)
   const ui = read('src/pages/admin/VideoMaker.jsx')
-  assert.match(ui, /if \(!hasDraft && kind === 'vehicle'\) runAi\(false\)/)
+  assert.match(ui, /if \(!hasDraft && aiKind\) runAi\(false\)/)
   assert.match(ui, /touched\.current\) \{ try \{ localStorage\.setItem\(draftKey/)
 })
 
@@ -273,4 +273,14 @@ test('video maker: brand colours, toned-down split, fuller product and lunch sto
   assert.match(lv, /if \(item\.trial_first\)/)
   assert.match(lv, /if \(item\.guarantee\)/)
   assert.match(lv, /function sentences/)
+})
+
+test('video maker: the AI photo check works for products too', () => {
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(ui, /const aiKind = kind === 'vehicle' \|\| kind === 'product'/)
+  assert.match(ui, /keepUnseen: kind !== 'vehicle'/)
+  const fn = read('netlify/functions/ai-assist.js')
+  assert.match(fn, /'product', 'in_use', 'close_up', 'packaging'/)
+  assert.doesNotMatch(fn, /if \(!features\.length\) return respond/)
+  assert.match(read('src/lib/listingVideo.js'), /else if \(keepUnseen\) out\.push\(sc\)/)
 })

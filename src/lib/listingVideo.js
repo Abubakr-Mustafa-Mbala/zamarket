@@ -814,10 +814,10 @@ export async function endCard(script, link) {
 // shows it; a feature no photo shows is never put over an unrelated picture,
 // it goes on one honest "Also has" card instead; the title sits on the best
 // first picture; the plain photo scenes run outside first, then inside.
-const KIND_ORDER = ['exterior_front', 'exterior_side', 'exterior_rear', 'wheel', 'interior_front', 'dashboard', 'seats', 'interior_rear', 'boot', 'engine', 'detail', 'other', 'document']
+const KIND_ORDER = ['exterior_front', 'product', 'exterior_side', 'in_use', 'exterior_rear', 'wheel', 'close_up', 'interior_front', 'dashboard', 'seats', 'interior_rear', 'boot', 'engine', 'detail', 'packaging', 'other', 'document']
 const listOf = (a) => (a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0] || '').toLowerCase()
 
-export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10 } = {}) {
+export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10, keepUnseen = false } = {}) {
   if (!match || !Array.isArray(scenes)) return scenes
   const url = (i) => (Number.isInteger(i) && i >= 0 ? images[i] || null : null)
   const byFeature = new Map((match.features || []).map((f) => [f.feature, f]))
@@ -828,6 +828,9 @@ export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10 }
     if (sc.feature && byFeature.has(sc.line)) {
       const m = byFeature.get(sc.line)
       if (m.photo >= 0 && url(m.photo)) out.push({ ...sc, photo: url(m.photo), checked: m.sure === 'yes', ai: m.sure })
+      // A car feature no photo shows goes on the "Also has" card; a product
+      // point no photo can show ("soft and moist") keeps its own scene.
+      else if (keepUnseen) out.push(sc)
       else unseen.push(sc.line)
       continue
     }

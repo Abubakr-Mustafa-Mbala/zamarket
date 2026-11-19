@@ -133,7 +133,9 @@ export default function VideoMaker() {
   // video is made. Runs by itself for a car with no changes of yours yet.
   const [ai, setAi] = useState({ state: 'idle' })
   const touched = useRef(false)
-  const featureList = useMemo(() => (parts && kind === 'vehicle' ? parts.blocks.filter((b) => b.feature).map((b) => b.label) : []), [parts, kind])
+  // Cars and products (lunch dishes already come with their own photos).
+  const aiKind = kind === 'vehicle' || kind === 'product'
+  const featureList = useMemo(() => (parts && aiKind ? parts.blocks.filter((b) => b.feature).map((b) => b.label).slice(0, 12) : []), [parts, aiKind])
   // Features the AI saw that you left out (it saw them; you decide).
   const [leftOut, setLeftOut] = useState(() => new Set())
   const summarise = (m) => {
@@ -145,9 +147,9 @@ export default function VideoMaker() {
   // Spotted features the AI was sure of are in unless you take them out;
   // "maybe" ones are out unless you put them in.
   const kept = (m, off) => (m.spotted || []).filter((f) => (f.sure === 'yes' ? !off.has(f.feature) : off.has(`+${f.feature}`)))
-  const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off) })
+  const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off), keepUnseen: kind !== 'vehicle' })
   const runAi = async (fresh) => {
-    if (!pick || !featureList.length) return
+    if (!pick || !aiKind || !(pick.images || []).length) return
     const off = new Set(); setLeftOut(off)
     const cached = !fresh && cachedMatch(pick, featureList)
     if (cached) { setScenes(build(cached, off)); setAi(summarise(cached)); return }
@@ -183,7 +185,7 @@ export default function VideoMaker() {
     setScenes(hasDraft ? saved : parts.starter)
     touched.current = !!hasDraft
     setAi({ state: 'idle' })
-    if (!hasDraft && kind === 'vehicle') runAi(false)
+    if (!hasDraft && aiKind) runAi(false)
     setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
@@ -217,7 +219,7 @@ export default function VideoMaker() {
   const restart = () => {
     if (!window.confirm('Go back to the automatic video? Your changes for this listing are replaced.')) return
     touched.current = false; forget(); setScenes(parts.starter); setOpen(null)
-    if (kind === 'vehicle') runAi(false)
+    if (aiKind) runAi(false)
   }
 
   // A looping preview while nothing is recording. With a scene open, only
@@ -384,7 +386,7 @@ export default function VideoMaker() {
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · MP4{fast() ? ' · made in seconds, you can leave the page' : ''}</p>
-            {kind === 'vehicle' && featureList.length > 0 && <AiCheck ai={ai} again={aiAgain} toggle={toggleSeen} isKept={isKept} />}
+            {aiKind && <AiCheck ai={ai} again={aiAgain} toggle={toggleSeen} isKept={isKept} car={kind === 'vehicle'} />}
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
@@ -571,7 +573,7 @@ function SoundWave({ sound, start, length, onStart, at }) {
 }
 
 // What the AI found in the photos, in one line, with a way to ask again.
-function AiCheck({ ai, again, toggle, isKept }) {
+function AiCheck({ ai, again, toggle, isKept, car }) {
   if (ai.state === 'idle') return null
   return (
     <div className={`vx-ai is-${ai.state}`} role="status">
@@ -579,8 +581,9 @@ function AiCheck({ ai, again, toggle, isKept }) {
       {ai.state === 'done' && (
         <span>
           <b>✨ AI checked the photos.</b>{' '}
-          {ai.total ? `${ai.found} of ${ai.total} listed features are on a photo that shows them.` : ''}
-          {ai.unseen.length ? ` Not seen in any photo: ${ai.unseen.join(', ')}. ${ai.unseen.length > 1 ? 'They are' : 'It is'} listed on an "Also has" card instead of over a wrong photo.` : ''}
+          {ai.total ? `${ai.found} of ${ai.total} listed ${car ? 'features' : 'points'} are on a photo that shows them.` : 'It picked the best opening photo and put the photos in a good order.'}
+          {car && ai.unseen.length ? ` Not seen in any photo: ${ai.unseen.join(', ')}. ${ai.unseen.length > 1 ? 'They are' : 'It is'} listed on an "Also has" card instead of over a wrong photo.` : ''}
+          {!car && ai.total > ai.found ? ' The others (like taste or feel) stay as words over a general photo.' : ''}
           {ai.maybe ? ` ${ai.maybe} marked "not sure": have a look in Change scenes.` : ''}
           {ai.late ? ' You had already changed the scenes, so nothing was moved; tap Check again to use it.' : ''}
         </span>
