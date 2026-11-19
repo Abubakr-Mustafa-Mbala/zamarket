@@ -247,3 +247,18 @@ test('video maker: AI goes through up to 64 photos, finds more features you can 
   assert.match(read('src/lib/listingVideo.js'), /every listed feature a photo shows/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /The AI also saw these in the photos/)
 })
+
+test('video maker: scene looks and transitions; sounds online for the team; choose the part on a wave', () => {
+  const lv = read('src/lib/listingVideo.js')
+  assert.match(lv, /const LOOKS = \['card', 'spotlight', 'split'\]/)
+  assert.match(lv, /const TRANSITIONS = \['push', 'wipe', 'zoom', 'push'\]/)
+  assert.match(lv, /function counter\(/)
+  const vs = read('src/lib/videoSounds.js')
+  assert.match(vs, /const BUCKET = 'video-sounds'/)
+  assert.match(vs, /export async function soundBlob/)
+  assert.match(vs, /new OfflineAudioContext\(1, 1, 8000\)/)
+  const sql = read('supabase/run-in-supabase.sql')
+  assert.match(sql, /values \('video-sounds', 'video-sounds', false/)
+  assert.doesNotMatch(sql, /zm video sounds[^\n]*\n[^\n]*to anon/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /function SoundWave/)
+})

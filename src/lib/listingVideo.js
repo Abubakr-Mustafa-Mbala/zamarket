@@ -141,54 +141,229 @@ export function setMotion(m) { MOTION = MOTIONS.some(([k]) => k === m) ? m : 'zo
 export const videoLength = (slides) => slides.length * SLIDE + END
 
 // Draws the video at time t (seconds).
-export function drawFrame(ctx, t, slides, imgs, end) {
-  const total = slides.length * SLIDE
-  ctx.fillStyle = '#120b1e'; ctx.fillRect(0, 0, W, H)
-  if (t >= total) return drawEnd(ctx, t - total, end)
-  const i = Math.min(slides.length - 1, Math.floor(t / SLIDE))
-  const local = t - i * SLIDE
+// ---- How a video looks -------------------------------------------------------
+// Each scene has a look, so a video is not the same words-over-photo again
+// and again: the opening is a full photo with the title; features take turns
+// between a framed card, a spotlight and a split layout (with a 03 / 07
+// counter); plain photos drift in different directions. Scenes move into each
+// other (push, wipe, zoom) instead of fading through black. The logo and the
+// progress bar stay still on top.
+const TR = 0.45
+const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3)
+const back = (x) => { const c = 1.7; const v = Math.min(1, Math.max(0, x)) - 1; return 1 + (c + 1) * v * v * v + c * v * v }
+const LOOKS = ['card', 'spotlight', 'split']
+const TRANSITIONS = ['push', 'wipe', 'zoom', 'push']
+const isWords = (s) => !!(s && (s.line || s.kicker) && !s.type)
+
+// A photo filling a box (cropped to fit), zoomed and moved a little.
+function fill(ctx, img, x, y, w, h, z = 1, px = 0, py = 0) {
+  const r = Math.max(w / img.width, h / img.height) * z
+  const dw = img.width * r; const dh = img.height * r
+  ctx.drawImage(img, x + (w - dw) / 2 + px, y + (h - dh) / 2 + py, dw, dh)
+}
+// A photo whole inside a box (nothing cut), centred.
+function fit(ctx, img, x, y, w, h) {
+  const r = Math.min(w / img.width, h / img.height)
+  ctx.drawImage(img, x + (w - img.width * r) / 2, y + (h - img.height * r) / 2, img.width * r, img.height * r)
+}
+
+function lookOf(slides, i) {
   const s = slides[i]
-  const img = imgs[i]
-  if (s.type === 'collage') drawCollage(ctx, Array.isArray(img) ? img.filter(Boolean) : [img].filter(Boolean), s, local)
-  else if (img && MOTION === 'still') drawWhole(ctx, img, s)
-  else if (img) {
-    // Slow push in, alternating direction, so a still photo feels alive.
-    // Photo-only scenes zoom in further, to show the details.
-    const p = local / SLIDE
-    const words = s.line || s.kicker || s.type
-    const z = MOTION === 'gentle' ? 1.02 + 0.05 * p : words ? 1.04 + 0.08 * p : 1.02 + 0.3 * p
-    const r = Math.max(W / img.width, H / img.height) * z
-    const dw = img.width * r; const dh = img.height * r
-    const dx = (W - dw) / 2 + (MOTION === 'zoom' ? (i % 2 ? 1 : -1) * 30 * p : 0)
-    ctx.drawImage(img, dx, (H - dh) / 2, dw, dh)
+  if (s.type === 'specs') return 'specs'
+  if (s.type === 'collage') return 'collage'
+  if (i === 0 && isWords(s)) return 'hero'
+  if (!isWords(s)) return 'photo'
+  let n = 0
+  for (let k = 1; k < i; k += 1) if (isWords(slides[k])) n += 1
+  return LOOKS[n % LOOKS.length]
+}
+
+function drawScene(ctx, slides, imgs, i, local) {
+  const s = slides[i]
+  const img = Array.isArray(imgs[i]) ? null : imgs[i]
+  const p = Math.min(1, local / SLIDE)
+  const look = lookOf(slides, i)
+  const still = MOTION === 'still'
+  const soft = MOTION === 'gentle'
+  ctx.fillStyle = '#120b1e'; ctx.fillRect(0, 0, W, H)
+  if (look === 'collage') { const list = imgs[i]; drawCollage(ctx, Array.isArray(list) ? list.filter(Boolean) : [list].filter(Boolean), s, local); return wordsBottom(ctx, s, local, { gradient: false }) }
+  if (look === 'specs') { if (img) { ctx.save(); ctx.globalAlpha = 0.55; fill(ctx, img, 0, 0, W, H, 1.08); ctx.restore() } drawSpecs(ctx, s, local); return }
+  if (!img) { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2f1763'); g.addColorStop(1, '#120b1e'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H) }
+
+  if (look === 'hero') {
+    if (img) { if (still) drawWhole(ctx, img, s); else fill(ctx, img, 0, 0, W, H, soft ? 1.02 + 0.05 * p : 1.12 - 0.08 * ease(p)) }
+    return wordsBottom(ctx, s, local, { bar: true })
   }
-  // Fade between slides.
-  if (local < 0.25 && i > 0) { ctx.fillStyle = `rgba(18,11,30,${1 - local / 0.25})`; ctx.fillRect(0, 0, W, H) }
+
+  if (look === 'photo') {
+    if (!img) return
+    if (still) return drawWhole(ctx, img, s)
+    // Plain photos drift: in, out, sideways, in turn.
+    const way = i % 3
+    if (soft) fill(ctx, img, 0, 0, W, H, 1.02 + 0.05 * p)
+    else if (way === 0) fill(ctx, img, 0, 0, W, H, 1.02 + 0.3 * p)
+    else if (way === 1) fill(ctx, img, 0, 0, W, H, 1.3 - 0.26 * p)
+    else fill(ctx, img, 0, 0, W, H, 1.18, (p - 0.5) * -120)
+    return
+  }
+
+  // Feature scenes. Which number this feature is, for the counter.
+  const feats = slides.filter((x, k) => k > 0 && isWords(x))
+  const no = feats.indexOf(s) + 1
+
+  if (look === 'card') {
+    // The photo in a tilted card that settles, over a soft blur of itself.
+    if (img) { ctx.drawImage(backdrop(img), 0, 0, W, H); ctx.fillStyle = 'rgba(18,11,30,.5)'; ctx.fillRect(0, 0, W, H) }
+    const k = ease(local / 0.7)
+    const cw = W - 150; const ch = H * 0.5; const cx = 75; const cy = 250
+    ctx.save()
+    ctx.translate(W / 2, cy + ch / 2 + (1 - k) * 120); ctx.rotate(((1 - k) * -6 - 1.5) * Math.PI / 180); ctx.translate(-W / 2, -(cy + ch / 2))
+    ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 50; ctx.shadowOffsetY = 24
+    ctx.fillStyle = '#fff'; roundRect(ctx, cx - 14, cy - 14, cw + 28, ch + 28, 40); ctx.fill()
+    ctx.shadowColor = 'transparent'
+    roundRect(ctx, cx, cy, cw, ch, 28); ctx.clip()
+    if (img) { if (still) { ctx.fillStyle = '#f4f1ea'; ctx.fillRect(cx, cy, cw, ch); fit(ctx, img, cx, cy, cw, ch) } else fill(ctx, img, cx, cy, cw, ch, soft ? 1.03 : 1.04 + 0.12 * p) }
+    ctx.restore()
+    return wordsAt(ctx, s, local, cy + ch + 150, { no, total: feats.length })
+  }
+
+  if (look === 'spotlight') {
+    // Zooming out to reveal, darker edges, the feature in a badge.
+    if (img) { if (still) drawWhole(ctx, img, s); else fill(ctx, img, 0, 0, W, H, soft ? 1.06 - 0.04 * p : 1.35 - 0.3 * ease(p * 1.2)) }
+    const v = ctx.createRadialGradient(W / 2, H * 0.42, W * 0.25, W / 2, H * 0.5, H * 0.75)
+    v.addColorStop(0, 'rgba(18,11,30,0)'); v.addColorStop(1, 'rgba(18,11,30,.85)')
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H)
+    const k = back((local - 0.15) / 0.55)
+    if (k <= 0) return
+    ctx.save(); ctx.globalAlpha = Math.min(1, k)
+    ctx.font = '900 76px Inter, Arial, sans-serif'
+    const lines = wrapText(ctx, s.line || s.kicker, W - 260).slice(0, 2)
+    const bw = Math.min(W - 100, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 230)
+    const bh = 70 + lines.length * 88 + (s.sub ? 70 : 0)
+    const bx = (W - bw) / 2; const by = H - 380 - bh
+    ctx.translate(W / 2, by + bh / 2); ctx.scale(0.8 + 0.2 * k, 0.8 + 0.2 * k); ctx.translate(-W / 2, -(by + bh / 2))
+    ctx.fillStyle = 'rgba(18,11,30,.82)'; roundRect(ctx, bx, by, bw, bh, 44); ctx.fill()
+    ctx.strokeStyle = '#b98cff'; ctx.lineWidth = 4; roundRect(ctx, bx, by, bw, bh, 44); ctx.stroke()
+    // Tick in a circle
+    ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(bx + 92, by + bh / 2, 46, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#2a1500'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(bx + 70, by + bh / 2 + 2); ctx.lineTo(bx + 86, by + bh / 2 + 18); ctx.lineTo(bx + 116, by + bh / 2 - 16); ctx.stroke()
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
+    const ty = by + 35 + 44
+    lines.forEach((l, j) => ctx.fillText(l, bx + 168, ty + j * 88))
+    if (s.sub) { ctx.fillStyle = '#ffd36b'; ctx.font = '800 50px Inter, Arial, sans-serif'; ctx.fillText(s.sub, bx + 168, ty + lines.length * 88 + 6) }
+    ctx.restore()
+    if (feats.length > 1) counter(ctx, no, feats.length, W - 72, 230, local, 'right')
+    return
+  }
+
+  // split: the photo above, a colour panel below with a big counter.
+  const ph = H * 0.6
+  ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, ph); ctx.clip()
+  if (img) { if (still) { ctx.fillStyle = '#1d1036'; ctx.fillRect(0, 0, W, ph); fit(ctx, img, 40, 190, W - 80, ph - 230) } else fill(ctx, img, 0, 0, W, ph, soft ? 1.04 : 1.1, (0.5 - p) * 90) }
+  ctx.restore()
+  const g = ctx.createLinearGradient(0, ph, 0, H); g.addColorStop(0, '#3a1d7a'); g.addColorStop(1, '#160c2b')
+  ctx.fillStyle = g; ctx.fillRect(0, ph, W, H - ph)
+  const sweep = ease((local - 0.1) / 0.5)
+  ctx.fillStyle = '#ffd36b'; ctx.fillRect(0, ph - 6, W * sweep, 12)
+  if (feats.length > 1) counter(ctx, no, feats.length, 72, ph + 130, local, 'left')
+  wordsAt(ctx, s, local, ph + (feats.length > 1 ? 260 : 170), { plain: true })
+}
+
+// "03 / 07", outlined, sliding in.
+function counter(ctx, no, total, x, y, local, align) {
+  const k = ease((local - 0.05) / 0.5)
+  ctx.save(); ctx.globalAlpha = k; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'
+  ctx.translate(align === 'left' ? (1 - k) * -60 : (1 - k) * 60, 0)
+  const pad = (n) => String(n).padStart(2, '0')
+  ctx.font = '900 110px Inter, Arial, sans-serif'
+  ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(255,255,255,.85)'
+  if (align === 'left') { ctx.strokeText(pad(no), x, y); ctx.font = '700 40px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText(`/ ${pad(total)}`, x + 150, y) } else { ctx.font = '700 40px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText(`/ ${pad(total)}`, x, y); ctx.font = '900 110px Inter, Arial, sans-serif'; ctx.strokeText(pad(no), x - 90, y) }
+  ctx.restore()
+}
+
+// Words at a height: kicker, the line (revealed upwards), the extra line.
+function wordsAt(ctx, s, local, y, { plain = false } = {}) {
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  const k = ease((local - 0.15) / 0.5)
+  if (s.kicker) { ctx.globalAlpha = k; ctx.fillStyle = '#c9a6ff'; ctx.font = '800 40px Inter, Arial, sans-serif'; ctx.fillText(s.kicker.toUpperCase(), 72 + (1 - k) * 40, y); y += 84 }
+  ctx.globalAlpha = 1
+  ctx.font = `900 ${plain ? 84 : 80}px Inter, Arial, sans-serif`
+  const lines = wrapText(ctx, s.line || '', W - 144).slice(0, 3)
+  lines.forEach((l, j) => {
+    const r = ease((local - 0.2 - j * 0.1) / 0.5)
+    ctx.save(); ctx.beginPath(); ctx.rect(0, y - 90, W, 112); ctx.clip()
+    ctx.fillStyle = '#fff'; ctx.fillText(l, 72, y + (1 - r) * 110)
+    ctx.restore(); y += 98
+  })
+  if (s.sub) { const r = ease((local - 0.45) / 0.5); ctx.globalAlpha = r; ctx.fillStyle = '#ffd36b'; ctx.font = '800 56px Inter, Arial, sans-serif'; ctx.fillText(s.sub, 72, y + 10) }
+  ctx.restore()
+}
+
+// Words at the bottom over a photo (title, photo grid).
+function wordsBottom(ctx, s, local, { gradient = true, bar = false } = {}) {
+  if (!(s.line || s.kicker)) return
+  if (gradient) {
+    const g = ctx.createLinearGradient(0, H * 0.45, 0, H)
+    g.addColorStop(0, 'rgba(18,11,30,0)'); g.addColorStop(0.45, 'rgba(18,11,30,.72)'); g.addColorStop(1, 'rgba(18,11,30,.96)')
+    ctx.fillStyle = g; ctx.fillRect(0, H * 0.45, W, H * 0.55)
+  }
+  ctx.font = '900 82px Inter, Arial, sans-serif'
+  const n = Math.min(3, wrapText(ctx, s.line || '', W - 144).length)
+  const y = H - 300 - n * 98 - (s.sub ? 70 : 0)
+  if (bar) { const k = ease((local - 0.05) / 0.6); ctx.fillStyle = '#ffd36b'; ctx.fillRect(72, y - (s.kicker ? 150 : 70), 140 * k, 10) }
+  wordsAt(ctx, s, local, y)
+}
+
+function drawChrome(ctx, t, total) {
   // The ZaMarket logo and name, top.
+  ctx.save(); ctx.textAlign = 'left'
   ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.textBaseline = 'middle'
   const za = ctx.measureText('Za').width; const bw = ctx.measureText('ZaMarket').width
   ctx.fillStyle = 'rgba(18,11,30,.6)'; roundRect(ctx, 48, 70, bw + 160, 84, 42); ctx.fill()
   brandMark(ctx, 70, 82, 60)
   ctx.fillStyle = '#c9a6ff'; ctx.fillText('Za', 146, 113)
   ctx.fillStyle = '#fff'; ctx.fillText('Market', 146 + za, 113)
-  if (s.type === 'specs') drawSpecs(ctx, s, local)
-  // Words, bottom, rising in.
-  else if (s.line || s.kicker) {
-    const g = ctx.createLinearGradient(0, H * 0.5, 0, H)
-    g.addColorStop(0, 'rgba(18,11,30,0)'); g.addColorStop(0.45, 'rgba(18,11,30,.72)'); g.addColorStop(1, 'rgba(18,11,30,.95)')
-    ctx.fillStyle = g; ctx.fillRect(0, H * 0.5, W, H * 0.5)
-    const rise = Math.min(1, local / 0.5)
-    ctx.save(); ctx.globalAlpha = rise; ctx.translate(0, (1 - rise) * 40)
-    let y = H - 420
-    if (s.kicker) { ctx.fillStyle = '#c9a6ff'; ctx.font = '800 40px Inter, Arial, sans-serif'; ctx.fillText(s.kicker.toUpperCase(), 72, y); y += 78 }
-    ctx.fillStyle = '#fff'; ctx.font = '900 82px Inter, Arial, sans-serif'
-    for (const l of wrapText(ctx, s.line, W - 144).slice(0, 3)) { ctx.fillText(l, 72, y); y += 96 }
-    if (s.sub) { ctx.fillStyle = '#ffd36b'; ctx.font = '800 58px Inter, Arial, sans-serif'; ctx.fillText(s.sub, 72, y + 10) }
-    ctx.restore()
-  }
   // Progress bar.
   ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(72, H - 90, W - 144, 8)
-  ctx.fillStyle = '#b98cff'; ctx.fillRect(72, H - 90, (W - 144) * (t / (total + END)), 8)
+  ctx.fillStyle = '#b98cff'; ctx.fillRect(72, H - 90, (W - 144) * Math.min(1, t / (total + END)), 8)
+  ctx.restore()
+}
+
+export function drawFrame(ctx, t, slides, imgs, end) {
+  const total = slides.length * SLIDE
+  ctx.fillStyle = '#120b1e'; ctx.fillRect(0, 0, W, H)
+  if (t >= total) {
+    drawEnd(ctx, t - total, end)
+    // The last scene zooms away into the end card.
+    const lt = t - total
+    if (lt < TR && slides.length) {
+      const k = ease(lt / TR)
+      ctx.save(); ctx.globalAlpha = 1 - k; ctx.translate(W / 2, H / 2); ctx.scale(1 + 0.25 * k, 1 + 0.25 * k); ctx.translate(-W / 2, -H / 2)
+      drawScene(ctx, slides, imgs, slides.length - 1, SLIDE + lt); ctx.restore()
+    }
+    return
+  }
+  const i = Math.min(slides.length - 1, Math.floor(t / SLIDE))
+  const local = t - i * SLIDE
+  if (i > 0 && local < TR) {
+    // Moving from the scene before into this one.
+    const k = ease(local / TR)
+    const how = TRANSITIONS[i % TRANSITIONS.length]
+    if (how === 'push') {
+      ctx.save(); ctx.translate(-W * k, 0); drawScene(ctx, slides, imgs, i - 1, SLIDE + local); ctx.restore()
+      ctx.save(); ctx.translate(W * (1 - k), 0); drawScene(ctx, slides, imgs, i, local); ctx.restore()
+    } else if (how === 'wipe') {
+      drawScene(ctx, slides, imgs, i, local)
+      ctx.save(); ctx.beginPath(); ctx.rect(0, H * k, W, H); ctx.clip(); drawScene(ctx, slides, imgs, i - 1, SLIDE + local); ctx.restore()
+      ctx.fillStyle = '#ffd36b'; ctx.fillRect(0, H * k - 6, W, 12)
+    } else {
+      drawScene(ctx, slides, imgs, i, local)
+      ctx.save(); ctx.globalAlpha = 1 - k; ctx.translate(W / 2, H / 2); ctx.scale(1 + 0.3 * k, 1 + 0.3 * k); ctx.translate(-W / 2, -H / 2)
+      drawScene(ctx, slides, imgs, i - 1, SLIDE + local); ctx.restore()
+    }
+  } else drawScene(ctx, slides, imgs, i, local)
+  drawChrome(ctx, t, total)
 }
 
 // Up to four photos in a grid, each arriving in turn and drifting gently.

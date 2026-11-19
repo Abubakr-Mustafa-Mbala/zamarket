@@ -1,8 +1,19 @@
 // Your own background sounds for videos without a voice: nasheeds or
-// qasa'id (voices only) that you add from your phone once and pick each
-// time. Kept on this phone only, like My videos.
+// qasa'id (voices only) that you add once and pick each time. Each one is
+// kept on this phone AND in a private online folder for the team, so it shows
+// on every phone you sign in on; the sound itself is fetched the first time
+// it is used on a phone, then kept there.
 
 import { tools } from './videoFinish'
+import { supabase } from './supabase'
+
+const BUCKET = 'video-sounds'
+// The online file name carries what the list needs: id, length, name.
+const cloudName = (s) => `${s.id}__${Math.round(s.seconds)}__${s.name.replace(/[^A-Za-z0-9 _-]+/g, '').trim().replace(/\s+/g, '-').slice(0, 60) || 'sound'}.${/mpeg|mp3/.test(s.blob?.type || '') ? 'mp3' : 'm4a'}`
+const fromCloudName = (n) => {
+  const m = /^(s[a-z0-9]+)__(\d+)__(.+)\.(mp3|m4a)$/.exec(n)
+  return m ? { id: m[1], seconds: Number(m[2]), name: m[3].replace(/-/g, ' '), path: n } : null
+}
 
 const DB = 'zm-sounds'
 const STORE = 'sounds'
@@ -29,9 +40,46 @@ async function tx(mode, fn) {
   } catch { return null }
 }
 
+const localSounds = async () => (await tx('readonly', (s) => s.getAll())) || []
+
+// This phone's sounds, plus the team's online ones not on this phone yet
+// (those come without the sound itself; soundBlob fetches it when chosen).
+// A sound added on this phone before it could go online is sent now.
 export async function listSounds() {
-  const all = (await tx('readonly', (s) => s.getAll())) || []
-  return all.sort((a, b) => b.addedAt - a.addedAt)
+  const mine = await localSounds()
+  let online = []
+  let listed = false
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET).list('', { limit: 200, sortBy: { column: 'created_at', order: 'desc' } })
+    if (!error) listed = true
+    if (!error) online = (data || []).map((o) => ({ ...fromCloudName(o.name), addedAt: Date.parse(o.created_at) || 0 })).filter((x) => x.id)
+  } catch { /* offline: this phone's sounds only */ }
+  const here = new Set(mine.map((x) => x.id))
+  const there = new Set(online.map((x) => x.id))
+  if (listed) for (const x of mine) if (!there.has(x.id) && x.blob) pushOnline(x)
+  return [...mine.map((x) => ({ ...x, online: there.has(x.id) || !!x.online })), ...online.filter((x) => !here.has(x.id)).map((x) => ({ ...x, blob: null, online: true }))]
+    .sort((a, b) => b.addedAt - a.addedAt)
+}
+
+async function pushOnline(sound) {
+  if (!sound.blob) return false
+  try {
+    const { error } = await supabase.storage.from(BUCKET).upload(cloudName(sound), sound.blob, { contentType: sound.blob.type || 'audio/mp4', upsert: true })
+    if (error) return false
+    await tx('readwrite', (st) => st.put({ ...sound, online: true }))
+    return true
+  } catch { return false }
+}
+
+// The sound itself: from this phone, or fetched from the online folder once.
+export async function soundBlob(sound) {
+  if (sound?.blob) return sound.blob
+  const { data, error } = await supabase.storage.from(BUCKET).download(sound.path)
+  if (error || !data) throw new Error('Could not fetch that sound. Check your internet and try again.')
+  const blob = data.type ? data : new Blob([data], { type: sound.path.endsWith('.mp3') ? 'audio/mpeg' : 'audio/mp4' })
+  const { path, ...rest } = sound
+  await tx('readwrite', (st) => st.put({ ...rest, blob, online: true, cloudPath: path }))
+  return blob
 }
 
 // Length in seconds, read by the browser (0 if it cannot tell).
@@ -82,6 +130,7 @@ export async function addSound(file, { onProgress, name } = {}) {
   if (!(seconds > 1)) throw new Error('This phone cannot play that file. Try an MP3 or M4A.')
   const sound = { id: `s${Date.now().toString(36)}`, name: (name || file.name || 'Sound').replace(/\.[a-z0-9]+$/i, '').replace(/[_+]/g, ' ').slice(0, 60), blob, seconds, addedAt: Date.now(), from: video ? 'video' : 'audio' }
   await tx('readwrite', (s) => s.put(sound))
+  sound.online = await pushOnline(sound)
   return sound
 }
 
@@ -110,7 +159,34 @@ export async function addSoundFromLink(link, opts = {}) {
   return addSound(file, opts)
 }
 
-export const removeSound = (id) => tx('readwrite', (s) => s.delete(id))
+// Removed from this phone and from the online folder (so from every phone).
+export async function removeSound(sound) {
+  const mine = (await localSounds()).find((x) => x.id === sound.id)
+  const path = sound.path || mine?.cloudPath || (mine?.blob ? cloudName(mine) : null)
+  if (path) { try { await supabase.storage.from(BUCKET).remove([path]) } catch { /* offline */ } }
+  return tx('readwrite', (s) => s.delete(sound.id))
+}
+
+// The wave of a sound, for choosing the part to play: loudness in 160 bars.
+// Read at a low sample rate so even a long nasheed is quick and light.
+const waves = new Map()
+export async function soundWave(sound, blob, bars = 160) {
+  if (waves.has(sound.id)) return waves.get(sound.id)
+  const raw = await blob.arrayBuffer()
+  const buf = await new OfflineAudioContext(1, 1, 8000).decodeAudioData(raw)
+  const data = buf.getChannelData(0)
+  const step = Math.max(1, Math.floor(data.length / bars))
+  const peaks = []
+  for (let b = 0; b < bars; b += 1) {
+    let m = 0
+    for (let k = b * step; k < Math.min(data.length, (b + 1) * step); k += 4) m = Math.max(m, Math.abs(data[k]))
+    peaks.push(m)
+  }
+  const top = Math.max(...peaks, 0.01)
+  const wave = peaks.map((x) => x / top)
+  waves.set(sound.id, wave)
+  return wave
+}
 
 export function savedChoice() {
   try { return JSON.parse(localStorage.getItem(CHOICE) || 'null') } catch { return null }

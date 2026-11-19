@@ -10,7 +10,7 @@ import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
 import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
-import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice } from '../../lib/videoSounds'
+import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice, soundBlob, soundWave } from '../../lib/videoSounds'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -62,7 +62,15 @@ export default function VideoMaker() {
   const [sound, setSoundState] = useState(savedChoice)
   useEffect(() => { listSounds().then(setSounds) }, [])
   const setSound = (c) => { setSoundState(c); saveChoice(c) }
-  const music = sound?.id ? sounds.find((x) => x.id === sound.id) : null
+  const chosen = sound?.id ? sounds.find((x) => x.id === sound.id) : null
+  // A sound added on another phone: fetched from the online folder when chosen.
+  const [fetching, setFetching] = useState(false)
+  useEffect(() => {
+    if (!chosen || chosen.blob) return
+    setFetching(true)
+    soundBlob(chosen).then((blob) => setSounds((list) => list.map((x) => (x.id === chosen.id ? { ...x, blob } : x))), (e) => toast(e.message, true)).finally(() => setFetching(false))
+  }, [chosen?.id, chosen?.blob])
+  const music = chosen?.blob ? chosen : null
   // Whether this phone can build videos quickly (checked once, remembered).
   const [fastWay, setFastWay] = useState(undefined)
   useEffect(() => { fastEncoder().then(setFastWay, () => setFastWay(null)) }, [videos.some((v) => v.slow)])
@@ -401,7 +409,7 @@ export default function VideoMaker() {
               <div className="vx-tabs">{PACES.map((p) => <button key={p} type="button" disabled={!!busy} className={secs === p ? 'on' : ''} onClick={() => { setSecs(p); try { localStorage.setItem('zm-video-pace', String(p)) } catch { /* ignore */ } }}>{p}s</button>)}</div>
               <small className="vx-muted">With your voice, each scene waits for you instead.</small>
             </div>
-            <SoundPicker sounds={sounds} setSounds={setSounds} sound={sound} setSound={setSound} music={music} fast={fast()} toast={toast} busy={!!busy} />
+            <SoundPicker sounds={sounds} setSounds={setSounds} sound={sound} setSound={setSound} music={music} fetching={fetching} length={videoLength(script.slides || [])} fast={fast()} toast={toast} busy={!!busy} />
             <section className="vx-card-block">
               <div className="between"><h3>Voice-over script</h3><button type="button" className="vx-btn ghost" onClick={() => copy(script.voice, 'Script')}>Copy</button></div>
               <p className="vx-video-script">{script.voice}</p>
@@ -423,22 +431,33 @@ const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).pa
 // Your own nasheeds or qasa'id (voices only), added from the phone once and
 // chosen for each video made without your voice. You pick where it starts;
 // it loops to the length of the video and fades out at the end.
-function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, toast, busy }) {
+function SoundPicker({ sounds, setSounds, sound, setSound, music, fetching, length, fast: quick, toast, busy }) {
   const player = useRef(null)
   const [adding, setAdding] = useState('')
   const [linkOpen, setLinkOpen] = useState(false)
   const [linkText, setLinkText] = useState('')
   const [playing, setPlaying] = useState(false)
-  const timer = useRef(0)
+  const [at, setAt] = useState(0)
   const url = useMemo(() => (music ? URL.createObjectURL(music.blob) : null), [music])
   useEffect(() => () => { if (url) URL.revokeObjectURL(url) }, [url])
-  const stop = () => { clearTimeout(timer.current); player.current?.pause(); setPlaying(false) }
+  const stop = () => { player.current?.pause(); setPlaying(false) }
+  // Plays the chosen part, as long as the video, then stops.
   const listen = () => {
     const a = player.current
     if (!a) return
     if (playing) return stop()
     a.currentTime = sound?.start || 0
-    a.play().then(() => { setPlaying(true); timer.current = setTimeout(stop, 10000) }, () => toast('This phone cannot play that sound', true))
+    a.play().then(() => setPlaying(true), () => toast('This phone cannot play that sound', true))
+  }
+  const onTime = () => {
+    const a = player.current
+    if (!a) return
+    setAt(a.currentTime)
+    if (playing && music && music.seconds > length && a.currentTime >= (sound?.start || 0) + length) stop()
+  }
+  const setStart = (start) => {
+    setSound({ ...sound, start })
+    if (playing && player.current) player.current.currentTime = start
   }
   const progress = (word) => (p) => setAdding(`${word} ${Math.round((p || 0) * 100)}%`)
   const added = async (s) => {
@@ -460,8 +479,8 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
     setAdding('')
   }
   const remove = async () => {
-    if (!music || !window.confirm(`Remove "${music.name}" from this phone?`)) return
-    stop(); await removeSound(music.id); setSounds(await listSounds()); setSound(null)
+    if (!music || !window.confirm(`Remove "${music.name}"? It goes from every phone.`)) return
+    stop(); await removeSound(music); setSounds(await listSounds()); setSound(null)
   }
   return (
     <section className="vx-card-block vx-sound">
@@ -469,7 +488,7 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
       <p className="vx-muted tiny">For videos without your voice. Add a nasheed or qasida with voices only: a sound file, a video (only its sound is kept), or a link. It plays for the whole video, from the part you choose.</p>
       <div className="vx-tabs vx-sound-list">
         <button type="button" disabled={busy} className={!music ? 'on' : ''} onClick={() => { stop(); setSound(null) }}>No sound</button>
-        {sounds.map((x) => <button key={x.id} type="button" disabled={busy} className={music?.id === x.id ? 'on' : ''} onClick={() => { stop(); setSound({ id: x.id, start: 0 }) }}>♪ {x.name}</button>)}
+        {sounds.map((x) => <button key={x.id} type="button" disabled={busy} className={sound?.id === x.id ? 'on' : ''} onClick={() => { stop(); setSound({ id: x.id, start: sound?.id === x.id ? sound.start || 0 : 0 }) }}>♪ {x.name}{x.online ? '' : ' (this phone)'}</button>)}
       </div>
       <div className="vx-sound-adds">
         <label className={`vx-sound-add ${adding ? 'busy' : ''}`}>+ From phone<input type="file" disabled={!!adding} accept="audio/*,.mp3,.m4a,.aac,.wav,.ogg,.opus" hidden onChange={(e) => { add(e.target.files?.[0]); e.target.value = '' }} /></label>
@@ -484,23 +503,70 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
           <small className="vx-muted tiny">Paste the link of the file itself (it usually ends in .mp3 or .mp4). On the <a href="https://archive.org/search?query=nasheed+acapella&and%5B%5D=mediatype%3A%22audio%22" target="_blank" rel="noreferrer">Internet Archive</a>, open a nasheed, then copy the link under Download options. YouTube, TikTok and Facebook do not allow it.</small>
         </div>
       )}
+      {fetching && <p className="vx-sound-busy"><span className="vx-spin" /> Getting the sound…</p>}
       {music && (
         <div className="vx-sound-part">
-          <label>
-            <span>Starts at <b>{mmss(sound.start || 0)}</b> of {mmss(music.seconds)}</span>
-            <input type="range" min={0} max={Math.max(0, Math.floor(music.seconds - 3))} step={1} value={sound.start || 0}
-              onChange={(e) => { setSound({ ...sound, start: Number(e.target.value) }); if (playing && player.current) player.current.currentTime = Number(e.target.value) }} />
-          </label>
+          <SoundWave sound={music} start={sound.start || 0} length={length} onStart={setStart} at={playing ? at : null} />
           <div className="vx-sound-actions">
-            <button type="button" className="vx-btn outline" onClick={listen}>{playing ? '■ Stop' : '▶ Listen from here'}</button>
-            <button type="button" className="vx-btn ghost" onClick={remove}>Remove from phone</button>
+            <button type="button" className="vx-btn outline" onClick={listen}>{playing ? '■ Stop' : '▶ Play this part'}</button>
+            <button type="button" className="vx-btn ghost" onClick={remove}>Remove</button>
           </div>
-          <audio ref={player} src={url || undefined} preload="auto" onEnded={stop} />
+          <audio ref={player} src={url || undefined} preload="auto" onEnded={stop} onTimeUpdate={onTime} />
           {!quick && <p className="vx-muted tiny">This phone makes videos the slower way, which cannot add a sound yet.</p>}
         </div>
       )}
       <p className="vx-muted tiny">Use recordings you are allowed to share. TikTok and Facebook may mute a sound they recognise.</p>
     </section>
+  )
+}
+
+// Choose the part of the sound, like on Instagram or WhatsApp: the whole
+// sound as a wave, the part that plays (as long as the video) lit up; drag
+// it along. While it plays, a line moves through the part.
+function SoundWave({ sound, start, length, onStart, at }) {
+  const [wave, setWave] = useState(null)
+  const box = useRef(null)
+  const drag = useRef(null)
+  useEffect(() => { let alive = true; setWave(null); soundWave(sound, sound.blob).then((w) => { if (alive) setWave(w) }, () => { if (alive) setWave([]) }); return () => { alive = false } }, [sound])
+  const total = Math.max(1, sound.seconds)
+  const part = Math.min(total, Math.max(1, length))
+  const max = Math.max(0, total - part)
+  const left = (start / total) * 100
+  const width = (part / total) * 100
+  const fromX = (clientX, grab) => {
+    const r = box.current.getBoundingClientRect()
+    const x = (clientX - r.left) / r.width * total - grab
+    onStart(Math.round(Math.min(max, Math.max(0, x))))
+  }
+  const down = (e) => {
+    if (!box.current || max <= 0) return
+    const r = box.current.getBoundingClientRect()
+    const t = (e.clientX - r.left) / r.width * total
+    // Grabbing inside the lit part moves it from where you hold it; tapping
+    // elsewhere centres the part there.
+    drag.current = t >= start && t <= start + part ? t - start : part / 2
+    e.currentTarget.setPointerCapture?.(e.pointerId)
+    fromX(e.clientX, drag.current)
+  }
+  const move = (e) => { if (drag.current != null) fromX(e.clientX, drag.current) }
+  const up = () => { drag.current = null }
+  return (
+    <div className="vx-wave-wrap">
+      <div className="vx-wave-head"><b>{mmss(start)} – {mmss(Math.min(total, start + part))}</b><span>{max > 0 ? 'Drag to choose the part that plays' : 'Shorter than the video: it repeats'}</span></div>
+      <div className="vx-wave" ref={box} onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={up} role="slider" aria-label="Part of the sound that plays" aria-valuemin={0} aria-valuemax={max} aria-valuenow={start}
+        tabIndex={0} onKeyDown={(e) => { if (e.key === 'ArrowLeft') onStart(Math.max(0, start - 1)); if (e.key === 'ArrowRight') onStart(Math.min(max, start + 1)) }}>
+        <div className="vx-wave-bars">
+          {(wave || Array.from({ length: 160 }, () => 0.15)).map((v, i, all) => {
+            const pos = (i / all.length) * 100
+            const on = pos >= left && pos <= left + width
+            return <span key={i} className={on ? 'on' : ''} style={{ height: `${Math.max(8, v * 100)}%` }} />
+          })}
+        </div>
+        <div className="vx-wave-part" style={{ left: `${left}%`, width: `${width}%` }} />
+        {at != null && <div className="vx-wave-head-line" style={{ left: `${(at / total) * 100}%` }} />}
+      </div>
+      <div className="vx-wave-foot"><span>0:00</span><span>{mmss(total)}</span></div>
+    </div>
   )
 }
 
