@@ -202,7 +202,7 @@ test('video maker: your own nasheed under silent videos, looped and faded', () =
   assert.match(s, /src\.loop = true/)
   assert.match(s, /linearRampToValueAtTime\(0, length\)/)
   const r = read('src/lib/videoRender.js')
-  assert.match(r, /if \(!voice && spec\.music\?\.blob\)/)
+  assert.match(r, /if \(spec\.music\?\.blob\)/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /<SoundPicker /)
 })
 
