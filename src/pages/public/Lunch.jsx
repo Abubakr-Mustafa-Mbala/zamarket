@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
@@ -112,6 +112,40 @@ export default function LunchPage() {
   return <LunchView deal={deal} products={products} vendor={vendor} availability={availability} reviews={reviews} onBooked={() => setRefresh((n) => n + 1)} />
 }
 
+// Customer messages as review cards you swipe through: a header like a
+// review, the message from its top (where the words start), a soft fade and
+// "Read the full message". Tap for the whole screenshot.
+function ReviewCards({ images, seller, onOpen }) {
+  const strip = useRef(null)
+  const [at, setAt] = useState(0)
+  const onScroll = () => {
+    const el = strip.current
+    if (!el) return
+    const card = el.firstElementChild
+    if (card) setAt(Math.round(el.scrollLeft / (card.getBoundingClientRect().width + 12)))
+  }
+  return (
+    <div className="ln-reviews">
+      <div className="ln-reviews-strip" ref={strip} onScroll={onScroll}>
+        {images.map((src, i) => (
+          <button type="button" key={`${src}-${i}`} className="ln-review" onClick={() => onOpen(i)} aria-label={`Read message ${i + 1} in full`}>
+            <span className="ln-review-head">
+              <span className="ln-review-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M12 3C6.9 3 3 6.6 3 11c0 2.1.9 4 2.4 5.4L4.6 20.5c-.1.4.3.7.7.5l4.1-1.8c.8.2 1.7.3 2.6.3 5.1 0 9-3.6 9-8s-3.9-8.5-9-8.5Z" /></svg>
+              </span>
+              <span><b>Customer review</b><small>Sent{seller ? ` to ${seller}` : ''} on WhatsApp</small></span>
+              <span className="ln-review-quote" aria-hidden="true">&ldquo;</span>
+            </span>
+            <span className="ln-review-shot"><img src={src} alt="A message from a customer" loading="lazy" /></span>
+            <span className="ln-review-more">Read the full message</span>
+          </button>
+        ))}
+      </div>
+      {images.length > 1 && <div className="ln-reviews-dots">{images.map((_, i) => <span key={i} className={i === at ? 'on' : ''} />)}</div>}
+    </div>
+  )
+}
+
 // Photos and screenshots shown whole, never cropped, in two tidy columns
 // (each keeps its own shape, like a Pinterest board). Customer messages sit in
 // even cards, the whole screenshot fitted inside; tap to read it full size.
@@ -216,8 +250,8 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
 
       {said.length > 0 && (
         <section className="ln-section">
-          <div className="ln-head"><h2>What customers said</h2><p>Real messages from people who ordered.</p></div>
-          <PhotoWall images={said} alt="A message from a customer" framed onOpen={(i) => setViewer({ images: said, start: i, alt: 'A message from a customer' })} />
+          <div className="ln-head"><h2>What customers said</h2><p>{said.length} real message{said.length > 1 ? 's' : ''} from people who ordered. Swipe to read more.</p></div>
+          <ReviewCards images={said} seller={vendor?.business_name} onOpen={(i) => setViewer({ images: said, start: i, alt: 'A message from a customer' })} />
         </section>
       )}
 

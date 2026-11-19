@@ -593,3 +593,22 @@
 .ln-wall.is-framed button { margin: 0; aspect-ratio: 4 / 5; padding: 6px; background: #f4f1ea; border-radius: 18px; box-shadow: 0 6px 18px rgba(0,0,0,.25); }
 .ln-wall.is-framed img { width: 100%; height: 100%; max-height: none; object-fit: contain; border-radius: 12px; background: #0b141a; }
 .ln-wall-more { margin-top: 10px; }
+.ln-tag-shop { display: block; width: fit-content; margin: 4px 0; background: rgba(255,255,255,.08); color: var(--ln-muted, #b8b0c8); font-size: .72rem; }
+/* Customer messages as review cards */
+.ln-reviews { margin-top: 12px; }
+.ln-reviews-strip { display: flex; gap: 12px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 2px 10px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.ln-reviews-strip::-webkit-scrollbar { display: none; }
+.ln-review { flex: 0 0 min(80vw, 320px); scroll-snap-align: start; display: flex; flex-direction: column; text-align: left; padding: 14px; border: 0; border-radius: 22px; background: #fbfaf7; color: #1b1a1f; box-shadow: 0 10px 28px rgba(0,0,0,.28); cursor: pointer; font: inherit; }
+.ln-review-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ln-review-head > span:nth-child(2) { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ln-review-head b { font-size: .95rem; }
+.ln-review-head small { font-size: .74rem; color: #6b6676; }
+.ln-review-icon { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; background: #25d366; color: #fff; flex: 0 0 auto; }
+.ln-review-quote { font: 800 2.6rem/1 Georgia, serif; color: #8A6CFF; margin-top: -8px; }
+.ln-review-shot { position: relative; display: block; height: 340px; border-radius: 14px; overflow: hidden; background: #0b141a; }
+.ln-review-shot img { width: 100%; height: 100%; object-fit: cover; object-position: top center; display: block; }
+.ln-review-shot::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 70px; background: linear-gradient(rgba(251,250,247,0), #fbfaf7); }
+.ln-review-more { margin-top: 10px; font-weight: 800; font-size: .86rem; color: #6f52e8; }
+.ln-reviews-dots { display: flex; justify-content: center; gap: 6px; }
+.ln-reviews-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.25); transition: width .2s; }
+.ln-reviews-dots span.on { width: 20px; border-radius: 4px; background: var(--ln-accent, #8A6CFF); }

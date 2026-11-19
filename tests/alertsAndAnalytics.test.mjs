@@ -180,7 +180,7 @@ test('lunch: edit dish opens under the dish, reviews apart, owner can edit, shar
   assert.match(ed, /What customers said/)
   assert.match(ed, /It's a review/)
   const page = read('src/pages/public/Lunch.jsx')
-  assert.match(page, /<PhotoWall images=\{said\}[^>]*framed/)
+  assert.match(page, /<ReviewCards images=\{said\}/)
   assert.match(page, /Edit lunch offer/)
   assert.match(page, /<ShareLunch /)
   assert.doesNotMatch(page, /<ShareProduct /)
@@ -283,4 +283,13 @@ test('video maker: the AI photo check works for products too', () => {
   assert.match(fn, /'product', 'in_use', 'close_up', 'packaging'/)
   assert.doesNotMatch(fn, /if \(!features\.length\) return respond/)
   assert.match(read('src/lib/listingVideo.js'), /else if \(keepUnseen\) out\.push\(sc\)/)
+})
+
+test('lunch: plan lists only lunch dishes; video maker reads lunch plans by their columns', () => {
+  const ed = read('src/pages/shared/LunchDeals.jsx')
+  assert.match(ed, /\.filter\(\(p\) => p\.lunch_only \|\| picked\.has\(p\.id\)\)/)
+  assert.doesNotMatch(ed, /You can also add a made-to-order product you already sell/)
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(ui, /from\('meal_deals'\)\.select\(DEAL_COLS\)/)
+  assert.doesNotMatch(ui, /from\('meal_deals'\)\.select\('\*'\)/)
 })

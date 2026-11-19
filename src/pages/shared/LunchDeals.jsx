@@ -130,7 +130,9 @@ function DealEditor({ deal, vendorId, onSaved }) {
   }, [vendorId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const picked = new Map((d.dishes || []).map((x) => [x.product_id, x]))
-  const dishes = (products || []).filter((p) => p.fulfilment === 'made_to_order' || picked.has(p.id))
+  // Only the lunch plan's own dishes. Shop products stay in the shop; one
+  // added to the plan before shows here only so it can be taken out.
+  const dishes = (products || []).filter((p) => p.lunch_only || picked.has(p.id))
   const chosen = (products || []).filter((p) => picked.has(p.id))
   const toggleDish = (p) => set('dishes')(picked.has(p.id) ? d.dishes.filter((x) => x.product_id !== p.id) : [...d.dishes, { product_id: p.id, kind: 'box' }])
   const setDish = (id, patch) => set('dishes')(d.dishes.map((x) => (x.product_id === id ? { ...x, ...patch } : x)))
@@ -243,12 +245,12 @@ function DealEditor({ deal, vendorId, onSaved }) {
           </section>
 
           <section className="ln-section">
-            <div className="ln-head"><h2>2. The dishes</h2><p>Add each lunch dish here: its photo, price, the weekday it is cooked and how many you can make. Lunch dishes are not shown in your shop; customers get them only through this lunch plan. You can also add a made-to-order product you already sell.</p></div>
+            <div className="ln-head"><h2>2. The dishes</h2><p>Add each lunch dish here: its photo, price, the weekday it is cooked and how many you can make. Lunch dishes are not shown in your shop; customers get them only through this lunch plan.</p></div>
             <button type="button" className="ln-btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setEditDish({})}>Add a lunch dish</button>
             {editDish && !editDish.id && <LunchDishForm key="new" dish={editDish} vendorId={vendorId} live={deal.status === 'published'} isStaff={isStaff}
               onClose={() => setEditDish(null)} onSaved={(id) => { setEditDish(null); loadProducts(); if (id && !picked.has(id)) set('dishes')([...(d.dishes || []), { product_id: id, kind: 'box' }]) }} />}
             <div className="ln-dish-pick">
-              {dishes.length === 0 && <p className="ln-muted">No made-to-order products yet. Add each dish as a product, set it to "Made to order", choose the days you cook it, and set how many you can make a day.</p>}
+              {dishes.length === 0 && <p className="ln-muted">No lunch dishes yet. Tap &ldquo;Add a lunch dish&rdquo; for each one.</p>}
               {dishes.map((p) => {
                 const on = picked.has(p.id)
                 const problems = [!p.images?.length && 'no photo', !p.order_days?.length && 'no cooking days', !p.daily_limit && 'no daily limit', p.status !== 'published' && !p.lunch_only && 'not live yet'].filter(Boolean)
@@ -260,7 +262,7 @@ function DealEditor({ deal, vendorId, onSaved }) {
                       <strong>{p.name}{p.lunch_only && <em className="ln-tag">Lunch only</em>}</strong>
                       {p.lunch_only
                         ? <button type="button" className="ln-link ln-edit" onClick={() => setEditDish(editDish?.id === p.id ? null : p)}>{editDish?.id === p.id ? 'Close' : 'Edit dish'}</button>
-                        : <Link className="ln-link ln-edit" to={isStaff ? '/admin/products' : '/vendor/products'}>Edit in Products</Link>}
+                        : <em className="ln-tag ln-tag-shop">From your shop: tap Remove to take it out of the plan</em>}
                       <small>{Number(p.price) > 0 ? money(p.price, { whole: true }) : 'Price set when approved'} · {p.order_days?.length ? p.order_days.map((n) => DAYS[n]).join(', ') : 'Mon–Fri'} · {p.daily_limit ? `${p.daily_limit} a day` : 'no limit'}</small>
                       {problems.length > 0 && <small className="bad"> · {problems.join(', ')}</small>}
                       {on && (

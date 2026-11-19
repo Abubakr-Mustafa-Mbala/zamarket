@@ -11,6 +11,7 @@ import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSe
 import { fastEncoder } from '../../lib/fastEncoder'
 import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
 import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice, soundBlob, soundWave } from '../../lib/videoSounds'
+import { DEAL_COLS } from '../public/Lunch'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -96,10 +97,13 @@ export default function VideoMaker() {
       return
     }
     if (kind === 'lunch') {
-      supabase.from('meal_deals').select('*').eq('status', 'published').then(async ({ data }) => {
+      // The same columns the lunch page reads (the database does not hand out
+      // every column of a lunch plan, so '*' came back empty).
+      supabase.from('meal_deals').select(DEAL_COLS).eq('status', 'published').then(async ({ data, error }) => {
+        if (error) { console.warn('[video] lunch plans', error); setItems([]); return }
         const list = await Promise.all((data || []).map(async (d) => {
           const dishes = await loadDealDishes(d)
-          const { data: v } = await supabase.from('vendors').select('business_name').eq('id', d.vendor_id).maybeSingle()
+          const { data: v } = await supabase.from('public_vendors').select('business_name').eq('id', d.vendor_id).maybeSingle()
           return { ...d, name: d.title, dishList: dishes, from: fromPrice(dishes, d), vendor_name: v?.business_name, images: [d.cover_url].filter(Boolean) }
         }))
         setItems(list)
