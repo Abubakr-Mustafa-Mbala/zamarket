@@ -6,13 +6,14 @@ import { Loading, useToast } from '../../components/ui'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
-import { fromPrice } from '../../lib/lunch'
+import { fromPrice, upcomingMenu } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
 import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
 import { askAssist } from '../../lib/aiAssist'
 import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice, soundBlob, soundWave } from '../../lib/videoSounds'
 import { DEAL_COLS } from '../public/Lunch'
+import { lunchOfferFacts } from '../../lib/lunchPoster'
 import '../../motors.css'
 
 // Faceless videos from what is already on the site. Pick a car, a product or
@@ -104,8 +105,20 @@ export default function VideoMaker() {
         if (error) { console.warn('[video] lunch plans', error); setItems([]); return }
         const list = await Promise.all((data || []).map(async (d) => {
           const dishes = await loadDealDishes(d)
-          const { data: v } = await supabase.from('public_vendors').select('business_name').eq('id', d.vendor_id).maybeSingle()
-          return { ...d, name: d.title, dishList: dishes, from: fromPrice(dishes, d), vendor_name: v?.business_name, images: [d.cover_url].filter(Boolean) }
+          const [{ data: v }, { data: avail }] = await Promise.all([
+            supabase.from('public_vendors').select('business_name').eq('id', d.vendor_id).maybeSingle(),
+            supabase.rpc('meal_availability', { p_deal: d.id, p_days: 24 }).then((x) => x, () => ({ data: [] })),
+          ])
+          const from = fromPrice(dishes, d)
+          // The real menu and package prices, as on the poster and the booking page.
+          const menu = upcomingMenu({ deal: d, products: dishes, availability: avail || [], days: 21 })
+          const facts = lunchOfferFacts({ deal: d, menu, from })
+          const offer = {
+            week: facts.week.map((w) => ({ label: w.label, dish: w.dish?.name || '', photo: w.dish?.images?.[0] || null })),
+            pkgs: facts.pkgs.map((p) => ({ title: p.title, total: p.total, days: p.days, saving: p.saving })),
+            next: facts.next, cutoff: facts.cutoff, window: facts.window,
+          }
+          return { ...d, name: d.title, dishList: dishes, from, offer, vendor_name: v?.business_name, images: [d.cover_url].filter(Boolean) }
         }))
         setItems(list)
       })
@@ -144,7 +157,13 @@ export default function VideoMaker() {
   const [aiCaption, setAiCaption] = useState('')
   const lunchKey = pick && kind === 'lunch' ? `zm-lunch-ai-v1-${pick.id}-${JSON.stringify([pick.title, pick.dishes, pick.cover_url, pick.in_the_box, pick.group_discounts, pick.day_discounts, pick.trial_first, pick.guarantee, pick.cutoff_hour, pick.delivery_windows]).length}` : ''
   const applyLunch = (r) => {
-    const list = (r.scenes || []).map((x) => sceneFrom({ scene: { kicker: x.kicker, line: x.line, sub: x.sub, say: x.say } }, x.photo_url || null))
+    const written = (r.scenes || []).map((x) => sceneFrom({ scene: { kicker: x.kicker, line: x.line, sub: x.sub, say: x.say } }, x.photo_url || null))
+    // The offer card goes after the food; the booking steps and "need another
+    // day?" close the video, whatever the AI wrote.
+    const fixed = parts.starter.filter((x) => x.fixed)
+    const offer = fixed.filter((x) => x.type === 'offer')
+    const after = Math.min(written.length, 2 + Math.min(3, (pick.dishList || []).length))
+    const list = [...written.slice(0, after), ...offer, ...written.slice(after), ...fixed.filter((x) => x.type !== 'offer')].map((x) => ({ ...x, id: x.id || sceneFrom({ scene: {} }).id }))
     setScenes(list); setOpen(null)
     setAiCaption(r.caption ? `${r.caption}\n${link}` : '')
     setAi({ state: 'done', lunch: true, count: list.length })
@@ -227,7 +246,7 @@ export default function VideoMaker() {
   }, [scenes])
 
   const script = useMemo(() => (parts ? { slides: scenes, end: parts.end, endSay: parts.endSay, caption: aiCaption || parts.caption, voice: voiceFor(scenes, parts.endSay) } : null), [parts, scenes, aiCaption])
-  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
+  const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' || x.type === 'offer' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
 
   // Editing scenes
   const update = (id, patch) => { touched.current = true; setScenes((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x))) }

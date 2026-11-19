@@ -1433,7 +1433,7 @@ export function StorePage() {
       verified={verified}
       share={<ShareStore store={store} products={products} sections={sections} link={`${window.location.origin}/${store.slug}`} className="btn" label="Share this shop" />}
       renderProduct={(p) => <OfferingCard p={p} deal={dealFor(offersBy, p.id)} inStore={store.slug} />}
-      highlights={<OfferHighlights vendorId={store.id} />}
+      highlights={<OfferHighlights vendorId={store.id} store={store} />}
       special={<>{special.map(([kind, title]) => (
         <section key={kind} className="zsv-section" id={anchorFor(title)} aria-label={title}>
           <div className="zsv-title"><h2>{title}</h2><span className="zsv-count">{byKind[kind].length}</span></div>

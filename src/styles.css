@@ -2977,3 +2977,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .hl-cta { margin-top: 12px; display: flex; align-items: center; justify-content: center; min-height: 54px; border-radius: 999px; background: #ffd166; color: #2a1500; font-weight: 900; text-decoration: none; font-size: 1.05rem; }
 .hl-wrap { padding: 0 16px; background: var(--paper); }
 .hl-wrap .hl { margin: 0; padding: 8px 0 6px; }
+/* The "Request" highlight and its form */
+.hl-ask .hl-ring { background: rgba(138,108,255,.55); }
+.hl-plus { display: grid !important; place-items: center; font-size: 2rem; font-weight: 300; color: #fff; background: #15181C !important; }
+.sr-form label { display: flex; flex-direction: column; gap: 6px; }
+.sr-kinds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.sr-kinds button { min-height: 38px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--line, rgba(255,255,255,.2)); background: transparent; color: inherit; font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.sr-kinds button.on { background: var(--brass, #8A6CFF); border-color: var(--brass, #8A6CFF); color: #fff; }
+.sr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 420px) { .sr-two { grid-template-columns: 1fr; } }

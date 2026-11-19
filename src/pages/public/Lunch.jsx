@@ -12,6 +12,7 @@ import { upcomingMenu, planTotals, planPayloadDays, fromPrice, affiliateEarnings
 import { loadDealDishes } from '../../lib/lunchData'
 import { shareAudience } from '../../components/ShareProduct'
 import ShareLunch from '../../components/ShareLunch'
+import { StoreRequestForm } from '../../components/StoreRequest'
 import DishCollage, { collagePhotos } from '../../components/DishCollage'
 import { whatsappLink } from '../../lib/vehicle'
 import '../../lunch.css'
@@ -221,7 +222,7 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
         </div>
       </section>
 
-      <WeeklyOrder deal={deal} menu={menu} preview={preview} deliveryIncluded={deliveryIncluded} onOrder={(o) => setOrder(o)} onPhoto={setViewer} />
+      <WeeklyOrder deal={deal} vendor={vendor} menu={menu} preview={preview} deliveryIncluded={deliveryIncluded} onOrder={(o) => setOrder(o)} onPhoto={setViewer} />
 
       <ul className="ln-trust">
         <li><b>Homemade, fresh each day</b><span>Cooked for the day you booked, never the day before.</span></li>
@@ -304,7 +305,8 @@ export function LunchView({ deal, products, vendor, availability, reviews = [], 
 
 // The order card: package, week, days, lunches a day, the week's menu and
 // the total. Every price is the dish's own price for that day.
-export function WeeklyOrder({ deal, menu, preview = false, deliveryIncluded = false, onOrder, onPhoto, compact = false }) {
+export function WeeklyOrder({ deal, vendor = null, menu, preview = false, deliveryIncluded = false, onOrder, onPhoto, compact = false }) {
+  const [asking, setAsking] = useState(false)
   const weeks = useMemo(() => workingWeeks(menu, 3), [menu])
   const firstFull = Math.max(0, weeks.findIndex((w) => w.open === 5))
   const [w, setW] = useState(firstFull)
@@ -387,6 +389,12 @@ export function WeeklyOrder({ deal, menu, preview = false, deliveryIncluded = fa
           })}
         </div>
       ))}
+      {!preview && vendor?.slug && (
+        <button type="button" className="ln-ask" onClick={() => setAsking(true)}>
+          <span>Need Saturday, Sunday or another day?</span><b>Send a request →</b>
+        </button>
+      )}
+      {asking && <StoreRequestForm store={vendor} kind="extra_day" onClose={() => setAsking(false)} />}
 
       <div className="ln-perday">
         <div><strong>Lunches each day</strong><small>Ordering for colleagues too? Add more.</small></div>

@@ -40,7 +40,7 @@ test('the shop shows the weekly lunch board with real plan prices and one order 
   assert.match(s, /packagePrice\(weeks, wi, 'week', menu, deal\)/)
   assert.match(s, /Order your weekly lunch today/)
   // On the store itself only the round highlight shows; it opens the lunch page.
-  assert.match(read('src/pages/public/Marketplace.jsx'), /highlights=\{<OfferHighlights vendorId=\{store\.id\} \/>\}/)
+  assert.match(read('src/pages/public/Marketplace.jsx'), /highlights=\{<OfferHighlights vendorId=\{store\.id\} store=\{store\} \/>\}/)
 })
 
 test('team discounts follow the best tier per delivery day and match what the database charges', async () => {

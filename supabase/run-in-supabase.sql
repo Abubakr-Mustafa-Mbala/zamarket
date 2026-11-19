@@ -10,7 +10,7 @@
 
 
 -- ============================================================
--- SECTION 1 of 32 — 20261103_affiliate_recruitment_REVIEW.sql
+-- SECTION 1 of 33 — 20261103_affiliate_recruitment_REVIEW.sql
 -- ============================================================
 
 -- ZA Market affiliate recruitment, REVIEW BEFORE DEPLOYMENT.
@@ -67,7 +67,7 @@ drop function if exists public.is_approved_affiliate();
 
 
 -- ============================================================
--- SECTION 2 of 32 — 20261103_blog_media_staff_upload_REVIEW.sql
+-- SECTION 2 of 33 — 20261103_blog_media_staff_upload_REVIEW.sql
 -- ============================================================
 
 -- REVIEW AND APPLY in Supabase SQL editor before using Blog > Upload.
@@ -124,7 +124,7 @@ grant execute on function public.blog_report() to authenticated;
 
 
 -- ============================================================
--- SECTION 3 of 32 — 20261103_record_payment_reconciliation_REVIEW.sql
+-- SECTION 3 of 33 — 20261103_record_payment_reconciliation_REVIEW.sql
 -- ============================================================
 
 create or replace function record_payment(p_order uuid, p_method text, p_amount numeric, p_reference text default null)
@@ -160,7 +160,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 4 of 32 — 20261103_product_poster_support_REVIEW.sql
+-- SECTION 4 of 33 — 20261103_product_poster_support_REVIEW.sql
 -- ============================================================
 
 -- Product share posters: let the poster carry the seller's own branding.
@@ -193,7 +193,7 @@ grant select on public_products to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 5 of 32 — 20261104_growth_analytics_REVIEW.sql
+-- SECTION 5 of 33 — 20261104_growth_analytics_REVIEW.sql
 -- ============================================================
 
 -- Growth measurement, REVIEW BEFORE DEPLOYMENT.
@@ -333,7 +333,7 @@ grant execute on function public.growth_report(date, date) to authenticated;
 
 
 -- ============================================================
--- SECTION 6 of 32 — 20261104_order_alerts_REVIEW.sql
+-- SECTION 6 of 33 — 20261104_order_alerts_REVIEW.sql
 -- ============================================================
 
 -- Being told about an order when nobody is watching the screen.
@@ -439,7 +439,7 @@ revoke all on function public.claim_order_alert(int) from public, anon, authenti
 
 
 -- ============================================================
--- SECTION 7 of 32 — 20261104_giveaways_REVIEW.sql
+-- SECTION 7 of 33 — 20261104_giveaways_REVIEW.sql
 -- ============================================================
 
 -- Giveaways, REVIEW BEFORE DEPLOYMENT.
@@ -704,7 +704,7 @@ grant execute on function public.giveaway_public(text) to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 8 of 32 — 20261104_giveaway_conversion_REVIEW.sql
+-- SECTION 8 of 33 — 20261104_giveaway_conversion_REVIEW.sql
 -- ============================================================
 
 -- Turning a giveaway into something that pays for itself.
@@ -860,7 +860,7 @@ grant execute on function public.giveaway_report(text, int) to authenticated;
 
 
 -- ============================================================
--- SECTION 9 of 32 — 20261104_vendor_stock_REVIEW.sql
+-- SECTION 9 of 33 — 20261104_vendor_stock_REVIEW.sql
 -- ============================================================
 
 -- Stock that vendors can actually count, and a prize that cannot be sold.
@@ -1328,7 +1328,7 @@ grant execute on function public.vendor_set_stock(uuid, int, boolean) to authent
 
 
 -- ============================================================
--- SECTION 10 of 32 — 20261104_ai_blog_quota_REVIEW.sql
+-- SECTION 10 of 33 — 20261104_ai_blog_quota_REVIEW.sql
 -- ============================================================
 
 -- APPLY IN SUPABASE SQL EDITOR BEFORE ENABLING THE AI BLOG WRITER.
@@ -1371,7 +1371,7 @@ grant execute on function public.claim_ai_blog_generation() to authenticated;
 
 
 -- ============================================================
--- SECTION 11 of 32 — 20261105_promo_referrals_REVIEW.sql
+-- SECTION 11 of 33 — 20261105_promo_referrals_REVIEW.sql
 -- ============================================================
 
 -- Giveaway non-winner referral rewards.
@@ -2349,7 +2349,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 12 of 32 — 20261105_multi_prize_REVIEW.sql
+-- SECTION 12 of 33 — 20261105_multi_prize_REVIEW.sql
 -- ============================================================
 
 -- More than one prize in a giveaway.
@@ -2729,7 +2729,7 @@ grant execute on function public.giveaway_prize_slots(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 13 of 32 — 20261105_all_entries_on_wheel_REVIEW.sql
+-- SECTION 13 of 33 — 20261105_all_entries_on_wheel_REVIEW.sql
 -- ============================================================
 
 -- Everybody goes on the wheel.
@@ -2803,7 +2803,7 @@ grant execute on function public.giveaway_public(text) to anon, authenticated;
 
 
 -- ============================================================
--- SECTION 14 of 32 — 20261106_public_offers_anon_fix.sql
+-- SECTION 14 of 33 — 20261106_public_offers_anon_fix.sql
 -- ============================================================
 
 -- Logged-out visitors could not load the marketplace: public_offers ran
@@ -2817,7 +2817,7 @@ alter view public.public_offers set (security_invoker = off);
 
 
 -- ============================================================
--- SECTION 15 of 32 — 20261106_coupons_complete_REVIEW.sql
+-- SECTION 15 of 33 — 20261106_coupons_complete_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket coupons — finish the system. REVIEW BEFORE DEPLOYMENT.
@@ -3305,7 +3305,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 16 of 32 — 20261106_front_page_and_delete_REVIEW.sql
+-- SECTION 16 of 33 — 20261106_front_page_and_delete_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket — choose what lands on the front page, and remove mistakes.
@@ -3482,7 +3482,7 @@ grant execute on function public.delete_product(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 17 of 32 — 20261109_vehicle_success_fee_REVIEW.sql
+-- SECTION 17 of 33 — 20261109_vehicle_success_fee_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Motors — seller-funded success-fee split.
@@ -3670,7 +3670,7 @@ end $$;
 
 
 -- ============================================================
--- SECTION 18 of 32 — 20261109_affiliate_monthly_earnings_goals_REVIEW.sql
+-- SECTION 18 of 33 — 20261109_affiliate_monthly_earnings_goals_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Affiliate Hub: personal monthly commission goals and private metrics.
@@ -3733,7 +3733,7 @@ grant execute on function public.affiliate_goal_metrics(uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 19 of 32 — 20261109_affiliate_vehicle_rewards_REVIEW.sql
+-- SECTION 19 of 33 — 20261109_affiliate_vehicle_rewards_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket Motors: approved affiliates may see their estimated reward in Kwacha
@@ -3765,7 +3765,7 @@ comment on function public.affiliate_vehicle_reward_estimates() is
   'Only approved affiliates receive estimated referral rewards for published vehicles. Estimates use advertised price and can change with final close. No seller terms are exposed.';
 
 -- ============================================================
--- SECTION 20 of 32 — 20261111_winners_recovery_proposals_REVIEW.sql
+-- SECTION 20 of 33 — 20261111_winners_recovery_proposals_REVIEW.sql
 -- ============================================================
 
 -- Winner contact details, account recovery, seller-proposed giveaways and
@@ -4232,7 +4232,7 @@ revoke all on function public.claim_ai_assist(text) from public, anon;
 grant execute on function public.claim_ai_assist(text) to authenticated;
 
 -- ============================================================
--- SECTION 21 of 32 — 20261111_delivery_fund_REVIEW.sql
+-- SECTION 21 of 33 — 20261111_delivery_fund_REVIEW.sql
 -- ============================================================
 
 -- The delivery fund.
@@ -4480,7 +4480,7 @@ revoke all on function public.delivery_fund_summary(date, date) from public, ano
 grant execute on function public.delivery_fund_summary(date, date) to authenticated;
 
 -- ============================================================
--- SECTION 22 of 32 — 20261112_storefront_delivery_message_REVIEW.sql
+-- SECTION 22 of 33 — 20261112_storefront_delivery_message_REVIEW.sql
 -- ============================================================
 
 -- ZaMarket storefront: an optional, editable delivery sentence.
@@ -4525,7 +4525,7 @@ grant select (store_delivery_message) on public.vendors to anon, authenticated;
 grant select on public.public_vendors to anon, authenticated;
 
 -- ============================================================
--- SECTION 23 of 32 — 20261112_academy_code_REVIEW.sql
+-- SECTION 23 of 33 — 20261112_academy_code_REVIEW.sql
 -- ============================================================
 
 -- Each affiliate's access code for Al-Halaqa, the academy where affiliates
@@ -4559,7 +4559,7 @@ create trigger trg_resellers_academy_code before insert or update on public.rese
   for each row execute function public.resellers_academy_code_guard();
 
 -- ============================================================
--- SECTION 24 of 32 — 20261114_vehicle_affiliate_deals_REVIEW.sql
+-- SECTION 24 of 33 — 20261114_vehicle_affiliate_deals_REVIEW.sql
 -- ============================================================
 
 -- Vehicle buyers and the affiliate who brought them.
@@ -4625,7 +4625,7 @@ revoke all on function public.set_deal_affiliate(uuid, text, text) from public, 
 grant execute on function public.set_deal_affiliate(uuid, text, text) to authenticated;
 
 -- ============================================================
--- SECTION 25 of 32 — 20261115_lunch_plans_REVIEW.sql
+-- SECTION 25 of 33 — 20261115_lunch_plans_REVIEW.sql
 -- ============================================================
 
 -- Lunch plans: scheduled homemade lunches delivered to workplaces.
@@ -4910,7 +4910,7 @@ grant execute on function public.meal_kitchen(date, uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 26 of 32 — 20261116_traffic_tracking_REVIEW.sql
+-- SECTION 26 of 33 — 20261116_traffic_tracking_REVIEW.sql
 -- ============================================================
 -- 26. Traffic and vehicle interest: who visits, what they look at, what they tap.
 --
@@ -5024,7 +5024,7 @@ grant execute on function public.traffic_summary(int) to authenticated;
 
 
 -- ============================================================
--- SECTION 27 of 32 — 20261116_lunch_team_discounts_REVIEW.sql
+-- SECTION 27 of 33 — 20261116_lunch_team_discounts_REVIEW.sql
 -- ============================================================
 -- 27. Lunch plans: team discounts and customer requests.
 --
@@ -5182,7 +5182,7 @@ grant execute on function public.meal_kitchen(date, uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 28 of 32 — 20261117_weekly_lunch_REVIEW.sql
+-- SECTION 28 of 33 — 20261117_weekly_lunch_REVIEW.sql
 -- ============================================================
 -- 28. Weekly lunch: lunch-only dishes, paying after the first lunch, no
 --     double bookings, and a clearer kitchen.
@@ -5505,7 +5505,7 @@ grant execute on function public.meal_kitchen(date, uuid) to authenticated;
 
 
 -- ============================================================
--- SECTION 29 of 32 — 20261118a_numbers_stock_REVIEW.sql
+-- SECTION 29 of 33 — 20261118a_numbers_stock_REVIEW.sql
 -- ============================================================
 -- 29. Honest numbers and quieter stock alerts. (Section 30 adds the alerts.)
 --
@@ -5820,7 +5820,7 @@ $$;
 
 
 -- ============================================================
--- SECTION 30 of 32 — 20261118b_alerts_emails_REVIEW.sql
+-- SECTION 30 of 33 — 20261118b_alerts_emails_REVIEW.sql
 -- ============================================================
 -- 30. Alerts that reach you: phone alerts for everything in the bell, and emails.
 --     Run after section 29.
@@ -5967,7 +5967,7 @@ grant usage, select on sequence public.email_outbox_id_seq to service_role;
 grant execute on function public.action_center_for(uuid) to service_role;
 
 -- ============================================================
--- SECTION 31 of 32 — 20261118c_lunch_reviews_REVIEW.sql
+-- SECTION 31 of 33 — 20261118c_lunch_reviews_REVIEW.sql
 -- ============================================================
 -- 31. Weekly lunch: customer messages (WhatsApp screenshots) kept apart from
 --     kitchen photos, shown whole in their own section, never on posters.
@@ -5977,7 +5977,7 @@ alter table public.meal_deals add column if not exists review_images text[] not 
 grant select (review_images) on public.meal_deals to anon, authenticated;
 
 -- ============================================================
--- SECTION 32 of 32 — 20261119a_video_sounds_REVIEW.sql
+-- SECTION 32 of 33 — 20261119a_video_sounds_REVIEW.sql
 -- ============================================================
 -- 32. Video maker: your background sounds (nasheeds), kept online so they
 --     show on every phone you sign in on. A PRIVATE folder: only the team
@@ -6005,3 +6005,43 @@ drop policy if exists "zm video sounds team remove" on storage.objects;
 create policy "zm video sounds team remove" on storage.objects
 for delete to authenticated
 using (bucket_id = 'video-sounds' and (public.is_staff() or public.can_market()));
+
+-- ============================================================
+-- SECTION 33 of 33 — 20261119b_store_requests_REVIEW.sql
+-- ============================================================
+-- 33. Requests from a seller's store: "Can I have lunch on Saturday too?",
+--     an event order, something not on the shop. The customer leaves a name,
+--     a phone and what they need; it becomes a lead for the team (with the
+--     seller attached), the full request in its history, and the team
+--     answers on WhatsApp or by phone. At most 3 requests an hour per phone.
+--     Run after section 32. Safe to run more than once.
+
+create or replace function submit_store_request(payload jsonb) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v vendors%rowtype;
+  v_name text := left(trim(coalesce(payload->>'name', '')), 80);
+  v_phone text := norm_phone(payload->>'phone');
+  v_what text := left(trim(coalesce(payload->>'what', '')), 600);
+  v_when text := left(trim(coalesce(payload->>'when', '')), 80);
+  v_kind text := case payload->>'kind' when 'extra_day' then 'Extra lunch day' when 'event' then 'Event or group order' when 'special' then 'Special order' else 'Request' end;
+  v_reply text := case payload->>'reply' when 'call' then 'a phone call' else 'WhatsApp' end;
+  v_lead uuid;
+begin
+  select * into v from vendors where slug = lower(coalesce(payload->>'store', '')) and status = 'approved' limit 1;
+  if not found then raise exception 'This shop is not taking requests right now'; end if;
+  if v_name = '' then raise exception 'Please enter your name'; end if;
+  if length(v_phone) < 10 then raise exception 'Please enter a full phone number, e.g. 0977 123 456'; end if;
+  if length(v_what) < 5 then raise exception 'Please say what you would like'; end if;
+  if (select count(*) from lead_activities a join leads l on l.id = a.lead_id
+      where l.phone = v_phone and a.note like 'Request%' and a.created_at > now() - interval '1 hour') >= 3 then
+    raise exception 'We already have your requests. We will get back to you soon.';
+  end if;
+  v_lead := upsert_lead(v_name, v_phone, 'organic', left(v_kind || ' for ' || v.business_name || ': ' || v_what, 240), null, null, v.id, null, null, 'request');
+  insert into lead_activities (lead_id, kind, note)
+  values (v_lead, 'note', left('Request (' || v_kind || ') for ' || v.business_name || coalesce(', wanted ' || nullif(v_when, ''), '') || ': ' || v_what || '. Reply by ' || v_reply || '.', 1000));
+  return jsonb_build_object('reference', 'R' || right(replace(v_lead::text, '-', ''), 6));
+end $$;
+
+revoke all on function submit_store_request(jsonb) from public;
+grant execute on function submit_store_request(jsonb) to anon, authenticated;

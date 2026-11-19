@@ -82,22 +82,44 @@ function lunchScript(item, link) {
   const week = cleanTiers(item.day_discounts)
   const slides = []
   slides.push({ kicker: `Weekly lunch${seller ? ` · ${seller}` : ''}`, line: 'Your lunch, sorted for the week', sub: from ? `From ${from} a lunch` : '', photo: item.cover_url, say: 'Busy at work? Your lunch, sorted for the whole week.' })
-  slides.push({ kicker: 'Made for', line: 'Busy people at work, and teams', sub: 'Or delivered to your home', photo: dishPics[0], say: 'It is made for people at work who want a proper lunch without leaving the office, and for teams who order together.' })
   slides.push({ kicker: 'Homemade', line: 'Cooked fresh for the day you booked', sub: seller ? `By ${seller}` : '', photo: kitchen || dishPics[1], say: `Every lunch is homemade${seller ? ` by ${seller}` : ''}, cooked for the day you booked, never the day before.` })
   if (dishPics.length > 1) slides.push({ type: 'collage', photos: dishPics.slice(0, 4), kicker: 'On the menu', line: `${dishes.length} homemade dish${dishes.length > 1 ? 'es' : ''}`, sub: '', say: `On the menu: ${dishes.slice(0, 3).map((d) => d.name).join(', ')}.` })
-  dishes.slice(0, 3).forEach((d) => slides.push({ kicker: '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0], say: `${d.name}.` }))
-  slides.push({ kicker: 'Easy', line: 'Order once for the whole week', sub: 'No ordering every morning', photo: dishPics[2] || item.cover_url, say: 'You order once for the whole week. The full week, Monday to Thursday, two weeks, or just the days you choose.' })
-  slides.push({ kicker: 'Delivered', line: 'To your office or your door', sub: when ? `Between ${when}` : '', photo: dishPics[3] || dishPics[0], say: `It comes to your office or your door${when ? `, between ${when}` : ''}.` })
+  dishes.slice(0, 2).forEach((d) => slides.push({ kicker: '', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images?.[0], say: `${d.name}.` }))
+  slides.push(...offerScenes(item, dishPics).slice(0, 1))
   if (item.in_the_box) slides.push({ kicker: 'In every box', line: String(item.in_the_box).replace(/\s+/g, ' ').slice(0, 70), sub: '', photo: dishPics[1] || item.cover_url, say: `In every box: ${String(item.in_the_box).replace(/\s+/g, ' ').slice(0, 140)}.` })
   if (team.length) slides.push({ kicker: 'For your team', line: `${team[0].min}+ lunches in one delivery: ${team[0].pct}% off`, sub: '', photo: dishPics[0] || item.cover_url, say: `Ordering for your team? ${team[0].min} or more lunches in one delivery get ${team[0].pct} percent off.` })
   if (week.length) slides.push({ kicker: 'Book more days, pay less', line: `${week[week.length - 1].min} days or more: ${week[week.length - 1].pct}% off`, sub: '', photo: dishPics[1] || item.cover_url, say: `Book ${week[week.length - 1].min} days or more and save ${week[week.length - 1].pct} percent.` })
   if (item.trial_first) slides.push({ kicker: 'First time?', line: 'Pay for one lunch, taste it first', sub: 'Then the rest of the week', photo: dishPics[2] || item.cover_url, say: 'Ordering for the first time? Pay for your first lunch, and the other days after you have tasted it.' })
   if (item.guarantee) slides.push({ kicker: 'Our promise', line: 'Late or not as described? That lunch is free', sub: '', photo: item.cover_url, say: 'If your lunch is late or not as described, tell us the same day and that lunch is free.' })
-  slides.push({ kicker: 'How to order', line: 'Choose your days on zamarket.shop', sub: `Order by ${cutoff}:00 the day before`, photo: item.cover_url, say: `Open the link, choose your days, and order by ${cutoff} hundred hours the day before. We call you to confirm, and you pay by mobile money.` })
+  slides.push(...offerScenes(item, dishPics).slice(1))
   const voice = slides.map((x) => x.say).filter(Boolean).join(' ')
   const out = slides.map((x) => ({ kicker: '', line: '', sub: '', ...x }))
   return withEnd({ cta: 'Order your weekly lunch', foot: 'Delivered to your office or door' }, finish(out, [item.cover_url, ...dishPics].filter(Boolean), `${voice} Order on zamarket dot shop.`,
-    captionFor(item.title || item.name, from ? `From ${from} a lunch` : '', '', ['Homemade, cooked fresh for the day you booked', 'Order once for the whole week', 'Delivered to your office or door', ...(team.length ? [`Team orders: ${team[0].min}+ lunches ${team[0].pct}% off`] : []), ...(item.trial_first ? ['First time? Taste one lunch first'] : [])], link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket']), 16))
+    captionFor(item.title || item.name, from ? `From ${from} a lunch` : '', '', ['Homemade, cooked fresh for the day you booked', 'Order once for the whole week', 'Delivered to your office or door', ...(team.length ? [`Team orders: ${team[0].min}+ lunches ${team[0].pct}% off`] : []), ...(item.trial_first ? ['First time? Taste one lunch first'] : [])], link, ['#LusakaLunch', '#OfficeLunch', '#ZaMarket']), 24))
+}
+
+// The offer card (like the poster), how to book step by step on the booking
+// page, and how to ask for another day. Marked "fixed": an AI-written lunch
+// video keeps them too.
+export function offerScenes(item, dishPics = []) {
+  const o = item.offer || {}
+  const cutoff = item.cutoff_hour || 18
+  const team = cleanTiers(item.group_discounts)
+  const week = o.week || []
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map((l) => { const w = week.find((x) => x.label === l); return w ? { label: l, dish: w.dish } : { label: l, open: false } })
+  const photos = [...new Set([...dishPics, item.cover_url].filter(Boolean))].slice(0, 3)
+  const offer = { type: 'offer', fixed: true, kicker: 'WEEKLY LUNCH OFFER', line: 'Your lunch, sorted for the week', week, pkgs: o.pkgs || [], next: !!o.next, photos, photo: photos[0] || null,
+    say: o.pkgs?.length ? `Here is the offer. The full working week is ${money(o.pkgs[0].total, { whole: true })}, or choose your own days.` : 'Here is the offer: pick the full week, or just the days you want.' }
+  const step = (n, how, line, sub, say, demo = {}) => ({ type: 'howto', fixed: true, step: n, steps: 5, how, line, sub, say, demo, photo: null, kicker: '' })
+  return [
+    offer,
+    step(1, 'package', 'Choose your package', 'Full week, Mon to Thu, two weeks or your days', 'Booking takes a minute. First, open the link and choose your package.', { pkgs: o.pkgs || [] }),
+    step(2, 'days', 'Tap the days you want', 'Each day shows that day\u2019s dish', 'Then tap the days you want. Each day shows what is cooking.', { days }),
+    step(3, 'count', 'How many lunches a day', 'Ordering for colleagues too? Add more', team.length ? `Ordering for colleagues? Add more lunches, and ${team[0].min} or more in one delivery get ${team[0].pct} percent off.` : 'Ordering for colleagues? Just add more lunches.', { team: team.length ? `${team[0].min}+ lunches in one delivery: ${team[0].pct}% off` : '' }),
+    step(4, 'details', 'Where we bring it', o.window ? `Office or home · delivered ${o.window}` : 'Your office or home, with a landmark', `Tell us where to bring it: your office or your home${o.window ? `. It arrives between ${o.window}` : ''}.`, {}),
+    step(5, 'pay', 'Choose how you pay, and order', `Order by ${cutoff}:00 the day before`, `Choose mobile money and place your order, by ${cutoff} hundred hours the day before. We call you to confirm.`, { total: o.pkgs?.[0]?.total || 0 }),
+    { fixed: true, kicker: 'Need another day?', line: 'Saturday or Sunday too? Send a request', sub: 'We reply on WhatsApp', photo: dishPics[0] || item.cover_url, say: 'Need lunch on Saturday, Sunday or another day? Send a request on the shop page, and we reply on WhatsApp.' },
+  ]
 }
 
 const withEnd = (end, script) => ({ ...script, end })
@@ -216,6 +238,8 @@ function lookOf(slides, i) {
   const s = slides[i]
   if (s.type === 'specs') return 'specs'
   if (s.type === 'collage') return 'collage'
+  if (s.type === 'offer') return 'offer'
+  if (s.type === 'howto') return 'howto'
   if (i === 0 && isWords(s)) return 'hero'
   if (!isWords(s)) return 'photo'
   let n = 0
@@ -232,6 +256,8 @@ function drawScene(ctx, slides, imgs, i, local) {
   const soft = MOTION === 'gentle'
   ctx.fillStyle = '#0E1013'; ctx.fillRect(0, 0, W, H)
   if (look === 'collage') { const list = imgs[i]; drawCollage(ctx, Array.isArray(list) ? list.filter(Boolean) : [list].filter(Boolean), s, local); return wordsBottom(ctx, s, local, { gradient: false }) }
+  if (look === 'offer') return drawOffer(ctx, s, Array.isArray(imgs[i]) ? imgs[i].filter(Boolean) : [], local)
+  if (look === 'howto') return drawHowto(ctx, s, local)
   if (look === 'specs') { if (img) { ctx.save(); ctx.globalAlpha = 0.55; fill(ctx, img, 0, 0, W, H, 1.08); ctx.restore() } drawSpecs(ctx, s, local); return }
   if (!img) { const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#241E45'); g.addColorStop(1, '#0E1013'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H) }
 
@@ -283,9 +309,11 @@ function drawScene(ctx, slides, imgs, i, local) {
     if (k <= 0) return
     ctx.save(); ctx.globalAlpha = Math.min(1, k)
     ctx.font = '900 76px Inter, Arial, sans-serif'
-    const lines = wrapText(ctx, s.line || s.kicker, W - 260).slice(0, 2)
+    ctx.font = `900 ${(s.line || '').length > 26 ? 62 : 76}px Inter, Arial, sans-serif`
+    const lh = (s.line || '').length > 26 ? 74 : 88
+    const lines = wrapText(ctx, s.line || s.kicker, W - 100 - 168 - 50).slice(0, 3)
     const bw = Math.min(W - 100, Math.max(...lines.map((l) => ctx.measureText(l).width)) + 230)
-    const bh = 70 + lines.length * 88 + (s.sub ? 70 : 0)
+    const bh = 70 + lines.length * lh + (s.sub ? 70 : 0)
     const bx = (W - bw) / 2; const by = H - 380 - bh
     ctx.translate(W / 2, by + bh / 2); ctx.scale(0.8 + 0.2 * k, 0.8 + 0.2 * k); ctx.translate(-W / 2, -(by + bh / 2))
     ctx.fillStyle = 'rgba(14,16,19,.82)'; roundRect(ctx, bx, by, bw, bh, 44); ctx.fill()
@@ -295,9 +323,9 @@ function drawScene(ctx, slides, imgs, i, local) {
     ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
     ctx.beginPath(); ctx.moveTo(bx + 70, by + bh / 2 + 2); ctx.lineTo(bx + 86, by + bh / 2 + 18); ctx.lineTo(bx + 116, by + bh / 2 - 16); ctx.stroke()
     ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
-    const ty = by + 35 + 44
-    lines.forEach((l, j) => ctx.fillText(l, bx + 168, ty + j * 88))
-    if (s.sub) { ctx.fillStyle = '#C9BCFF'; ctx.font = '800 50px Inter, Arial, sans-serif'; ctx.fillText(s.sub, bx + 168, ty + lines.length * 88 + 6) }
+    const ty = by + 35 + lh / 2
+    lines.forEach((l, j) => ctx.fillText(l, bx + 168, ty + j * lh))
+    if (s.sub) { ctx.fillStyle = '#C9BCFF'; ctx.font = '800 46px Inter, Arial, sans-serif'; ctx.fillText(wrapText(ctx, s.sub, bw - 200)[0] || '', bx + 168, ty + lines.length * lh + 6) }
     ctx.restore()
     if (no && feats.length > 1) counter(ctx, no, feats.length, W - 72, 230, local, 'right')
     return
@@ -331,6 +359,232 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (img) { if (still) drawWhole(ctx, img, s); else fill(ctx, img, 0, 0, W, H, soft ? 1.02 + 0.05 * p : 1.04 + 0.1 * p, (i % 2 ? 1 : -1) * 30 * p) }
   if (no && feats.length > 1) counter(ctx, no, feats.length, W - 72, 230, local, 'right')
   wordsBottom(ctx, s, local, { bar: true })
+}
+
+// ---- The weekly lunch offer card (like the poster) ---------------------------
+function drawOffer(ctx, s, photos, local) {
+  const g = ctx.createLinearGradient(0, 0, W * 0.4, H)
+  g.addColorStop(0, '#15181C'); g.addColorStop(1, '#241E45')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  const glow = ctx.createRadialGradient(W * 0.85, H * 0.1, 10, W * 0.85, H * 0.1, W * 0.8)
+  glow.addColorStop(0, 'rgba(138,108,255,.35)'); glow.addColorStop(1, 'rgba(138,108,255,0)')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+  const pad = 64
+  const t = (d) => ease((local - d) / 0.45)
+  // Tag
+  ctx.save(); ctx.globalAlpha = t(0.05); ctx.font = '800 30px Inter, Arial, sans-serif'; ctx.textBaseline = 'middle'
+  const tag = s.kicker || 'WEEKLY LUNCH OFFER'
+  const tw = ctx.measureText(tag).width + 44
+  ctx.fillStyle = '#8A6CFF'; roundRect(ctx, W - pad - tw, 196, tw, 56, 28); ctx.fill()
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'left'; ctx.fillText(tag, W - pad - tw + 22, 225); ctx.restore()
+  // Dish photos
+  let y = 290
+  const ph = 520
+  if (photos.length) {
+    const gap = 14; const W2 = W - pad * 2; const n = Math.min(photos.length, 3)
+    const cells = n === 1 ? [[0, 0, 1, 1]] : n === 2 ? [[0, 0, 0.5, 1], [0.5, 0, 0.5, 1]] : [[0, 0, 0.6, 1], [0.6, 0, 0.4, 0.5], [0.6, 0.5, 0.4, 0.5]]
+    cells.forEach(([cx, cy, cw, chh], k) => {
+      const a = t(0.1 + k * 0.12); if (!a) return
+      const x = pad + cx * W2 + (cx ? gap / 2 : 0); const yy = y + cy * ph + (cy ? gap / 2 : 0)
+      const w = cw * W2 - (cw < 1 ? gap / 2 : 0); const h = chh * ph - (chh < 1 ? gap / 2 : 0)
+      ctx.save(); ctx.globalAlpha = a; ctx.translate(0, (1 - a) * 40); roundRect(ctx, x, yy, w, h, 28); ctx.clip()
+      fill(ctx, photos[k], x, yy, w, h, 1.04 + 0.05 * (local / SLIDE)); ctx.restore()
+    })
+    y += ph + 50
+  }
+  // Headline
+  ctx.save(); ctx.globalAlpha = t(0.3); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = '#fff'
+  ctx.font = '900 74px Inter, Arial, sans-serif'
+  wrapText(ctx, s.line || 'Your lunch, sorted for the week', W - pad * 2).slice(0, 2).forEach((l, k) => ctx.fillText(l, pad, y + 60 + k * 84))
+  ctx.restore()
+  y += 220
+  // This week's menu
+  const rows = (s.week || []).slice(0, 3)
+  if (rows.length) {
+    const a = t(0.5)
+    const boxH = 70 + rows.length * 66
+    ctx.save(); ctx.globalAlpha = a
+    ctx.fillStyle = 'rgba(255,255,255,.07)'; roundRect(ctx, pad, y, W - pad * 2, boxH, 28); ctx.fill()
+    ctx.font = '800 28px Inter, Arial, sans-serif'; ctx.fillStyle = '#A892FF'; ctx.fillText(s.next ? 'NEXT WEEK’S MENU' : 'THIS WEEK’S MENU', pad + 30, y + 48)
+    rows.forEach((r, k) => {
+      const ry = y + 104 + k * 66
+      ctx.font = '800 36px Inter, Arial, sans-serif'; ctx.fillStyle = '#A892FF'; ctx.fillText(r.label, pad + 30, ry)
+      ctx.font = '600 36px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'
+      ctx.fillText(wrapText(ctx, r.dish, W - pad * 2 - 190)[0] || '', pad + 130, ry)
+    })
+    ctx.restore()
+    y += boxH + 30
+  }
+  // Packages
+  const pk = (s.pkgs || []).slice(0, 3)
+  if (pk.length) {
+    const gap = 14; const cw = (W - pad * 2 - gap * (pk.length - 1)) / pk.length; const chH = 160
+    pk.forEach((p, k) => {
+      const a = back((local - 0.7 - k * 0.12) / 0.5); if (a <= 0) return
+      const x = pad + k * (cw + gap)
+      ctx.save(); ctx.globalAlpha = Math.min(1, a); ctx.translate(x + cw / 2, y + chH / 2); ctx.scale(0.85 + 0.15 * a, 0.85 + 0.15 * a); ctx.translate(-(x + cw / 2), -(y + chH / 2))
+      ctx.fillStyle = k === 0 ? 'rgba(138,108,255,.22)' : 'rgba(255,255,255,.07)'; roundRect(ctx, x, y, cw, chH, 26); ctx.fill()
+      ctx.strokeStyle = k === 0 ? '#8A6CFF' : 'rgba(255,255,255,.16)'; ctx.lineWidth = 3; roundRect(ctx, x, y, cw, chH, 26); ctx.stroke()
+      ctx.textAlign = 'left'; ctx.font = '700 28px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText(p.title, x + 22, y + 46)
+      ctx.font = '900 50px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(money(p.total, { whole: true }), x + 22, y + 106)
+      ctx.font = '700 24px Inter, Arial, sans-serif'; ctx.fillStyle = p.saving ? '#A892FF' : 'rgba(255,255,255,.6)'
+      ctx.fillText(p.saving ? `Save ${money(p.saving, { whole: true })}` : `${p.days} lunch${p.days === 1 ? '' : 'es'}`, x + 22, y + 142)
+      ctx.restore()
+    })
+    y += chH + 40
+    ctx.save(); ctx.globalAlpha = t(1.1); ctx.font = '600 36px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.textAlign = 'left'; ctx.fillText('Or choose your own days.', pad, y + 10); ctx.restore()
+  }
+}
+
+// ---- How to book: the booking page on a phone, a finger showing each tap ----
+// Drawn like the real page (same choices, same words, the plan's real prices
+// and days), one step per scene.
+const PHONE = { x: 60, y: 450, w: 960, h: 1290, r: 76 }
+const ZOOM = 1.3
+function tapAt(ctx, x, y, local, at, from) {
+  // The finger glides to (x, y), presses at `at` seconds, ripples.
+  const k = ease((local - (at - 0.55)) / 0.5)
+  const fx = from[0] + (x - from[0]) * k; const fy = from[1] + (y - from[1]) * k
+  const press = local >= at && local < at + 0.18
+  const ripple = (local - at) / 0.6
+  if (ripple > 0 && ripple < 1) {
+    ctx.save(); ctx.globalAlpha = 1 - ripple; ctx.strokeStyle = '#A892FF'; ctx.lineWidth = 6
+    ctx.beginPath(); ctx.arc(x, y, 30 + ripple * 70, 0, Math.PI * 2); ctx.stroke(); ctx.restore()
+  }
+  ctx.save(); ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8
+  ctx.fillStyle = 'rgba(255,255,255,.92)'; ctx.beginPath(); ctx.arc(fx, fy, press ? 30 : 38, 0, Math.PI * 2); ctx.fill()
+  ctx.shadowColor = 'transparent'; ctx.strokeStyle = '#8A6CFF'; ctx.lineWidth = 6; ctx.stroke()
+  ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(fx, fy, 10, 0, Math.PI * 2); ctx.fill()
+  ctx.restore()
+  return local >= at
+}
+function chip(ctx, x, y, w, h, on, r = 22) {
+  ctx.fillStyle = on ? 'rgba(138,108,255,.28)' : 'rgba(255,255,255,.06)'; roundRect(ctx, x, y, w, h, r); ctx.fill()
+  ctx.strokeStyle = on ? '#8A6CFF' : 'rgba(255,255,255,.16)'; ctx.lineWidth = on ? 4 : 2; roundRect(ctx, x, y, w, h, r); ctx.stroke()
+}
+function drawHowto(ctx, s, local) {
+  const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#241E45'); g.addColorStop(1, '#0E1013')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  const steps = s.steps || 5
+  // Step heading above the phone
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  const a = ease(local / 0.4)
+  ctx.globalAlpha = a
+  ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(110, 300, 46, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = '#fff'; ctx.font = '900 52px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(String(s.step), 110, 318)
+  ctx.textAlign = 'left'; ctx.font = '800 30px Inter, Arial, sans-serif'; ctx.fillStyle = '#A892FF'; ctx.fillText(`HOW TO BOOK · STEP ${s.step} OF ${steps}`, 180, 282)
+  ctx.font = '900 58px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(wrapText(ctx, s.line || '', W - 240)[0] || '', 180, 345)
+  if (s.sub) { ctx.font = '600 34px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.fillText(wrapText(ctx, s.sub, W - 240)[0] || '', 180, 400) }
+  ctx.restore()
+  // The phone
+  const P = PHONE
+  const rise = ease((local - 0.05) / 0.5)
+  ctx.save(); ctx.translate(0, (1 - rise) * 160); ctx.globalAlpha = rise
+  ctx.shadowColor = 'rgba(0,0,0,.55)'; ctx.shadowBlur = 60; ctx.shadowOffsetY = 30
+  ctx.fillStyle = '#05060a'; roundRect(ctx, P.x, P.y, P.w, P.h + 200, P.r); ctx.fill()
+  ctx.shadowColor = 'transparent'
+  ctx.save(); roundRect(ctx, P.x + 22, P.y + 22, P.w - 44, P.h + 200, P.r - 20); ctx.clip()
+  ctx.fillStyle = '#0E1013'; ctx.fillRect(P.x + 22, P.y + 22, P.w - 44, P.h + 200)
+  // The screen is drawn larger than life, so every word reads on a phone.
+  ctx.translate(P.x + 22, P.y + 22); ctx.scale(ZOOM, ZOOM)
+  const sx = 0; const sy = 0; const sw = (P.w - 44) / ZOOM
+  // Site bar
+  ctx.fillStyle = '#15181C'; ctx.fillRect(sx, sy, sw, 110)
+  brandMark(ctx, sx + 30, sy + 30, 50)
+  ctx.font = '800 36px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillText('ZaMarket', sx + 92, sy + 56)
+  ctx.font = '600 24px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.fillText('Weekly lunch', sx + sw - 180, sy + 56)
+  ctx.textBaseline = 'alphabetic'
+  const cx = sx + 34; const cw = sw - 68; let y = sy + 170
+  const d = s.demo || {}
+  const T1 = SLIDE * 0.42; const T2 = SLIDE * 0.68
+  const start = [sx + sw * 0.8, sy + P.h / ZOOM]
+  if (s.how === 'package') {
+    ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Choose your lunch package', cx, y); y += 50
+    const list = [
+      ['Full working week', 'Monday to Friday', d.pkgs?.[0]],
+      ['Monday to Thursday', 'Four days, Friday off', d.pkgs?.find((p) => /Thu/.test(p.title))],
+      ['Two weeks', 'Monday to Friday, both weeks', d.pkgs?.find((p) => /Two/.test(p.title))],
+      ['Choose my days', 'Any days you like', null],
+    ]
+    let target = null
+    list.forEach(([t1, t2, p], k) => {
+      const yy = y + k * 150
+      const on = k === 0 && local >= T1
+      chip(ctx, cx, yy, cw, 128, on, 26)
+      ctx.strokeStyle = on ? '#8A6CFF' : 'rgba(255,255,255,.4)'; ctx.lineWidth = 4; ctx.beginPath(); ctx.arc(cx + 50, yy + 64, 18, 0, Math.PI * 2); ctx.stroke()
+      if (on) { ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(cx + 50, yy + 64, 10, 0, Math.PI * 2); ctx.fill() }
+      ctx.font = '800 36px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(t1, cx + 96, yy + 56)
+      ctx.font = '600 26px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText(t2, cx + 96, yy + 96)
+      if (p) { ctx.textAlign = 'right'; ctx.font = '900 38px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(money(p.total, { whole: true }), cx + cw - 30, yy + 76); ctx.textAlign = 'left' }
+      if (k === 0) target = [cx + cw * 0.45, yy + 64]
+    })
+    tapAt(ctx, target[0], target[1], local, T1, start)
+  } else if (s.how === 'days') {
+    ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Tap a day to add or remove it', cx, y); y += 40
+    const days = (d.days && d.days.length ? d.days : [{ label: 'Mon' }, { label: 'Tue' }, { label: 'Wed' }, { label: 'Thu' }, { label: 'Fri' }]).slice(0, 5)
+    const gw = 14; const dw = (cw - gw * 4) / 5; const dh = 270
+    const tapA = days.findIndex((x) => x.open !== false)
+    days.forEach((x, k) => {
+      const xx = cx + k * (dw + gw)
+      const open = x.open !== false
+      // All open days start ticked; the finger takes one off, then puts it back.
+      const on = open && !(k === tapA && local >= T1 && local < T2)
+      chip(ctx, xx, y, dw, dh, on, 22)
+      ctx.globalAlpha = open ? 1 : 0.35
+      ctx.textAlign = 'center'; ctx.font = '800 26px Inter, Arial, sans-serif'; ctx.fillStyle = on ? '#fff' : 'rgba(255,255,255,.7)'; ctx.fillText(x.label.toUpperCase(), xx + dw / 2, y + 50)
+      ctx.font = '900 34px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(open ? (on ? '✓' : 'Add') : 'Closed', xx + dw / 2, y + 120)
+      if (open && x.dish) { ctx.font = '600 20px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.8)'; wrapText(ctx, x.dish, dw - 16).slice(0, 3).forEach((l, j) => ctx.fillText(l, xx + dw / 2, y + 175 + j * 26)) }
+      ctx.globalAlpha = 1; ctx.textAlign = 'left'
+    })
+    if (tapA >= 0) { const tx = cx + tapA * (dw + gw) + dw / 2; tapAt(ctx, tx, y + 130, local, T1, start); if (local >= T1 + 0.2) tapAt(ctx, tx, y + 130, local, T2, [tx, y + 130]) }
+    y += dh + 70
+    ctx.font = '600 30px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.7)'; wrapText(ctx, 'Each day shows that day’s dish. Closed days cannot be booked here.', cw).slice(0, 2).forEach((l, j) => ctx.fillText(l, cx, y + j * 40))
+  } else if (s.how === 'count') {
+    ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('How many lunches each day?', cx, y); y += 50
+    const n = local >= T2 ? 3 : local >= T1 ? 2 : 1
+    chip(ctx, cx, y, cw, 170, false, 26)
+    ctx.font = '800 36px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Lunches each day', cx + 30, y + 70)
+    ctx.font = '600 26px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('For colleagues too?', cx + 30, y + 112)
+    const bx = cx + cw - 300
+    ;[['−', bx], ['+', bx + 200]].forEach(([c, x]) => { ctx.fillStyle = 'rgba(255,255,255,.1)'; roundRect(ctx, x, y + 45, 90, 80, 20); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillText(c, x + 45, y + 100); ctx.textAlign = 'left' })
+    ctx.font = '900 48px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText(String(n), bx + 145, y + 102); ctx.textAlign = 'left'
+    tapAt(ctx, bx + 245, y + 85, local, T1, start); if (local >= T1 + 0.2) tapAt(ctx, bx + 245, y + 85, local, T2, [bx + 245, y + 85])
+    y += 220
+    if (d.team) {
+      const k = ease((local - T2) / 0.4)
+      if (k > 0) { ctx.save(); ctx.globalAlpha = k; ctx.fillStyle = 'rgba(52,211,153,.12)'; roundRect(ctx, cx, y, cw, 150, 24); ctx.fill(); ctx.font = '800 34px Inter, Arial, sans-serif'; ctx.fillStyle = '#34d399'; ctx.fillText('Ordering for your team?', cx + 30, y + 62); ctx.font = '600 30px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(d.team, cx + 30, y + 110); ctx.restore() }
+    }
+  } else if (s.how === 'details') {
+    ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Where should we bring it?', cx, y); y += 40
+    const half = (cw - 14) / 2
+    chip(ctx, cx, y, half, 96, local >= T1 * 0.7, 20); chip(ctx, cx + half + 14, y, half, 96, false, 20)
+    ctx.textAlign = 'center'; ctx.font = '800 34px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('Office', cx + half / 2, y + 60); ctx.fillText('Home', cx + half * 1.5 + 14, y + 60); ctx.textAlign = 'left'
+    tapAt(ctx, cx + half / 2, y + 48, local, T1 * 0.7, start)
+    y += 140
+    const fields = [['Company or building', d.place || 'Your office building'], ['Landmark', d.landmark || 'Next to the main gate'], ['Your phone', '097• ••• •••']]
+    fields.forEach(([label, value], k) => {
+      const yy = y + k * 150
+      ctx.font = '700 26px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.fillText(label, cx, yy)
+      chip(ctx, cx, yy + 16, cw, 86, false, 18)
+      const typed = Math.max(0, Math.min(1, (local - T1 - k * 0.35) / 0.6))
+      ctx.font = '600 32px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(value.slice(0, Math.round(value.length * typed)), cx + 24, yy + 70)
+    })
+  } else {
+    ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText('How will you pay?', cx, y); y += 40
+    const m = ['MTN MoMo', 'Airtel Money', 'Zamtel Kwacha']
+    const third = (cw - 28) / 3
+    m.forEach((l, k) => { chip(ctx, cx + k * (third + 14), y, third, 96, k === 0 && local >= T1 * 0.8, 20); ctx.textAlign = 'center'; ctx.font = '800 26px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(l, cx + k * (third + 14) + third / 2, y + 58); ctx.textAlign = 'left' })
+    tapAt(ctx, cx + third / 2, y + 48, local, T1 * 0.8, start)
+    y += 150
+    if (d.total) { ctx.font = '700 32px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.fillText('Total for the week', cx, y + 30); ctx.textAlign = 'right'; ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(money(d.total, { whole: true }), cx + cw, y + 34); ctx.textAlign = 'left'; y += 80 }
+    const done = local >= T2 + 0.2
+    ctx.fillStyle = done ? '#34d399' : '#8A6CFF'; roundRect(ctx, cx, y, cw, 110, 55); ctx.fill()
+    ctx.textAlign = 'center'; ctx.font = '900 40px Inter, Arial, sans-serif'; ctx.fillStyle = '#fff'; ctx.fillText(done ? '✓ Order placed' : 'Place my order', cx + cw / 2, y + 70); ctx.textAlign = 'left'
+    tapAt(ctx, cx + cw / 2, y + 55, local, T2, [cx + third / 2, y - 100])
+    if (done) { const k = ease((local - T2 - 0.2) / 0.4); ctx.save(); ctx.globalAlpha = k; ctx.font = '600 32px Inter, Arial, sans-serif'; ctx.fillStyle = 'rgba(255,255,255,.85)'; wrapText(ctx, 'We call you to confirm. Your lunch arrives on each day you chose.', cw).slice(0, 2).forEach((l, j) => ctx.fillText(l, cx, y + 170 + j * 42)); ctx.restore() }
+  }
+  ctx.restore()
+  ctx.restore()
 }
 
 // "03 / 07", outlined, sliding in.
@@ -583,7 +837,7 @@ function wrapText(ctx, text, max) {
 }
 
 export async function prepare(script, link) {
-  const imgs = await Promise.all(script.slides.map((s) => (s.type === 'collage' ? Promise.all((s.photos || []).map(load)) : s.photo ? load(s.photo) : Promise.resolve(null))))
+  const imgs = await Promise.all(script.slides.map((s) => (s.type === 'collage' || s.type === 'offer' ? Promise.all((s.photos || []).map(load)) : s.photo ? load(s.photo) : Promise.resolve(null))))
   const qr = link ? await qrImage(link, '#0E1013', '#ffffff') : null
   return { imgs, end: { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' } }
 }
@@ -790,7 +1044,8 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...(sc.rows ? { rows: sc.rows } : {}), ...(sc.photos ? { photos: sc.photos } : {}) })
+const KEEP = ['rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
+const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...Object.fromEntries(KEEP.filter((k) => sc[k] != null).map((k) => [k, sc[k]])) })
 
 // A new scene from a block, on a chosen photo.
 export const sceneFrom = (block, photo) => ({ id: sceneId(), photo: photo ?? block.photo ?? null, ...clean(block.scene) })

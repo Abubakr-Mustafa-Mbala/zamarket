@@ -612,3 +612,5 @@
 .ln-reviews-dots { display: flex; justify-content: center; gap: 6px; }
 .ln-reviews-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,.25); transition: width .2s; }
 .ln-reviews-dots span.on { width: 20px; border-radius: 4px; background: var(--ln-accent, #8A6CFF); }
+.ln-ask { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; width: 100%; margin: 6px 0 12px; padding: 12px 14px; border-radius: 14px; border: 1px dashed var(--ln-accent); background: transparent; color: var(--ln-text); font: inherit; text-align: left; cursor: pointer; }
+.ln-ask b { color: var(--ln-accent); }

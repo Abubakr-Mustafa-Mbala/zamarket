@@ -22,7 +22,7 @@ export async function renderJob(spec, onProgress) {
   const slides = spec.script.slides
   const cache = new Map()
   await loadPhotos(slides.flatMap((x) => [x.photo, ...(x.photos || [])]), cache)
-  const imgs = slides.map((x) => (x.type === 'collage' ? (x.photos || []).map((u) => cache.get(u)).filter(Boolean) : cache.get(x.photo) || null))
+  const imgs = slides.map((x) => (x.type === 'collage' || x.type === 'offer' ? (x.photos || []).map((u) => cache.get(u)).filter(Boolean) : cache.get(x.photo) || null))
   const end = await endCard(spec.script, spec.link)
   const apply = () => { setPace(spec.pace); setMotion(spec.motion) }
   apply()
