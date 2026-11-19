@@ -2,6 +2,7 @@ import { load, qrImage, brandMark } from './posterKit'
 import { cleanTiers } from './lunch'
 import { finishVideo, videoSeconds } from './videoFinish'
 import { money } from './format'
+import { openMic, liveStudio } from './studioVoice'
 import { vehicleOf, vehicleTitle, priceNote, standoutFeatures, km, vehicleFacts, rankFeatures } from './vehicle'
 
 // Short vertical videos made from what is already on the site: a listing's
@@ -1011,12 +1012,12 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
   onStage?.('Getting ready…')
   const cfg = await pickRecorder((ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) })
   if (!cfg) throw new Error('This phone could not record a working video. Try Chrome, or make it on a computer.')
-  let mic = null
-  if (voice) mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+  let mic = null; let raw = null; let shaped = null
+  if (voice) { raw = await openMic(); shaped = liveStudio(raw); mic = shaped.stream }
   // 3, 2, 1 before anything is recorded, with the first scene on screen.
   if (countdown) {
     show((() => { const c = document.createElement('canvas'); c.width = W; c.height = H; drawFrame(c.getContext('2d'), 0.6, script.slides, assets.imgs, assets.end); return c })())
-    try { await countdown() } catch (e) { mic?.getTracks().forEach((t) => t.stop()); throw e }
+    try { await countdown() } catch (e) { raw?.getTracks().forEach((t) => t.stop()); shaped?.stop(); throw e }
   }
   const length = videoLength(script.slides)
   onStage?.('Recording')
@@ -1033,7 +1034,7 @@ export async function recordVideo(preview, script, assets, { voice = false, onPr
       blob = await capture(cfg, length, (ctx, t, c) => { drawFrame(ctx, t, script.slides, assets.imgs, assets.end); show(c) }, { audio: mic, onProgress })
     }
   } finally {
-    mic?.getTracks().forEach((t) => t.stop())
+    raw?.getTracks().forEach((t) => t.stop()); shaped?.stop()
   }
   onStage?.('Checking the video…')
   if (!(await playable(blob, 8000))) {

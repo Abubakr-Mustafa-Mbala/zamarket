@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
+import { openMic } from '../../lib/studioVoice'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
@@ -139,6 +140,9 @@ export default function VideoMaker() {
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   // The full video, or the ~30-second ad cut of it.
   const [short, setShort] = useState(() => { try { return localStorage.getItem('zm-video-ad') === '1' } catch { return false } })
+  // Studio voice (cleaned and shaped) or the voice exactly as recorded.
+  const [studio, setStudio] = useState(() => { try { return localStorage.getItem('zm-video-studio') !== '0' } catch { return true } })
+  const chooseStudio = (v) => { setStudio(v); try { localStorage.setItem('zm-video-studio', v ? '1' : '0') } catch { /* ignore */ } }
   const chooseShort = (v) => { setShort(v); try { localStorage.setItem('zm-video-ad', v ? '1' : '0') } catch { /* ignore */ } }
   useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
   setMotion(motion)
@@ -295,7 +299,7 @@ export default function VideoMaker() {
   }, [assets, script, busy, secs, open, motion])
 
   const spec = () => ({
-    title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion,
+    title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion, studio,
     script: { slides: script.slides, end: parts.end, endSay: parts.endSay, caption: script.caption },
     ...(music ? { music: { blob: music.blob, start: sound.start || 0, name: music.name } } : {}),
   })
@@ -341,7 +345,7 @@ export default function VideoMaker() {
     ctrl.current = c
     let mic = null; let raf = 0
     try {
-      mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
+      mic = await openMic()
       setPace(secs); setMotion(motion)
       const ctx = canvas.current.getContext('2d')
       ctx.setTransform(1, 0, 0, 1, 0, 0)
@@ -458,6 +462,11 @@ export default function VideoMaker() {
               <div className="vx-tabs">{MOTIONS.map(([m, l]) => <button key={m} type="button" disabled={!!busy} className={motion === m ? 'on' : ''} onClick={() => chooseMotion(m)}>{l}</button>)}</div>
             </div>
             <div className="vx-pace">
+              <span>Your voice</span>
+              <div className="vx-tabs">{[[true, 'Studio voice'], [false, 'As recorded']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={studio === v ? 'on' : ''} onClick={() => chooseStudio(v)}>{l}</button>)}</div>
+              <small className="vx-muted">{studio ? 'Your recording is cleaned up: room noise between words turned down, warmer and clearer, the same volume all through. Record close to the phone, in a room with curtains or a sofa.' : 'Your voice exactly as the phone recorded it.'}</small>
+            </div>
+            <div className="vx-pace">
               <span>Length</span>
               <div className="vx-tabs">{[[false, 'Full video'], [true, '30-second ad']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={short === v ? 'on' : ''} onClick={() => chooseShort(v)}>{l}</button>)}</div>
               <small className="vx-muted">{short ? `${script.slides.length} of ${scenes.length} scenes, about ${Math.round(videoLength(script.slides))} seconds: the opening, the best features and the price. For adverts and Reels.` : `All ${scenes.length} scenes, about ${Math.round(videoLength(script.slides))} seconds.`}</small>
@@ -543,7 +552,7 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fetching, leng
   return (
     <section className="vx-card-block vx-sound">
       <h3>Background sound</h3>
-      <p className="vx-muted tiny">For videos without your voice. Add a nasheed or qasida with voices only: a sound file, a video (only its sound is kept), or a link. It plays for the whole video, from the part you choose.</p>
+      <p className="vx-muted tiny">Add a nasheed or qasida with voices only: a sound file, a video (only its sound is kept), or a link. It plays for the whole video, from the part you choose; with your voice, softly underneath.</p>
       <div className="vx-tabs vx-sound-list">
         <button type="button" disabled={busy} className={!music ? 'on' : ''} onClick={() => { stop(); setSound(null) }}>No sound</button>
         {sounds.map((x) => <button key={x.id} type="button" disabled={busy} className={sound?.id === x.id ? 'on' : ''} onClick={() => { stop(); setSound({ id: x.id, start: sound?.id === x.id ? sound.start || 0 : 0 }) }}>♪ {x.name}{x.online ? '' : ' (this phone)'}</button>)}

@@ -2,6 +2,7 @@ import { drawFrame, videoLength, heldTime, setPace, setMotion, loadPhotos, endCa
 import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
 import { soundBed } from './videoSounds'
+import { studioVoice, mixUnder } from './studioVoice'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
 // of recording the screen in real time. A 30-second video takes seconds, and
@@ -32,6 +33,8 @@ export async function renderJob(spec, onProgress) {
   if (spec.audio) {
     const raw = await spec.audio.arrayBuffer()
     voice = await new OfflineAudioContext(1, 48000, 48000).decodeAudioData(raw)
+    // Studio voice: warm, clear and even, not "recorded on a phone".
+    if (spec.studio !== false) { try { voice = await studioVoice(voice) } catch (e) { console.warn('[video] studio voice skipped', e) } }
   }
 
   // When each scene shows.
@@ -47,9 +50,13 @@ export async function renderJob(spec, onProgress) {
 
   // A nasheed under a video without a voice: from where you chose, looped
   // to the video's length, faded in and out.
+  // With your voice, it plays softly underneath.
   let bed = null
-  if (!voice && spec.music?.blob) {
-    try { bed = await soundBed(spec.music.blob, spec.music.start || 0, length) } catch (e) { console.warn('[video] sound skipped', e) }
+  if (spec.music?.blob) {
+    try {
+      bed = await soundBed(spec.music.blob, spec.music.start || 0, voice ? voice.duration : length)
+      if (voice) { voice = await mixUnder(voice, bed); bed = null }
+    } catch (e) { console.warn('[video] sound skipped', e) }
   }
 
   // Full HD when the phone can encode it; on phones whose encoder only takes
