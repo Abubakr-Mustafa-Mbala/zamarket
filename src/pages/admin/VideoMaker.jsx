@@ -126,25 +126,40 @@ export default function VideoMaker() {
   const [ai, setAi] = useState({ state: 'idle' })
   const touched = useRef(false)
   const featureList = useMemo(() => (parts && kind === 'vehicle' ? parts.blocks.filter((b) => b.feature).map((b) => b.label) : []), [parts, kind])
+  // Features the AI saw that you left out (it saw them; you decide).
+  const [leftOut, setLeftOut] = useState(() => new Set())
   const summarise = (m) => {
-    const asked = (m.features || []).filter((f) => parts.starter.some((s) => s.feature && s.line === f.feature))
+    const asked = m.features || []
     const found = asked.filter((f) => f.photo >= 0)
-    const unseen = asked.filter((f) => f.photo < 0).map((f) => f.feature)
-    return { state: 'done', found: found.length, total: asked.length, unseen, maybe: found.filter((f) => f.sure === 'maybe').length }
+    const unseen = asked.filter((f) => f.photo < 0 && parts.starter.some((s) => s.feature && s.line === f.feature)).map((f) => f.feature)
+    return { state: 'done', match: m, found: found.length, total: asked.length, unseen, maybe: found.filter((f) => f.sure === 'maybe').length, spotted: m.spotted || [] }
   }
+  // Spotted features the AI was sure of are in unless you take them out;
+  // "maybe" ones are out unless you put them in.
+  const kept = (m, off) => (m.spotted || []).filter((f) => (f.sure === 'yes' ? !off.has(f.feature) : off.has(`+${f.feature}`)))
+  const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off) })
   const runAi = async (fresh) => {
     if (!pick || !featureList.length) return
-    const base = parts.starter
+    const off = new Set(); setLeftOut(off)
     const cached = !fresh && cachedMatch(pick, featureList)
-    if (cached) { setScenes(applyPhotoMatch(base, cached, pick.images || [])); setAi(summarise(cached)); return }
-    setAi({ state: 'checking' })
+    if (cached) { setScenes(build(cached, off)); setAi(summarise(cached)); return }
+    setAi({ state: 'checking', step: 0, steps: Math.ceil(Math.min((pick.images || []).length, 64) / 16) })
     try {
-      const m = await matchPhotos(pick, featureList)
+      const m = await matchPhotos(pick, featureList, (step, steps) => setAi({ state: 'checking', step, steps }))
       if (touched.current) { setAi({ ...summarise(m), late: true }); return }
-      setScenes(applyPhotoMatch(base, m, pick.images || [])); setOpen(null)
+      setScenes(build(m, off)); setOpen(null)
       setAi(summarise(m))
     } catch (e) { setAi({ state: 'error', note: e.message }) }
   }
+  const toggleSeen = (f) => {
+    if (!ai.match) return
+    if (touched.current && !window.confirm('Rebuild the video with this change? Your own changes to the scenes are replaced.')) return
+    const key = f.sure === 'yes' ? f.feature : `+${f.feature}`
+    const off = new Set(leftOut); if (off.has(key)) off.delete(key); else off.add(key)
+    touched.current = false; forget()
+    setLeftOut(off); setScenes(build(ai.match, off)); setOpen(null)
+  }
+  const isKept = (f) => (f.sure === 'yes' ? !leftOut.has(f.feature) : leftOut.has(`+${f.feature}`))
   const aiAgain = () => {
     if (touched.current && !window.confirm('Let the AI arrange the photos again? Your changes for this car are replaced.')) return
     touched.current = false; forget()
@@ -361,7 +376,7 @@ export default function VideoMaker() {
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · MP4{fast() ? ' · made in seconds, you can leave the page' : ''}</p>
-            {kind === 'vehicle' && featureList.length > 0 && <AiCheck ai={ai} again={aiAgain} />}
+            {kind === 'vehicle' && featureList.length > 0 && <AiCheck ai={ai} again={aiAgain} toggle={toggleSeen} isKept={isKept} />}
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
@@ -490,19 +505,25 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
 }
 
 // What the AI found in the photos, in one line, with a way to ask again.
-function AiCheck({ ai, again }) {
+function AiCheck({ ai, again, toggle, isKept }) {
   if (ai.state === 'idle') return null
   return (
     <div className={`vx-ai is-${ai.state}`} role="status">
-      {ai.state === 'checking' && <><span className="vx-spin" /><span>AI is looking at the photos to find each feature…</span></>}
+      {ai.state === 'checking' && <><span className="vx-spin" /><span>AI is looking at the photos{ai.steps > 1 ? ` (${Math.min(ai.step + 1, ai.steps)} of ${ai.steps} batches)` : ''} to find each feature…</span></>}
       {ai.state === 'done' && (
         <span>
           <b>✨ AI checked the photos.</b>{' '}
-          {ai.total ? `${ai.found} of ${ai.total} features are on the photo that shows them.` : ''}
+          {ai.total ? `${ai.found} of ${ai.total} listed features are on a photo that shows them.` : ''}
           {ai.unseen.length ? ` Not seen in any photo: ${ai.unseen.join(', ')}. ${ai.unseen.length > 1 ? 'They are' : 'It is'} listed on an "Also has" card instead of over a wrong photo.` : ''}
           {ai.maybe ? ` ${ai.maybe} marked "not sure": have a look in Change scenes.` : ''}
           {ai.late ? ' You had already changed the scenes, so nothing was moved; tap Check again to use it.' : ''}
         </span>
+      )}
+      {ai.state === 'done' && ai.spotted.length > 0 && (
+        <div className="vx-ai-seen">
+          <small>The AI also saw these in the photos. Tap to leave one out (or put a &ldquo;not sure&rdquo; one in):</small>
+          <div>{ai.spotted.map((f) => <button key={f.feature} type="button" className={isKept(f) ? 'on' : ''} onClick={() => toggle(f)}>{isKept(f) ? '✓ ' : '+ '}{f.feature}{f.sure === 'maybe' ? ' (not sure)' : ''}</button>)}</div>
+        </div>
       )}
       {ai.state === 'error' && <span>The AI photo check did not work: {ai.note}</span>}
       {ai.state !== 'checking' && <button type="button" className="vx-btn ghost" onClick={again}>Check again</button>}
@@ -575,7 +596,7 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                 <button type="button" className="vx-scene-main" disabled={busy} onClick={() => setOpen(isOpen ? null : sc.id)}>
                   <span className="vx-scene-n">{i + 1}</span>
                   {sc.photo || sc.photos?.[0] ? <img src={sc.photo || sc.photos[0]} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
-                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? (sc.kicker === 'Also has' ? `Also has: ${(sc.rows || []).map((r) => r[0]).join(', ')}` : 'Specifications card') : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.ai === 'yes' && sc.checked ? <em className="vx-scene-ai">✓ AI: this photo shows it</em> : sc.feature && !sc.checked ? <em className="vx-scene-check">{sc.ai === 'maybe' ? 'AI is not sure: check the photo' : 'Check the photo shows it'}</em> : sc.kicker === 'Also has' ? 'Not seen in any photo' : kind}</small></span>
+                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? (sc.kicker === 'Also has' ? `Also has: ${(sc.rows || []).map((r) => r[0]).join(', ')}` : 'Specifications card') : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.seen ? <em className="vx-scene-ai">✨ AI saw this in the photo</em> : sc.ai === 'yes' && sc.checked ? <em className="vx-scene-ai">✓ AI: this photo shows it</em> : sc.feature && !sc.checked ? <em className="vx-scene-check">{sc.ai === 'maybe' ? 'AI is not sure: check the photo' : 'Check the photo shows it'}</em> : sc.kicker === 'Also has' ? 'Not seen in any photo' : kind}</small></span>
                 </button>
                 <span className="vx-scene-tools">
                   <button type="button" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}>↑</button>

@@ -233,3 +233,17 @@ test('video maker: AI checks which photo shows each feature before the video is 
   assert.match(ui, /if \(!hasDraft && kind === 'vehicle'\) runAi\(false\)/)
   assert.match(ui, /touched\.current\) \{ try \{ localStorage\.setItem\(draftKey/)
 })
+
+test('video maker: AI goes through up to 64 photos, finds more features you can untick', async () => {
+  const { safeSpotted, safePhotoMatch } = await import('../netlify/functions/ai-assist.js')
+  assert.deepEqual(['Sunroof', 'premium leather', 'Alloy wheels 18 inch', 'Immaculate interior', 'roof rails.'].map(safeSpotted), ['Sunroof', null, null, null, 'Roof rails'])
+  const r = safePhotoMatch({ cover: 2, photos: [], features: [{ feature: 'Navigation', photo: 3, sure: 'yes' }], spotted: [{ feature: 'sunroof', photo: 2, sure: 'yes' }, { feature: 'navigation', photo: 1, sure: 'yes' }] }, ['Navigation'], 4, 16)
+  assert.equal(r.features[0].photo, 19) // photo numbers count from the batch start
+  assert.deepEqual(r.spotted, [{ feature: 'Sunroof', photo: 18, sure: 'yes' }])
+  const fn = read('netlify/functions/ai-assist.js')
+  assert.match(fn, /all\.slice\(offset, offset \+ 16\)/)
+  const pm = read('src/lib/photoMatch.js')
+  assert.match(pm, /const MOST = 64/)
+  assert.match(read('src/lib/listingVideo.js'), /every listed feature a photo shows/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /The AI also saw these in the photos/)
+})

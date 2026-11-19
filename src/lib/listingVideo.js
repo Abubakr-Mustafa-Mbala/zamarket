@@ -578,24 +578,35 @@ export async function endCard(script, link) {
 const KIND_ORDER = ['exterior_front', 'exterior_side', 'exterior_rear', 'wheel', 'interior_front', 'dashboard', 'seats', 'interior_rear', 'boot', 'engine', 'detail', 'other', 'document']
 const listOf = (a) => (a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0] || '').toLowerCase()
 
-export function applyPhotoMatch(scenes, match, images) {
+export function applyPhotoMatch(scenes, match, images, { extra = [], most = 10 } = {}) {
   if (!match || !Array.isArray(scenes)) return scenes
   const url = (i) => (Number.isInteger(i) && i >= 0 ? images[i] || null : null)
   const byFeature = new Map((match.features || []).map((f) => [f.feature, f]))
+  const captionOf = new Map((match.photos || []).filter((p) => p.caption).map((p) => [images[p.index], p.caption]))
   const unseen = []
-  let lastFeature = -1
   let out = []
   for (const sc of scenes) {
     if (sc.feature && byFeature.has(sc.line)) {
       const m = byFeature.get(sc.line)
-      if (m.photo >= 0 && url(m.photo)) {
-        out.push({ ...sc, photo: url(m.photo), checked: m.sure === 'yes', ai: m.sure })
-        lastFeature = out.length - 1
-      } else unseen.push(sc.line)
+      if (m.photo >= 0 && url(m.photo)) out.push({ ...sc, photo: url(m.photo), checked: m.sure === 'yes', ai: m.sure })
+      else unseen.push(sc.line)
       continue
     }
     out.push(sc)
   }
+  // More features: every listed feature a photo shows (not only the top few),
+  // then the ones the AI saw that you kept. Each over the photo that shows it.
+  const have = new Set(out.filter((s) => s.feature).map((s) => s.line.toLowerCase()))
+  const more = [
+    ...(match.features || []).filter((f) => f.photo >= 0 && f.sure === 'yes').map((f) => ({ ...f, from: 'listing' })),
+    ...extra.map((f) => ({ ...f, sure: 'yes', from: 'seen' })),
+  ].filter((f) => url(f.photo) && !have.has(f.feature.toLowerCase()))
+  const room = Math.max(0, most - have.size)
+  let lastFeature = out.reduce((n, s, i) => (s.feature ? i : n), -1)
+  if (lastFeature < 0) lastFeature = Math.max(0, out.findIndex((s) => s.type === 'specs'))
+  const added = more.slice(0, room).map((f) => ({ id: sceneId(), kicker: '', line: f.feature, sub: '', say: `${f.feature}.`, photo: url(f.photo), feature: true, checked: true, ai: 'yes', ...(f.from === 'seen' ? { seen: true } : {}) }))
+  out.splice(lastFeature + 1, 0, ...added)
+  lastFeature += added.length
   // "Highlights" stays on the first feature scene.
   const firstFeature = out.findIndex((s) => s.feature)
   if (firstFeature >= 0 && scenes.some((s) => s.feature && s.kicker === 'Highlights')) out = out.map((s, i) => (s.feature ? { ...s, kicker: i === firstFeature ? 'Highlights' : (s.kicker === 'Highlights' ? '' : s.kicker) } : s))
@@ -603,16 +614,21 @@ export function applyPhotoMatch(scenes, match, images) {
   if (cover && out[0] && !out[0].type) out[0] = { ...out[0], photo: cover }
   if (unseen.length) {
     const card = { id: sceneId(), type: 'specs', kicker: 'Also has', rows: unseen.slice(0, 6).map((f) => [f, '✓']), line: '', sub: '', say: `It also has ${listOf(unseen)}.`, photo: cover || images[0] || null }
-    const at = lastFeature >= 0 ? lastFeature + 1 : Math.max(1, out.findIndex((s) => s.type === 'specs') + 1)
-    out.splice(at, 0, card)
+    out.splice(lastFeature + 1, 0, card)
   }
-  // Plain photo scenes: photos not used above, outside first, papers last.
+  // Plain photo scenes: photos not used above, outside first, papers last,
+  // with the AI's short line about each for the voice-over.
   const plain = (s) => !s.type && !s.line && !s.kicker
   const used = new Set(out.filter((s) => !plain(s)).map((s) => s.photo))
   const kindOf = new Map((match.photos || []).map((p) => [p.index, p.kind]))
-  const rank = (i) => { const k = KIND_ORDER.indexOf(kindOf.get(i) || 'other'); return k < 0 ? 99 : k }
-  const rest = images.map((u, i) => ({ u, i })).filter((x) => x.u && !used.has(x.u)).sort((a, b) => rank(a.i) - rank(b.i)).map((x) => x.u)
+  const rankOf = (i) => { const k = KIND_ORDER.indexOf(kindOf.get(i) || 'other'); return k < 0 ? 99 : k }
+  const rest = images.map((u, i) => ({ u, i })).filter((x) => x.u && !used.has(x.u) && kindOf.get(x.i) !== 'document').sort((a, b) => rankOf(a.i) - rankOf(b.i)).map((x) => x.u)
   let k = 0
-  out = out.map((s) => (plain(s) && rest[k] ? { ...s, photo: rest[k++] } : s))
+  out = out.map((s) => {
+    if (!plain(s)) return s
+    const photo = rest[k] ? rest[k++] : s.photo
+    const line = captionOf.get(photo)
+    return { ...s, photo, say: s.say || (line ? `${line.replace(/[.!]+$/, '')}.` : '') }
+  })
   return out
 }

@@ -740,3 +740,7 @@ button.vx-sound-add { background: transparent; font: inherit; font-weight: 800; 
 .vx-ai .vx-spin { width: 18px; height: 18px; border-width: 2px; border-color: rgba(166,116,255,.3); border-top-color: var(--vx-accent); }
 .vx-ai.is-error { border-color: rgba(248,113,113,.6); background: rgba(248,113,113,.08); }
 .vx-scene-ai { font-style: normal; color: #16a34a; font-weight: 700; }
+.vx-ai-seen { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; }
+.vx-ai-seen > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.vx-ai-seen button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(166,116,255,.5); background: transparent; color: inherit; font: inherit; font-weight: 700; font-size: .85rem; cursor: pointer; }
+.vx-ai-seen button.on { background: var(--vx-accent); border-color: var(--vx-accent); color: #1b1430; }
