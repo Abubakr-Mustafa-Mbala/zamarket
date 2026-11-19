@@ -293,3 +293,19 @@ test('lunch: plan lists only lunch dishes; video maker reads lunch plans by thei
   assert.match(ui, /from\('meal_deals'\)\.select\(DEAL_COLS\)/)
   assert.doesNotMatch(ui, /from\('meal_deals'\)\.select\('\*'\)/)
 })
+
+test('video maker: AI writes the lunch video as an offer, only from the plan facts', async () => {
+  const { safeLunchScenes } = await import('../netlify/functions/ai-assist.js')
+  const facts = { lunch_from: 'K135', order_by: '18:00 the day before', team_discount: [{ min: 5, percent_off: 5 }] }
+  const r = safeLunchScenes({ scenes: [
+    { photo: 0, kicker: 'Lunch', line: 'From K135 a lunch', sub: '', say: '' },
+    { photo: 0, kicker: 'Hurry', line: 'Only 3 left!', sub: '', say: '' },
+    { photo: 9, kicker: 'Deal', line: '20% off this week', sub: '', say: '' },
+    { photo: 1, kicker: 'Team', line: '5+ lunches: 5% off', sub: 'Order by 18:00', say: '' },
+  ], caption: 'a\nb' }, 2, facts)
+  assert.deepEqual(r.scenes.map((x) => x.line), ['From K135 a lunch', '5+ lunches: 5% off'])
+  assert.equal(r.caption, 'a\nb')
+  const ui = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(ui, /task: 'lunch_video', deal_id: pick\.id/)
+  assert.match(ui, /kind === 'vehicle' \|\| kind === 'product' \|\| kind === 'lunch'/)
+})

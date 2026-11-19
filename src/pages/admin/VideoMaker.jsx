@@ -10,6 +10,7 @@ import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
 import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
+import { askAssist } from '../../lib/aiAssist'
 import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice, soundBlob, soundWave } from '../../lib/videoSounds'
 import { DEAL_COLS } from '../public/Lunch'
 import '../../motors.css'
@@ -137,8 +138,29 @@ export default function VideoMaker() {
   // video is made. Runs by itself for a car with no changes of yours yet.
   const [ai, setAi] = useState({ state: 'idle' })
   const touched = useRef(false)
-  // Cars and products (lunch dishes already come with their own photos).
-  const aiKind = kind === 'vehicle' || kind === 'product'
+  // Cars and products: photo check. Lunch plans: the AI writes the whole
+  // video as an offer, from the plan's own facts and photos.
+  const aiKind = kind === 'vehicle' || kind === 'product' || kind === 'lunch'
+  const [aiCaption, setAiCaption] = useState('')
+  const lunchKey = pick && kind === 'lunch' ? `zm-lunch-ai-v1-${pick.id}-${JSON.stringify([pick.title, pick.dishes, pick.cover_url, pick.in_the_box, pick.group_discounts, pick.day_discounts, pick.trial_first, pick.guarantee, pick.cutoff_hour, pick.delivery_windows]).length}` : ''
+  const applyLunch = (r) => {
+    const list = (r.scenes || []).map((x) => sceneFrom({ scene: { kicker: x.kicker, line: x.line, sub: x.sub, say: x.say } }, x.photo_url || null))
+    setScenes(list); setOpen(null)
+    setAiCaption(r.caption ? `${r.caption}\n${link}` : '')
+    setAi({ state: 'done', lunch: true, count: list.length })
+  }
+  const runLunch = async (fresh) => {
+    let cached = null
+    if (!fresh) { try { cached = JSON.parse(localStorage.getItem(lunchKey) || 'null') } catch { cached = null } }
+    if (cached?.scenes?.length) return applyLunch(cached)
+    setAi({ state: 'writing' })
+    try {
+      const r = await askAssist({ task: 'lunch_video', deal_id: pick.id })
+      try { localStorage.setItem(lunchKey, JSON.stringify(r)) } catch { /* full */ }
+      if (touched.current) { setAi({ state: 'done', lunch: true, count: (r.scenes || []).length, late: true }); return }
+      applyLunch(r)
+    } catch (e) { setAi({ state: 'error', note: e.message }) }
+  }
   const featureList = useMemo(() => (parts && aiKind ? parts.blocks.filter((b) => b.feature).map((b) => b.label).slice(0, 12) : []), [parts, aiKind])
   // Features the AI saw that you left out (it saw them; you decide).
   const [leftOut, setLeftOut] = useState(() => new Set())
@@ -153,6 +175,7 @@ export default function VideoMaker() {
   const kept = (m, off) => (m.spotted || []).filter((f) => (f.sure === 'yes' ? !off.has(f.feature) : off.has(`+${f.feature}`)))
   const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off), keepUnseen: kind !== 'vehicle' })
   const runAi = async (fresh) => {
+    if (kind === 'lunch' && pick) return runLunch(fresh)
     if (!pick || !aiKind || !(pick.images || []).length) return
     const off = new Set(); setLeftOut(off)
     const cached = !fresh && cachedMatch(pick, featureList)
@@ -175,7 +198,7 @@ export default function VideoMaker() {
   }
   const isKept = (f) => (f.sure === 'yes' ? !leftOut.has(f.feature) : leftOut.has(`+${f.feature}`))
   const aiAgain = () => {
-    if (touched.current && !window.confirm('Let the AI arrange the photos again? Your changes for this car are replaced.')) return
+    if (touched.current && !window.confirm(kind === 'lunch' ? 'Let the AI write the lunch video again? Your changes are replaced.' : 'Let the AI arrange the photos again? Your changes for this car are replaced.')) return
     touched.current = false; forget()
     runAi(true)
   }
@@ -188,7 +211,7 @@ export default function VideoMaker() {
     const hasDraft = Array.isArray(saved) && saved.length
     setScenes(hasDraft ? saved : parts.starter)
     touched.current = !!hasDraft
-    setAi({ state: 'idle' })
+    setAi({ state: 'idle' }); setAiCaption('')
     if (!hasDraft && aiKind) runAi(false)
     setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
@@ -203,7 +226,7 @@ export default function VideoMaker() {
     if (missing.length) loadPhotos(missing, cache.current).then(() => setLoaded((n) => n + 1))
   }, [scenes])
 
-  const script = useMemo(() => (parts ? { slides: scenes, end: parts.end, endSay: parts.endSay, caption: parts.caption, voice: voiceFor(scenes, parts.endSay) } : null), [parts, scenes])
+  const script = useMemo(() => (parts ? { slides: scenes, end: parts.end, endSay: parts.endSay, caption: aiCaption || parts.caption, voice: voiceFor(scenes, parts.endSay) } : null), [parts, scenes, aiCaption])
   const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
 
   // Editing scenes
@@ -249,7 +272,7 @@ export default function VideoMaker() {
 
   const spec = () => ({
     title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion,
-    script: { slides: scenes, end: parts.end, endSay: parts.endSay, caption: parts.caption },
+    script: { slides: scenes, end: parts.end, endSay: parts.endSay, caption: script.caption },
     ...(music ? { music: { blob: music.blob, start: sound.start || 0, name: music.name } } : {}),
   })
 
@@ -270,7 +293,7 @@ export default function VideoMaker() {
     try {
       const countdown = voice ? countIn : null
       const r = await recordVideo(canvas.current, script, assets, { voice, onProgress: setProgress, onStage: setStage, controller: ctrl.current, countdown })
-      await keepVideo({ title: title(pick), slug: pick.slug || pick.id, kind, caption: parts.caption, blob: r.blob })
+      await keepVideo({ title: title(pick), slug: pick.slug || pick.id, kind, caption: script.caption, blob: r.blob })
       toast('Video ready')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
@@ -581,8 +604,15 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
   if (ai.state === 'idle') return null
   return (
     <div className={`vx-ai is-${ai.state}`} role="status">
+      {ai.state === 'writing' && <><span className="vx-spin" /><span>AI is looking at the dishes and writing the lunch video from the plan…</span></>}
+      {ai.state === 'done' && ai.lunch && (
+        <span>
+          <b>✨ AI wrote this lunch video.</b> {ai.count} scenes, told as an offer: the problem it solves, the food, and why it is easy to say yes. Every price, time and discount was checked against the plan; nothing made up.
+          {ai.late ? ' You had already changed the scenes, so nothing was replaced; tap Write again to use it.' : ''}
+        </span>
+      )}
       {ai.state === 'checking' && <><span className="vx-spin" /><span>AI is looking at the photos{ai.steps > 1 ? ` (${Math.min(ai.step + 1, ai.steps)} of ${ai.steps} batches)` : ''} to find each feature…</span></>}
-      {ai.state === 'done' && (
+      {ai.state === 'done' && !ai.lunch && (
         <span>
           <b>✨ AI checked the photos.</b>{' '}
           {ai.total ? `${ai.found} of ${ai.total} listed ${car ? 'features' : 'points'} are on a photo that shows them.` : 'It picked the best opening photo and put the photos in a good order.'}
@@ -592,14 +622,14 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
           {ai.late ? ' You had already changed the scenes, so nothing was moved; tap Check again to use it.' : ''}
         </span>
       )}
-      {ai.state === 'done' && ai.spotted.length > 0 && (
+      {ai.state === 'done' && !ai.lunch && ai.spotted.length > 0 && (
         <div className="vx-ai-seen">
           <small>The AI also saw these in the photos. Tap to leave one out (or put a &ldquo;not sure&rdquo; one in):</small>
           <div>{ai.spotted.map((f) => <button key={f.feature} type="button" className={isKept(f) ? 'on' : ''} onClick={() => toggle(f)}>{isKept(f) ? '✓ ' : '+ '}{f.feature}{f.sure === 'maybe' ? ' (not sure)' : ''}</button>)}</div>
         </div>
       )}
       {ai.state === 'error' && <span>The AI photo check did not work: {ai.note}</span>}
-      {ai.state !== 'checking' && <button type="button" className="vx-btn ghost" onClick={again}>Check again</button>}
+      {ai.state !== 'checking' && ai.state !== 'writing' && <button type="button" className="vx-btn ghost" onClick={again}>{ai.lunch ? 'Write again' : 'Check again'}</button>}
     </div>
   )
 }
