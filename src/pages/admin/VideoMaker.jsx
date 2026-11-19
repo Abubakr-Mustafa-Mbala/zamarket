@@ -3,12 +3,13 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice } from '../../lib/lunch'
 import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
+import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
 import { listSounds, addSound, addSoundFromLink, removeSound, savedChoice, saveChoice } from '../../lib/videoSounds'
 import '../../motors.css'
 
@@ -107,7 +108,7 @@ export default function VideoMaker() {
     ? `https://zamarket.shop/lunch/${pick.slug}`
     : code ? `https://zamarket.shop/r/${code}/${pick.slug || pick.id}` : `https://zamarket.shop/p/${pick.slug || pick.id}`) : ''
   const parts = useMemo(() => (pick ? videoParts(pick, kind, link) : null), [pick, kind, link])
-  const draftKey = pick ? `zm-video-v3-${kind}-${pick.id}` : ''
+  const draftKey = pick ? `zm-video-v4-${kind}-${pick.id}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
@@ -120,17 +121,54 @@ export default function VideoMaker() {
   const [loaded, setLoaded] = useState(0)
   const [end, setEnd] = useState(null)
 
+  // AI photo check (cars): which photo really shows each feature, before the
+  // video is made. Runs by itself for a car with no changes of yours yet.
+  const [ai, setAi] = useState({ state: 'idle' })
+  const touched = useRef(false)
+  const featureList = useMemo(() => (parts && kind === 'vehicle' ? parts.blocks.filter((b) => b.feature).map((b) => b.label) : []), [parts, kind])
+  const summarise = (m) => {
+    const asked = (m.features || []).filter((f) => parts.starter.some((s) => s.feature && s.line === f.feature))
+    const found = asked.filter((f) => f.photo >= 0)
+    const unseen = asked.filter((f) => f.photo < 0).map((f) => f.feature)
+    return { state: 'done', found: found.length, total: asked.length, unseen, maybe: found.filter((f) => f.sure === 'maybe').length }
+  }
+  const runAi = async (fresh) => {
+    if (!pick || !featureList.length) return
+    const base = parts.starter
+    const cached = !fresh && cachedMatch(pick, featureList)
+    if (cached) { setScenes(applyPhotoMatch(base, cached, pick.images || [])); setAi(summarise(cached)); return }
+    setAi({ state: 'checking' })
+    try {
+      const m = await matchPhotos(pick, featureList)
+      if (touched.current) { setAi({ ...summarise(m), late: true }); return }
+      setScenes(applyPhotoMatch(base, m, pick.images || [])); setOpen(null)
+      setAi(summarise(m))
+    } catch (e) { setAi({ state: 'error', note: e.message }) }
+  }
+  const aiAgain = () => {
+    if (touched.current && !window.confirm('Let the AI arrange the photos again? Your changes for this car are replaced.')) return
+    touched.current = false; forget()
+    runAi(true)
+  }
+
   // Your arrangement is kept on this device for each listing.
   useEffect(() => {
     if (!parts) return
     let saved = null
     try { saved = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { saved = null }
-    setScenes(Array.isArray(saved) && saved.length ? saved : parts.starter)
+    const hasDraft = Array.isArray(saved) && saved.length
+    setScenes(hasDraft ? saved : parts.starter)
+    touched.current = !!hasDraft
+    setAi({ state: 'idle' })
+    if (!hasDraft && kind === 'vehicle') runAi(false)
     setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
   }, [parts])
-  useEffect(() => { if (draftKey && scenes.length) { try { localStorage.setItem(draftKey, JSON.stringify(scenes)) } catch { /* full */ } } }, [scenes, draftKey])
+  // Kept only once you have changed something: an untouched video is simply
+  // rebuilt (and photo-checked) next time.
+  useEffect(() => { if (draftKey && scenes.length && touched.current) { try { localStorage.setItem(draftKey, JSON.stringify(scenes)) } catch { /* full */ } } }, [scenes, draftKey])
+  const forget = () => { try { localStorage.removeItem(draftKey) } catch { /* ignore */ } }
   useEffect(() => {
     const missing = scenes.flatMap((x) => [x.photo, ...(x.photos || [])]).filter((u) => u && !cache.current.has(u))
     if (missing.length) loadPhotos(missing, cache.current).then(() => setLoaded((n) => n + 1))
@@ -140,10 +178,12 @@ export default function VideoMaker() {
   const assets = useMemo(() => (end && script ? { imgs: script.slides.map((x) => (x.type === 'collage' ? (x.photos || []).map((u) => cache.current.get(u)).filter(Boolean) : cache.current.get(x.photo) || null)), end } : null), [script, end, loaded])
 
   // Editing scenes
-  const update = (id, patch) => setScenes((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x)))
-  const move = (i, d) => setScenes((list) => { const n = [...list]; const j = i + d; if (j < 0 || j >= n.length) return list; [n[i], n[j]] = [n[j], n[i]]; return n })
-  const remove = (id) => { setScenes((list) => list.filter((x) => x.id !== id)); setOpen(null) }
+  const update = (id, patch) => { touched.current = true; setScenes((list) => list.map((x) => (x.id === id ? { ...x, ...patch } : x))) }
+  const move = (i, d) => setScenes((list) => {
+    touched.current = true; const n = [...list]; const j = i + d; if (j < 0 || j >= n.length) return list; [n[i], n[j]] = [n[j], n[i]]; return n })
+  const remove = (id) => { touched.current = true; setScenes((list) => list.filter((x) => x.id !== id)); setOpen(null) }
   const add = (block) => {
+    touched.current = true
     const at = open ? scenes.findIndex((x) => x.id === open) + 1 : scenes.length
     const sc = sceneFrom(block, block.photo || (block.scene.type === 'specs' ? scenes[Math.max(0, at - 1)]?.photo : null))
     setScenes((list) => [...list.slice(0, at), sc, ...list.slice(at)])
@@ -151,7 +191,11 @@ export default function VideoMaker() {
     // A feature needs the photo that shows it: ask for it straight away.
     if (!sc.photo && block.scene.type !== 'specs') setChoosing({ id: sc.id, hint: block.feature ? `Choose the photo that shows “${block.label}”` : 'Choose a photo for this scene' })
   }
-  const restart = () => { if (window.confirm('Go back to the automatic video? Your changes for this listing are replaced.')) { setScenes(parts.starter); setOpen(null) } }
+  const restart = () => {
+    if (!window.confirm('Go back to the automatic video? Your changes for this listing are replaced.')) return
+    touched.current = false; forget(); setScenes(parts.starter); setOpen(null)
+    if (kind === 'vehicle') runAi(false)
+  }
 
   // A looping preview while nothing is recording. With a scene open, only
   // that scene plays, so you can see exactly what it looks like.
@@ -317,6 +361,7 @@ export default function VideoMaker() {
             <button type="button" className="vx-btn ghost" onClick={() => setPick(null)} disabled={!!busy}>← Choose another</button>
             <h2>{title(pick)}</h2>
             <p className="vx-muted tiny">About {Math.round(videoLength(script.slides || []))} seconds · {script.slides.length} scenes · MP4{fast() ? ' · made in seconds, you can leave the page' : ''}</p>
+            {kind === 'vehicle' && featureList.length > 0 && <AiCheck ai={ai} again={aiAgain} />}
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
@@ -444,6 +489,27 @@ function SoundPicker({ sounds, setSounds, sound, setSound, music, fast: quick, t
   )
 }
 
+// What the AI found in the photos, in one line, with a way to ask again.
+function AiCheck({ ai, again }) {
+  if (ai.state === 'idle') return null
+  return (
+    <div className={`vx-ai is-${ai.state}`} role="status">
+      {ai.state === 'checking' && <><span className="vx-spin" /><span>AI is looking at the photos to find each feature…</span></>}
+      {ai.state === 'done' && (
+        <span>
+          <b>✨ AI checked the photos.</b>{' '}
+          {ai.total ? `${ai.found} of ${ai.total} features are on the photo that shows them.` : ''}
+          {ai.unseen.length ? ` Not seen in any photo: ${ai.unseen.join(', ')}. ${ai.unseen.length > 1 ? 'They are' : 'It is'} listed on an "Also has" card instead of over a wrong photo.` : ''}
+          {ai.maybe ? ` ${ai.maybe} marked "not sure": have a look in Change scenes.` : ''}
+          {ai.late ? ' You had already changed the scenes, so nothing was moved; tap Check again to use it.' : ''}
+        </span>
+      )}
+      {ai.state === 'error' && <span>The AI photo check did not work: {ai.note}</span>}
+      {ai.state !== 'checking' && <button type="button" className="vx-btn ghost" onClick={again}>Check again</button>}
+    </div>
+  )
+}
+
 function MyVideos({ videos, copy }) {
   if (!videos.length) return null
   const save = async (v) => {
@@ -509,7 +575,7 @@ function SceneEditor({ parts, scenes, open, setOpen, update, move, remove, add, 
                 <button type="button" className="vx-scene-main" disabled={busy} onClick={() => setOpen(isOpen ? null : sc.id)}>
                   <span className="vx-scene-n">{i + 1}</span>
                   {sc.photo || sc.photos?.[0] ? <img src={sc.photo || sc.photos[0]} alt="" /> : <span className="vx-scene-nophoto">No photo</span>}
-                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? 'Specifications card' : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.feature && !sc.checked ? <em className="vx-scene-check">Check the photo shows it</em> : kind}</small></span>
+                  <span className="vx-scene-text"><strong>{sc.type === 'specs' ? (sc.kicker === 'Also has' ? `Also has: ${(sc.rows || []).map((r) => r[0]).join(', ')}` : 'Specifications card') : sc.line || (sc.type === 'collage' ? 'Photo grid' : 'Photo only')}</strong><small>{sc.ai === 'yes' && sc.checked ? <em className="vx-scene-ai">✓ AI: this photo shows it</em> : sc.feature && !sc.checked ? <em className="vx-scene-check">{sc.ai === 'maybe' ? 'AI is not sure: check the photo' : 'Check the photo shows it'}</em> : sc.kicker === 'Also has' ? 'Not seen in any photo' : kind}</small></span>
                 </button>
                 <span className="vx-scene-tools">
                   <button type="button" aria-label="Move up" disabled={busy || i === 0} onClick={() => move(i, -1)}>↑</button>

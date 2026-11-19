@@ -568,3 +568,51 @@ export async function endCard(script, link) {
   const qr = link ? await qrImage(link, '#120b1e', '#ffffff') : null
   return { qr, link: String(link || '').replace(/^https?:\/\//, ''), cta: script.end?.cta || 'See it on ZaMarket', foot: script.end?.foot || '' }
 }
+
+// ---- AI photo check ---------------------------------------------------------
+// After the AI has looked at the listing's photos (see netlify/functions/
+// ai-assist.js, task "photos"): each feature scene gets the photo that really
+// shows it; a feature no photo shows is never put over an unrelated picture,
+// it goes on one honest "Also has" card instead; the title sits on the best
+// first picture; the plain photo scenes run outside first, then inside.
+const KIND_ORDER = ['exterior_front', 'exterior_side', 'exterior_rear', 'wheel', 'interior_front', 'dashboard', 'seats', 'interior_rear', 'boot', 'engine', 'detail', 'other', 'document']
+const listOf = (a) => (a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a[a.length - 1]}` : a[0] || '').toLowerCase()
+
+export function applyPhotoMatch(scenes, match, images) {
+  if (!match || !Array.isArray(scenes)) return scenes
+  const url = (i) => (Number.isInteger(i) && i >= 0 ? images[i] || null : null)
+  const byFeature = new Map((match.features || []).map((f) => [f.feature, f]))
+  const unseen = []
+  let lastFeature = -1
+  let out = []
+  for (const sc of scenes) {
+    if (sc.feature && byFeature.has(sc.line)) {
+      const m = byFeature.get(sc.line)
+      if (m.photo >= 0 && url(m.photo)) {
+        out.push({ ...sc, photo: url(m.photo), checked: m.sure === 'yes', ai: m.sure })
+        lastFeature = out.length - 1
+      } else unseen.push(sc.line)
+      continue
+    }
+    out.push(sc)
+  }
+  // "Highlights" stays on the first feature scene.
+  const firstFeature = out.findIndex((s) => s.feature)
+  if (firstFeature >= 0 && scenes.some((s) => s.feature && s.kicker === 'Highlights')) out = out.map((s, i) => (s.feature ? { ...s, kicker: i === firstFeature ? 'Highlights' : (s.kicker === 'Highlights' ? '' : s.kicker) } : s))
+  const cover = url(match.cover)
+  if (cover && out[0] && !out[0].type) out[0] = { ...out[0], photo: cover }
+  if (unseen.length) {
+    const card = { id: sceneId(), type: 'specs', kicker: 'Also has', rows: unseen.slice(0, 6).map((f) => [f, '✓']), line: '', sub: '', say: `It also has ${listOf(unseen)}.`, photo: cover || images[0] || null }
+    const at = lastFeature >= 0 ? lastFeature + 1 : Math.max(1, out.findIndex((s) => s.type === 'specs') + 1)
+    out.splice(at, 0, card)
+  }
+  // Plain photo scenes: photos not used above, outside first, papers last.
+  const plain = (s) => !s.type && !s.line && !s.kicker
+  const used = new Set(out.filter((s) => !plain(s)).map((s) => s.photo))
+  const kindOf = new Map((match.photos || []).map((p) => [p.index, p.kind]))
+  const rank = (i) => { const k = KIND_ORDER.indexOf(kindOf.get(i) || 'other'); return k < 0 ? 99 : k }
+  const rest = images.map((u, i) => ({ u, i })).filter((x) => x.u && !used.has(x.u)).sort((a, b) => rank(a.i) - rank(b.i)).map((x) => x.u)
+  let k = 0
+  out = out.map((s) => (plain(s) && rest[k] ? { ...s, photo: rest[k++] } : s))
+  return out
+}
