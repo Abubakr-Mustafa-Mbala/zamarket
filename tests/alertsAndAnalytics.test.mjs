@@ -250,7 +250,7 @@ test('video maker: AI goes through up to 64 photos, finds more features you can 
 
 test('video maker: scene looks and transitions; sounds online for the team; choose the part on a wave', () => {
   const lv = read('src/lib/listingVideo.js')
-  assert.match(lv, /const LOOKS = \['card', 'spotlight', 'split'\]/)
+  assert.match(lv, /const LOOKS = \['classic', 'card', 'spotlight', 'split'\]/)
   assert.match(lv, /const TRANSITIONS = \['push', 'wipe', 'zoom', 'push'\]/)
   assert.match(lv, /function counter\(/)
   const vs = read('src/lib/videoSounds.js')
@@ -261,4 +261,16 @@ test('video maker: scene looks and transitions; sounds online for the team; choo
   assert.match(sql, /values \('video-sounds', 'video-sounds', false/)
   assert.doesNotMatch(sql, /zm video sounds[^\n]*\n[^\n]*to anon/)
   assert.match(read('src/pages/admin/VideoMaker.jsx'), /function SoundWave/)
+})
+
+test('video maker: brand colours, toned-down split, fuller product and lunch stories', () => {
+  const lv = read('src/lib/listingVideo.js')
+  assert.doesNotMatch(lv, /#ffd36b|#c9a6ff|#b98cff/)
+  assert.match(lv, /const ph = H - 560/)
+  assert.match(lv, /function lunchScript/)
+  assert.match(lv, /kicker: 'Made for'/)
+  assert.match(lv, /kicker: 'How to order'/)
+  assert.match(lv, /if \(item\.trial_first\)/)
+  assert.match(lv, /if \(item\.guarantee\)/)
+  assert.match(lv, /function sentences/)
 })
