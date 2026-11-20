@@ -121,3 +121,45 @@ export function liveStudio(stream) {
     return { stream: out.stream, stop: () => ctx.close().catch(() => {}) }
   } catch { return { stream, stop: () => {} } }
 }
+
+// A nasheed under a voice, the way a radio presenter's music sits: soft while
+// someone speaks, and when the voice goes quiet for a moment the nasheed
+// comes up and carries the video, then steps back when the voice returns.
+export function duckUnder(voice, bed, { low = 0.14, high = 0.8 } = {}) {
+  const rate = bed.sampleRate
+  const length = Math.max(bed.length, Math.round(voice.duration * rate))
+  const out = new AudioBuffer({ length, numberOfChannels: 2, sampleRate: rate })
+  const v = new Float32Array(length)
+  // The voice, as mono at the bed's rate.
+  const ratio = voice.sampleRate / rate
+  for (let c = 0; c < voice.numberOfChannels; c += 1) {
+    const d = voice.getChannelData(c)
+    for (let i = 0; i < length; i += 1) { const j = Math.floor(i * ratio); if (j < d.length) v[i] += d[j] / voice.numberOfChannels }
+  }
+  // Is someone speaking? Loudness in 20 ms steps, held for 0.5 s after words.
+  const step = Math.round(rate * 0.02)
+  const n = Math.ceil(length / step)
+  const lv = new Float32Array(n)
+  for (let w = 0; w < n; w += 1) { let s = 0; const a = w * step; const b = Math.min(length, a + step); for (let i = a; i < b; i += 1) s += v[i] * v[i]; lv[w] = Math.sqrt(s / Math.max(1, b - a)) }
+  const sorted = Array.from(lv).sort((a, b) => a - b)
+  const on = Math.max(0.01, (sorted[Math.floor(n * 0.95)] || 0) * 0.12)
+  const speaking = new Uint8Array(n)
+  for (let w = 0; w < n; w += 1) if (lv[w] > on) for (let k = w; k < Math.min(n, w + 25); k += 1) speaking[k] = 1
+  // Smooth: down quickly (0.15 s) when the voice starts, up slowly (0.8 s).
+  const L = bed.numberOfChannels > 1 ? bed.getChannelData(0) : bed.getChannelData(0)
+  const R = bed.numberOfChannels > 1 ? bed.getChannelData(1) : L
+  const oL = out.getChannelData(0); const oR = out.getChannelData(1)
+  let g = speaking[0] ? low : high
+  const down = 1 / (0.15 * rate); const up = 1 / (0.8 * rate)
+  for (let i = 0; i < length; i += 1) {
+    const want = speaking[Math.floor(i / step)] ? low : high
+    g += want < g ? Math.max(want - g, -down) : Math.min(want - g, up)
+    const b = i < bed.length ? 1 : 0
+    oL[i] = v[i] + g * (b ? L[i] : 0)
+    oR[i] = v[i] + g * (b ? R[i] : 0)
+  }
+  let peak = 0
+  for (let i = 0; i < length; i += 1) peak = Math.max(peak, Math.abs(oL[i]), Math.abs(oR[i]))
+  if (peak > 0.95) for (let i = 0; i < length; i += 1) { oL[i] *= 0.95 / peak; oR[i] *= 0.95 / peak }
+  return out
+}

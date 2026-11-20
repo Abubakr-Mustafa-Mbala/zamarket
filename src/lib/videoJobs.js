@@ -84,9 +84,9 @@ export async function startVideo(spec) {
 
 // A video made the old way (real-time recording) on a phone that cannot
 // build videos frame by frame: kept in the same list.
-export async function keepVideo({ title, slug, kind, caption, blob }) {
+export async function keepVideo({ title, slug, kind, caption, blob, seconds }) {
   await loadVideos()
-  const job = { id: `v${Date.now().toString(36)}`, title, slug, kind, caption, createdAt: Date.now(), status: 'ready', progress: 1, seen: false, blob, size: blob.size, ext: 'mp4' }
+  const job = { id: `v${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, title, slug, kind, caption, createdAt: Date.now(), status: 'ready', progress: 1, seen: false, blob, size: blob.size, seconds, ext: 'mp4' }
   jobs = [job, ...jobs]
   await save(job)
   emit(true)

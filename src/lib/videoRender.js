@@ -2,7 +2,7 @@ import { drawFrame, videoLength, heldTime, setPace, setMotion, loadPhotos, endCa
 import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
 import { soundBed } from './videoSounds'
-import { studioVoice, mixUnder } from './studioVoice'
+import { studioVoice, duckUnder } from './studioVoice'
 import { openingTrack, mixTracks } from './videoFx'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
@@ -56,7 +56,7 @@ export async function renderJob(spec, onProgress, stopped = () => false) {
   if (spec.music?.blob) {
     try {
       bed = await soundBed(spec.music.blob, spec.music.start || 0, voice ? voice.duration : length)
-      if (voice) { voice = await mixUnder(voice, bed); bed = null }
+      if (voice) { voice = duckUnder(voice, bed); bed = null }
     } catch (e) { console.warn('[video] sound skipped', e) }
   }
 

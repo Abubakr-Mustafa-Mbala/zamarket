@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
-import { Loading, useToast } from '../../components/ui'
+import { Loading, Modal, useToast } from '../../components/ui'
+import { withNasheed } from '../../lib/videoNasheed'
 import { openMic } from '../../lib/studioVoice'
 import { playOpening, hasOpening } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
@@ -467,7 +468,7 @@ export default function VideoMaker() {
       <div className="vx-form-head">
         <div><h1>Video maker</h1><p>Turn a car, a product or a lunch plan into a short vertical video for TikTok, Reels, Facebook and WhatsApp status, made from its own photos and details. No face or camera needed.</p></div>
       </div>
-      {!pick && <MyVideos videos={videos} toast={toast} copy={copy} />}
+      {!pick && <MyVideos videos={videos} toast={toast} copy={copy} kit={{ sounds, setSounds, sound, setSound, music, fetching }} />}
       <div className="vx-tabs">{KINDS.map(([k, l]) => <button key={k} type="button" className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
 
       {!pick ? (
@@ -529,7 +530,7 @@ export default function VideoMaker() {
               <button type="button" className="vx-btn ghost" disabled={!!busy || hearing?.loading} onClick={hearAi}>{hearing?.loading ? 'Reading the script…' : hearing?.url ? '■ Stop' : '▶ Hear the whole voice-over'}</button>
               <small className="vx-muted">The AI reads the “Voice-over script” below, word for word, and each scene shows while its line is read. Change a scene’s words to change what it says. Hearing it first does not read it twice: the video uses the same recording.</small>
             </section>
-            <MyVideos videos={videos} toast={toast} copy={copy} />
+            <MyVideos videos={videos} toast={toast} copy={copy} kit={{ sounds, setSounds, sound, setSound, music, fetching }} />
             {!editing ? (
               <section className="vx-card-block vx-change">
                 <h3>Something not right?</h3>
@@ -777,46 +778,89 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
   )
 }
 
-function MyVideos({ videos, copy }) {
+// "My videos" folded into one bar: what is being made and how many are
+// ready. Tap it and the list opens on its own, with every video you made.
+function MyVideos({ videos, copy, toast, kit }) {
+  const [open, setOpen] = useState(false)
+  const [nasheedFor, setNasheedFor] = useState(null)
+  const [adding, setAdding] = useState(null)
   if (!videos.length) return null
+  const making = videos.find((v) => v.status === 'making' || v.status === 'stopping')
+  const waiting = videos.filter((v) => v.status === 'waiting').length
+  const fresh = videos.filter((v) => v.status === 'ready' && !v.seen).length
   const save = async (v) => {
     const file = new File([v.blob], `${String(v.slug || 'zamarket').slice(0, 40)}.mp4`, { type: 'video/mp4' })
     if (canShareFile(file)) return shareFile(file)
     const a = document.createElement('a'); a.href = v.url; a.download = file.name; a.click()
   }
   const when = (t) => new Date(t).toLocaleString('en-ZM', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+  // A nasheed added to a finished video: the picture is kept as it is, only
+  // the sound is new. The result is kept as a new video beside the old one.
+  const addNasheed = async (v) => {
+    if (!kit.music) return toast('Choose a nasheed first', true)
+    setAdding({ id: v.id, p: 0 })
+    try {
+      const r = await withNasheed(v.blob, kit.music.blob, kit.sound?.start || 0, (p) => setAdding({ id: v.id, p }))
+      await keepVideo({ title: `${v.title.replace(/ · with nasheed$/, '')} · with nasheed`, slug: v.slug, kind: v.kind, caption: v.caption, blob: r.blob, seconds: r.seconds })
+      setNasheedFor(null)
+      toast('Done: the video with the nasheed is at the top of the list')
+    } catch (e) { toast(e.message || 'The nasheed could not be added', true) } finally { setAdding(null) }
+  }
   return (
-    <section className="vx-card-block vx-myvideos">
-      <h3>My videos</h3>
-      <p className="vx-muted tiny">Kept on this phone. While one is being made you can go to another page; if the phone pauses it, it carries on when you come back.</p>
-      <ul>
-        {videos.map((v) => (
-          <li key={v.id} className={`vx-myvideo is-${v.status}`}>
-            {v.url ? <video src={v.url} controls playsInline preload="metadata" /> : (
-              <div className="vx-myvideo-wait">
-                {v.status === 'failed' ? <b>!</b> : <span className="vx-spin" />}
-                <small>{v.status === 'making' ? `${Math.round((v.progress || 0) * 100)}%` : v.status === 'waiting' ? 'Waiting' : 'Stopped'}</small>
-              </div>
-            )}
-            <div className="vx-myvideo-body">
-              <strong>{v.title}</strong>
-              <small className="vx-muted">{when(v.createdAt)}{v.status === 'ready' && v.size ? ` · ${Math.round(v.seconds || 0) || ''}${v.seconds ? 's · ' : ''}${(v.size / 1048576).toFixed(1)} MB` : ''}</small>
-              {v.status === 'making' && <div className="vx-myvideo-bar"><span style={{ width: `${Math.round((v.progress || 0) * 100)}%` }} /></div>}
-              {v.status === 'waiting' && <small className="vx-muted">Starts in a moment. Paused while the phone is locked.</small>}
-              {v.status === 'failed' && <small className="vx-myvideo-error">It did not finish: {v.error || 'unknown problem'}</small>}
-              <div className="vx-myvideo-actions">
-                {v.status === 'ready' && <button type="button" className="vx-btn primary" onClick={() => save(v)}>Save or share</button>}
-                {v.status === 'ready' && v.caption && <button type="button" className="vx-btn outline" onClick={() => copy(v.caption, 'Caption')}>Copy caption</button>}
-                {v.status === 'failed' && v.spec && !v.slow && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
-                {(v.status === 'making' || v.status === 'waiting') && <button type="button" className="vx-btn outline" onClick={() => cancelVideo(v.id)}>Cancel</button>}
-                {v.status === 'stopping' && <small className="vx-muted">Stopping…</small>}
-                {v.status !== 'making' && v.status !== 'waiting' && v.status !== 'stopping' && <button type="button" className="vx-btn ghost" onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <>
+      <button type="button" className={`vx-videos-bar ${making ? 'is-making' : ''}`} onClick={() => setOpen(true)}>
+        <span className="vx-videos-icon" aria-hidden="true">▶</span>
+        <span className="vx-videos-text">
+          <b>My videos <em>{videos.filter((v) => v.status === 'ready').length}</em></b>
+          <small>{making ? `Making a video… ${Math.round((making.progress || 0) * 100)}%${waiting ? ` · ${waiting} waiting` : ''}` : waiting ? `${waiting} waiting to be made` : fresh ? `${fresh} new, ready to share` : 'Tap to see, share or add a nasheed'}</small>
+          {making && <span className="vx-myvideo-bar"><span style={{ width: `${Math.round((making.progress || 0) * 100)}%` }} /></span>}
+        </span>
+        <span className="vx-videos-go" aria-hidden="true">›</span>
+      </button>
+      {open && (
+        <Modal title="My videos" onClose={() => { if (!adding) { setOpen(false); setNasheedFor(null) } }}>
+          <div className="vx vx-myvideos">
+            <p className="vx-muted tiny">Kept on this phone. While one is being made you can go to another page; if the phone pauses it, it carries on when you come back.</p>
+            <ul>
+              {videos.map((v) => (
+                <li key={v.id} className={`vx-myvideo is-${v.status}`}>
+                  {v.url ? <video src={v.url} controls playsInline preload="metadata" /> : (
+                    <div className="vx-myvideo-wait">
+                      {v.status === 'failed' ? <b>!</b> : <span className="vx-spin" />}
+                      <small>{v.status === 'making' ? `${Math.round((v.progress || 0) * 100)}%` : v.status === 'waiting' ? 'Waiting' : v.status === 'stopping' ? 'Stopping' : 'Stopped'}</small>
+                    </div>
+                  )}
+                  <div className="vx-myvideo-body">
+                    <strong>{v.title}</strong>
+                    <small className="vx-muted">{when(v.createdAt)}{v.status === 'ready' && v.size ? ` · ${Math.round(v.seconds || 0) || ''}${v.seconds ? 's · ' : ''}${(v.size / 1048576).toFixed(1)} MB` : ''}</small>
+                    {v.status === 'making' && <div className="vx-myvideo-bar"><span style={{ width: `${Math.round((v.progress || 0) * 100)}%` }} /></div>}
+                    {v.status === 'waiting' && <small className="vx-muted">Starts in a moment. Paused while the phone is locked.</small>}
+                    {v.status === 'failed' && <small className="vx-myvideo-error">It did not finish: {v.error || 'unknown problem'}</small>}
+                    <div className="vx-myvideo-actions">
+                      {v.status === 'ready' && <button type="button" className="vx-btn primary" onClick={() => save(v)}>Save or share</button>}
+                      {v.status === 'ready' && <button type="button" className={`vx-btn outline ${nasheedFor === v.id ? 'on' : ''}`} disabled={!!adding} onClick={() => setNasheedFor(nasheedFor === v.id ? null : v.id)}>♪ Add a nasheed</button>}
+                      {v.status === 'ready' && v.caption && <button type="button" className="vx-btn outline" onClick={() => copy(v.caption, 'Caption')}>Copy caption</button>}
+                      {v.status === 'failed' && v.spec && !v.slow && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
+                      {(v.status === 'making' || v.status === 'waiting') && <button type="button" className="vx-btn outline" onClick={() => cancelVideo(v.id)}>Cancel</button>}
+                      {!['making', 'waiting', 'stopping'].includes(v.status) && <button type="button" className="vx-btn ghost" disabled={adding?.id === v.id} onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
+                    </div>
+                    {nasheedFor === v.id && (
+                      <div className="vx-addnasheed">
+                        <SoundPicker {...kit} length={v.seconds || 30} fast toast={toast} busy={!!adding} />
+                        <button type="button" className="vx-btn primary big" disabled={!kit.music || !!adding} onClick={() => addNasheed(v)}>
+                          {adding?.id === v.id ? `Adding the nasheed… ${Math.round(adding.p * 100)}%` : 'Add it to this video'}
+                        </button>
+                        <small className="vx-muted">The video is not made again: the picture stays exactly as it is. If it has a voice, the nasheed plays softly under it and comes up when the voice is quiet. The original stays in your list too.</small>
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Modal>
+      )}
+    </>
   )
 }
 

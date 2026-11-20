@@ -54,3 +54,13 @@ test('cancelling never marks the phone as unable to make videos quickly', () => 
   const r = read('src/lib/videoRender.js')
   assert.ok(r.indexOf("e?.message === 'CANCELLED'") < r.indexOf('fastFailed()', r.indexOf('catch (e)')))
 })
+
+test('my videos fold into one bar; a nasheed can be added to a finished video without remaking it', () => {
+  const m = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(m, /className=\{`vx-videos-bar/)
+  assert.match(m, /Add it to this video/)
+  const n = read('src/lib/videoNasheed.js')
+  assert.match(n, /EncodedVideoPacketSource\(track\.codec\)/) // picture copied, not re-made
+  assert.match(n, /duckUnder\(voice, bed\)/)
+  assert.match(read('src/lib/videoRender.js'), /duckUnder\(voice, bed\)/)
+})
