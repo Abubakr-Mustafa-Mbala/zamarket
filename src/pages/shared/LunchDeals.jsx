@@ -8,6 +8,7 @@ import { uploadVehiclePhoto } from '../../lib/photos'
 import { PRODUCT_WORD } from '../../lib/statuses'
 import { firstBookable, dayLabel, addDays, cleanTiers } from '../../lib/lunch'
 import { LunchView } from '../public/Lunch'
+import { moveOrderTo } from '../../lib/orderMove'
 import '../../lunch.css'
 
 const COLS = 'id,vendor_id,slug,title,tagline,about_cook,in_the_box,cover_url,proof_images,dishes,delivery_windows,delivery_area,cutoff_hour,guarantee,status,rejection_reason,created_at,group_discounts,trial_first,day_discounts'
@@ -492,7 +493,7 @@ function Kitchen({ deals, vendorId }) {
     setTick((n) => n + 1)
   }
   const move = async (x, status) => {
-    const { error: e } = await supabase.rpc('set_order_status', { p_order: x.order_id, p_status: status })
+    const { error: e } = await moveOrderTo(supabase, x.order_id, status)
     if (e) return toast(e.message, true)
     toast(status === 'delivered' ? 'Delivered' : 'On the way'); setTick((n) => n + 1)
   }

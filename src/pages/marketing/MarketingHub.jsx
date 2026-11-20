@@ -92,22 +92,56 @@ const SECTION_HELP = {
 }
 
 // ---------------- Marketing & Growth Centre ----------------
+// Phones get one workspace per screen; laptops keep the full centre.
+function useNarrow(max = 760) {
+  const q = `(max-width: ${max}px)`
+  const [on, setOn] = useState(() => typeof window !== 'undefined' && window.matchMedia(q).matches)
+  useEffect(() => {
+    const m = window.matchMedia(q)
+    const f = () => setOn(m.matches)
+    m.addEventListener('change', f)
+    return () => m.removeEventListener('change', f)
+  }, [q])
+  return on
+}
+
+// A single workspace on its own screen: its tools and nothing else.
+function WorkspaceScreen({ w, onBack }) {
+  useEffect(() => { window.scrollTo({ top: 0 }) }, [w.key])
+  return (
+    <div className={`gc-ws-screen tone-${w.tone}`}>
+      <button type="button" className="gc-back" onClick={onBack}><GIcon name="chevron" size={18} className="gc-flip" /> Marketing & Growth</button>
+      <header className="gc-ws-screen-head">
+        <span className="gc-ws-ico"><GIcon name={w.icon} size={30} /></span>
+        <span><h1>{w.name}</h1><p>{w.blurb}</p></span>
+      </header>
+      <div className="gc-ws-screen-tools">
+        {w.tools.map((t) => <ToolLink key={t.key} t={t} withDesc />)}
+      </div>
+    </div>
+  )
+}
+
 function GrowthCentre() {
   const [params, setParams] = useSearchParams()
   const [find, setFind] = useState('')
   const wsKey = params.get('ws') || ''
   const found = useMemo(() => searchTools(find), [find])
+  const narrow = useNarrow()
   const openWs = (k) => {
     const next = new URLSearchParams(params)
     if (k) next.set('ws', k); else next.delete('ws')
-    setParams(next, { replace: true })
-    setTimeout(() => document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
+    // On a phone a workspace is its own screen, so the back button returns here.
+    setParams(next, { replace: !narrow })
+    if (narrow) window.scrollTo({ top: 0 })
+    else setTimeout(() => document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
   }
   useEffect(() => {
     const id = window.location.hash.slice(1)
     if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 60)
   }, [])
   const shown = wsKey ? WORKSPACES.filter((w) => w.key === wsKey) : WORKSPACES
+  if (narrow && wsKey && shown[0]) return <WorkspaceScreen w={shown[0]} onBack={() => (window.history.length > 1 ? window.history.back() : openWs(''))} />
   return (
     <div className="gc-centre">
       <section className="gc-hero">

@@ -5,6 +5,7 @@ import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, datetime, title, n } from '../../lib/format'
 import { ORDER_NEXT, SOURCES, CHANNELS, PAYMENT_METHODS } from '../../lib/statuses'
+import { moveOrderTo } from '../../lib/orderMove'
 import { Badge, Table, Loading, Modal, Field, Input, Select, Textarea, useToast, Breakdown, Tabs, CopyLine } from '../../components/ui'
 import { useLocations } from '../public/Checkout'
 import { niceDate } from '../../lib/madeToOrder'
@@ -78,8 +79,8 @@ export function OrderDetail() {
     const needsReason = ['cancelled', 'refunded', 'returned', 'failed_delivery', 'fraud_review'].includes(status)
     const r = needsReason ? (reason || window.prompt(`Reason for marking as ${title(status).toLowerCase()}?`)) : reason || null
     if (needsReason && !r) return
-    const { error } = await supabase.rpc('set_order_status', { p_order: id, p_status: status, p_reason: r })
-    if (error) return toast(error.message, true)
+    const { error } = await moveOrderTo(supabase, id, status, r)
+    if (error) { reload(); return toast(error.message, true) }
     toast(`Order marked ${title(status).toLowerCase()}`)
     setReason('')
     reload()

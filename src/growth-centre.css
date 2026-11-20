@@ -283,3 +283,17 @@
   .gc-head-ico { width: 44px; height: 44px; }
   .gc-table { font-size: .8rem; }
 }
+
+/* ---- Phone: one workspace per screen ---- */
+.gc-ws-screen { display: grid; gap: 14px; }
+.gc-back { justify-self: start; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px 0 8px; border-radius: 999px; border: 1px solid var(--gc-line); background: var(--gc-panel-2); color: var(--gc-violet-2); font: inherit; font-weight: 700; cursor: pointer; }
+.gc-flip { transform: rotate(180deg); }
+.gc-ws-screen-head { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; padding: 18px; border-radius: 20px; border: 1px solid color-mix(in srgb, var(--t) 55%, transparent); background: linear-gradient(150deg, color-mix(in srgb, var(--t) 34%, #15131f) 0%, #15131f 80%); }
+.gc-ws-screen-head h1 { font-size: 1.35rem; }
+.gc-ws-screen-head p { margin: 4px 0 0; color: var(--gc-sub); line-height: 1.45; font-size: .9rem; }
+.gc-ws-screen-tools { display: grid; gap: 8px; }
+.gc-ws-screen-tools .gc-tool { padding: 14px 12px; background: var(--gc-panel); border-color: color-mix(in srgb, var(--t) 30%, transparent); }
+.gc-ws-screen-tools .gc-tool > .gi:first-child { color: var(--t2); }
+@media (max-width: 760px) {
+  #tools { display: none; }
+}
