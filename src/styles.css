@@ -3017,3 +3017,22 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .find .find-stats small { color: var(--muted); }
 .find .find-report { white-space: pre-wrap; font: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 12px; }
 .find .find-search { flex: 1; min-width: 160px; }
+.find .find-road { display: grid; gap: 6px; }
+.find .find-step { position: relative; display: flex; align-items: baseline; gap: 10px; padding: 10px 12px; border-radius: 10px; overflow: hidden; background: rgba(255,255,255,.03); }
+.find .find-step-bar { position: absolute; inset: 0 auto 0 0; background: rgba(138, 108, 255, .22); border-radius: 10px; z-index: 0; }
+.find .find-step > *:not(.find-step-bar) { position: relative; z-index: 1; }
+.find .find-step b { min-width: 46px; font-size: 1.1rem; }
+.find .find-step span:not(.find-step-bar) { flex: 1; }
+.find .find-step em { font-style: normal; color: #C9BCFF; font-weight: 800; }
+.find .find-fix { margin: 12px 0 0; padding: 10px 12px; border-radius: 10px; background: rgba(138, 108, 255, .12); border: 1px solid rgba(138, 108, 255, .35); }
+.find .find-weeks { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; align-items: end; height: 150px; margin-bottom: 8px; }
+.find .find-week { display: grid; gap: 4px; height: 100%; grid-template-rows: 1fr auto; text-align: center; }
+.find .find-week small { font-size: .65rem; color: var(--muted); }
+.find .find-week-bars { display: flex; gap: 2px; align-items: flex-end; justify-content: center; height: 100%; }
+.find .find-week-bars span { width: 40%; min-height: 2px; border-radius: 4px 4px 0 0; }
+.find .find-week-bars .v, .find .find-key.v { background: #8A6CFF; }
+.find .find-week-bars .s, .find .find-key.s { background: #3FB68B; }
+.find .find-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 10px; vertical-align: middle; }
+.find .find-table { width: 100%; border-collapse: collapse; }
+.find .find-table th, .find .find-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: .9rem; }
+.find .find-table td:not(:first-child), .find .find-table th:not(:first-child) { text-align: right; }

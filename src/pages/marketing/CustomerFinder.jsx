@@ -45,7 +45,7 @@ const MSG_LABELS = { office: 'Office: first message', warm_lunch: 'People I know
 const MSG_KEY = 'zm-find-messages'
 const loadMessages = () => { try { return { ...DEFAULT_MESSAGES, ...JSON.parse(localStorage.getItem(MSG_KEY) || '{}') } } catch { return { ...DEFAULT_MESSAGES } } }
 
-const TABS = [['today', 'Today'], ['offices', 'Offices'], ['people', 'People I know'], ['referrals', 'Referrals'], ['sellers', 'Seller reports']]
+const TABS = [['today', 'Today'], ['results', 'Real numbers'], ['offices', 'Offices'], ['people', 'People I know'], ['referrals', 'Referrals'], ['sellers', 'Seller reports']]
 
 export default function CustomerFinder() {
   const [tab, setTab] = useState(() => { try { return sessionStorage.getItem('zm-find-tab') || 'today' } catch { return 'today' } })
@@ -65,11 +65,12 @@ export default function CustomerFinder() {
       </div>
       <Tabs tabs={TABS} value={tab} onChange={choose} />
       {tab === 'today' && <TodayTab ctx={ctx} go={choose} />}
+      {tab === 'results' && <ResultsTab />}
       {tab === 'offices' && <ListTab list="office" ctx={ctx} />}
       {tab === 'people' && <ListTab list="warm" ctx={ctx} />}
       {tab === 'referrals' && <ReferralsTab ctx={ctx} />}
       {tab === 'sellers' && <SellersTab />}
-      {tab !== 'sellers' && <Messages messages={messages} save={saveMessages} />}
+      {tab !== 'sellers' && tab !== 'results' && <Messages messages={messages} save={saveMessages} />}
     </div>
   )
 }
@@ -426,6 +427,87 @@ function SellersTab() {
           {!report.views && !report.orders && <p className="muted small mt">Low numbers this week? Make a video of their products today (Video maker → Today’s post), and send this next week.</p>}
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------------- Real numbers ----------------
+// The whole road from a visit to money, so every week you can see where
+// people drop off and fix that one step. Nothing is estimated.
+const kwacha = (n) => `K${Math.round(Number(n) || 0).toLocaleString('en-ZM')}`
+const CHANNEL_NAMES = { direct: 'Typed the link / unknown', organic: 'Found us', whatsapp: 'WhatsApp', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', google: 'Google', warm: 'People we know', cold: 'Offices and cold outreach', referral: 'Referrals', reseller: 'Affiliates', affiliate: 'Affiliates', content: 'Content', paid: 'Paid ads', other: 'Other', marketplace: 'Marketplace' }
+function ResultsTab() {
+  const [days, setDays] = useState(30)
+  const { data: n, loading, error } = useData(() => q(supabase.rpc('growth_numbers', { p_days: days })), [days])
+  if (loading) return <Loading />
+  if (error) return /growth_numbers|function/.test(String(error)) ? <Empty title="One step first">Run section 35 of run-in-supabase.sql in Supabase, then come back.</Empty> : <Empty title="Could not load">{String(error)}</Empty>
+  const steps = [
+    ['Visited the site', n.visitors, 'people'],
+    ['Looked at a product', n.viewers, 'people'],
+    ['Tapped to ask (WhatsApp, call, enquiry)', n.askers, 'people'],
+    ['Became a lead', n.leads, 'leads'],
+    ['Were contacted by us', n.contacted, 'leads'],
+    ['Ordered or booked', n.orders + n.lunch_bookings, 'orders'],
+    ['Paid or delivered', n.paid_orders, 'shop orders'],
+  ]
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : null)
+  // The weakest step, and what to do about it.
+  const fixes = [
+    [pct(n.viewers, n.visitors), 'Most visitors leave without opening a product: put the best products first and make the opening of each video show the product.'],
+    [pct(n.askers, n.viewers), 'People look but don’t ask: make the offer clearer on the product page (price, delivery, a WhatsApp button) and use real reviews.'],
+    [pct(n.contacted, n.leads), 'Leads are waiting: contact every new lead the same day (Find customers → Today).'],
+    [pct(n.orders + n.lunch_bookings, n.contacted || n.leads), 'Conversations don’t turn into orders: follow up twice, answer the price question clearly, and make ordering one step.'],
+    [pct(n.paid_orders, n.orders), 'Orders are not being paid or delivered: confirm and collect payment faster.'],
+  ].filter(([p]) => p !== null)
+  const weak = fixes.length ? fixes.reduce((a, b) => (b[0] < a[0] ? b : a)) : null
+  const max = Math.max(1, ...n.weeks.map((w) => w.visitors))
+  const maxSales = Math.max(1, ...n.weeks.map((w) => Number(w.sales)))
+  return (
+    <div className="stack">
+      <div className="row wrap between">
+        <div className="segmented">{[[7, '7 days'], [30, '30 days'], [90, '90 days']].map(([d, l]) => <button key={d} type="button" className={days === d ? 'on' : ''} onClick={() => setDays(d)}>{l}</button>)}</div>
+        <small className="muted">{n.conversations} conversations logged in this time</small>
+      </div>
+      <div className="find-stats">
+        <div><strong>{kwacha(Number(n.sales) + Number(n.lunch_paid))}</strong><small>Sold and paid ({kwacha(n.sales)} shop · {kwacha(n.lunch_paid)} lunch)</small></div>
+        <div><strong>{n.orders + n.lunch_bookings}</strong><small>Orders and bookings</small></div>
+        <div><strong>{n.won}</strong><small>Leads won</small></div>
+      </div>
+      <div className="card">
+        <h3>From a visit to money</h3>
+        <p className="muted small mb">Each step with how many of the step before made it. The first steps count people (one visitor = one phone); the later ones count leads and orders.</p>
+        <div className="find-road">
+          {steps.map(([label, v], i) => {
+            const p = i ? pct(v, steps[i - 1][1]) : null
+            return (
+              <div key={label} className="find-step">
+                <span className="find-step-bar" style={{ width: `${Math.max(4, Math.round((v / Math.max(1, steps[0][1])) * 100))}%` }} />
+                <b>{v}</b><span>{label}</span>{p !== null && <em>{p}%</em>}
+              </div>
+            )
+          })}
+        </div>
+        {weak && <p className="find-fix"><b>Fix this first:</b> {weak[1]}</p>}
+      </div>
+      <div className="card">
+        <h3>Week by week</h3>
+        <div className="find-weeks">
+          {n.weeks.map((w) => (
+            <div key={w.week} className="find-week">
+              <div className="find-week-bars"><span className="v" style={{ height: `${Math.round((w.visitors / max) * 100)}%` }} title={`${w.visitors} visitors`} /><span className="s" style={{ height: `${Math.round((Number(w.sales) / maxSales) * 100)}%` }} title={kwacha(w.sales)} /></div>
+              <small>{new Date(`${w.week}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</small>
+            </div>
+          ))}
+        </div>
+        <p className="muted small"><span className="find-key v" /> visitors <span className="find-key s" /> money in</p>
+      </div>
+      <div className="card">
+        <h3>Where they came from</h3>
+        <table className="find-table"><thead><tr><th>Channel</th><th>Visitors</th><th>Leads</th><th>Orders</th></tr></thead>
+          <tbody>{n.channels.filter((c) => c.visitors || c.leads || c.orders).sort((a, b) => (b.orders - a.orders) || (b.leads - a.leads) || (b.visitors - a.visitors)).map((c) => <tr key={c.channel}><td>{CHANNEL_NAMES[c.channel] || c.channel}</td><td>{c.visitors}</td><td>{c.leads}</td><td>{c.orders}</td></tr>)}</tbody>
+        </table>
+        <p className="muted small mt">Put more time into the channel that brings orders, not just visitors.</p>
+      </div>
     </div>
   )
 }

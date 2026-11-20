@@ -99,3 +99,10 @@ test('find customers: its own section, uses the leads list, seller reports by fu
   assert.match(sql, /if not public\.is_staff\(\) then raise exception 'Staff only'/)
   assert.match(sql, /add column if not exists list text/)
 })
+
+test('real numbers: one staff-only function, visit to money, nothing estimated', () => {
+  const sql = read('supabase/migrations/20261120b_growth_numbers_REVIEW.sql')
+  assert.match(sql, /if not public\.is_staff\(\) then raise exception 'Staff only'/)
+  for (const k of ["'visitors'", "'askers'", "'contacted'", "'paid_orders'", "'sales'", "'lunch_paid'", "'channels'", "'weeks'"]) assert.ok(sql.includes(k), k)
+  assert.match(read('src/pages/marketing/CustomerFinder.jsx'), /\['results', 'Real numbers'\]/)
+})
