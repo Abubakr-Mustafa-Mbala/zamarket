@@ -122,7 +122,7 @@ test('video maker: countdown before recording, reading view, marketplace videos'
   assert.match(ui, /vx-prompter-now/)
   assert.match(ui, /\['market', 'Marketplace'\]/)
   // Recruitment lines stay honest: earnings depend on real sales; applications reviewed.
-  assert.match(s, /Earnings depend on real sales/)
+  assert.match(s, /Earnings depend on completed sales/)
   assert.match(s, /Every application is reviewed/)
   assert.doesNotMatch(s, /guaranteed income|earn up to/i)
 })

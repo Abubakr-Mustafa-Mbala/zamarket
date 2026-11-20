@@ -171,42 +171,46 @@ export const MARKET_TOPICS = [
 ]
 
 function marketScript(item, link) {
+  // Designed scenes, not random photos with words: the shop's real photos are
+  // used as moving texture (a wall, the shop on a phone, the three sections),
+  // and the message is told in big, bold words in the ZaMarket colours.
   const cars = item.cars || []; const products = item.products || []; const lunch = item.lunch || []
   const pool = [...new Set([...products, ...cars, ...lunch])]
-  const at = (list, i) => list[i] || pool[i % Math.max(1, pool.length)] || null
-  const grid = (list, from = 0) => { const g = [...list.slice(from), ...pool].filter(Boolean); return [...new Set(g)].slice(0, 4) }
-  const mix = [...new Set([products[0], cars[0], lunch[0], products[1], cars[1], products[2]].filter(Boolean))].slice(0, 4)
+  const wall = [...new Set([...products.slice(0, 6), ...cars.slice(0, 3), ...lunch.slice(0, 2), ...pool])].slice(0, 12)
+  const shop = [...new Set([...products, ...pool])].slice(0, 8)
+  const tiles = [products[0] && ['Shop', 'Products from local sellers', products[0]], cars[0] && ['Motors', 'Cars for sale · viewings arranged', cars[0]], lunch[0] && ['Weekly lunch', 'Homemade, to your office', lunch[0]]].filter(Boolean)
+  const tileScene = (line, say) => ({ type: 'mcats', kicker: 'Everything in one place', line, tiles: tiles.map(([label, sub, photo]) => ({ label, sub, pi: tiles.findIndex((x) => x[2] === photo) })), photos: tiles.map((x) => x[2]), say })
   const slides = []
   let end; let caption; let endSay
   if (item.topic === 'affiliates') {
-    slides.push({ type: 'collage', photos: mix.length ? mix : grid(pool), kicker: 'Affiliate programme', line: 'Earn with ZaMarket', sub: 'zamarket.shop/affiliates', say: 'Want to earn by sharing products online? This is the ZaMarket affiliate programme.' })
-    slides.push({ type: 'collage', photos: grid(products), kicker: 'What you share', line: 'Real products from local sellers', say: 'You promote real products and cars from the ZaMarket marketplace.' })
-    slides.push({ photo: at(cars, 0), kicker: 'How you earn', line: 'Commission on completed sales', sub: 'Earnings depend on real sales', say: 'You earn a commission when a sale you brought in is completed. What you earn depends on real sales.' })
-    slides.push({ photo: at(products, 1), kicker: 'You are taught', line: 'Training in our academy', sub: 'Plus ready-made posters and captions', say: 'Approved affiliates are trained in our academy, and given ready-made posters and captions to share.' })
-    slides.push({ photo: at(products, 2), kicker: 'No shop, no stock', line: 'Start with your phone', say: 'You do not need your own shop or stock. You start with your phone.' })
-    slides.push({ photo: at(cars, 1), kicker: 'How to join', line: 'Apply on zamarket.shop/affiliates', sub: 'Every application is reviewed', say: 'Apply on zamarket dot shop slash affiliates. Every application is reviewed.' })
-    end = { cta: 'Apply to be an affiliate', foot: 'Applications are reviewed' }
+    slides.push({ type: 'mwall', photos: wall, kicker: 'ZaMarket affiliates', lines: ['Share products.', 'Earn commission.'], sub: 'On sales that complete', say: 'Share products from ZaMarket, and earn a commission on the sales you bring in.' })
+    slides.push({ type: 'mbig', kicker: 'You don’t need', lines: ['A shop.', 'Stock.', 'Just your phone.'], say: 'You do not need a shop. You do not need stock. Just your phone.' })
+    slides.push({ type: 'mphone', photos: shop, kicker: 'What you share', line: 'Real products from local sellers', say: 'You share real products and cars from sellers on ZaMarket.' })
+    slides.push({ type: 'mbig', kicker: 'You are not alone', lines: ['Training', 'in our academy.'], sub: 'Ready-made posters and captions', say: 'Approved affiliates are trained in our academy, and get ready-made posters and captions to share.' })
+    slides.push({ type: 'msteps', kicker: 'How it works', line: 'Three steps', items: [['Apply', 'Every application is reviewed'], ['Get trained', 'In the ZaMarket academy'], ['Share and earn', 'Commission when a sale completes']], say: 'Apply. Get trained. Then share, and earn when a sale you brought in is completed.' })
+    end = { cta: 'Apply to be an affiliate', foot: 'Earnings depend on completed sales' }
     endSay = 'Apply on zamarket dot shop slash affiliates. The link is in the description.'
-    caption = ['Earn with ZaMarket: become an affiliate', '✓ Promote real products and cars from local sellers', '✓ Commission when a sale you brought in is completed', '✓ Training in our academy, ready-made posters and captions', '✓ Start with your phone, no stock needed', 'Earnings depend on completed sales and are not guaranteed. Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/affiliates'}`, '#ZaMarket #Zambia #Lusaka #EarnOnline'].join('\n')
+    caption = ['Earn with ZaMarket: become an affiliate', '✓ Share real products and cars from local sellers', '✓ Commission when a sale you brought in is completed', '✓ Training in our academy, ready-made posters and captions', '✓ No shop, no stock: just your phone', 'Earnings depend on completed sales and are not guaranteed. Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/affiliates'}`, '#ZaMarket #Zambia #Lusaka #EarnOnline'].join('\n')
   } else if (item.topic === 'sellers') {
-    slides.push({ type: 'collage', photos: grid(products), kicker: 'For businesses in Zambia', line: 'Sell on ZaMarket', say: 'Do you sell products in Zambia? Put your shop on ZaMarket.' })
-    slides.push({ photo: at(products, 0), kicker: 'Your own shop', line: 'Your products on your own shop page', say: 'Your products get their own shop page on ZaMarket, with photos, prices and ordering.' })
-    slides.push({ type: 'collage', photos: grid(products, 1), kicker: 'More people see them', line: 'Affiliates can share your products', say: 'Approved affiliates can share your products with their own customers.' })
-    slides.push({ photo: at(products, 2), kicker: 'Orders', line: 'You are told when an order comes in', say: 'When an order comes in, you get an alert, so you can prepare it.' })
-    slides.push({ photo: at(products, 3), kicker: 'How to join', line: 'Apply on zamarket.shop', sub: 'Every application is reviewed', say: 'Apply on zamarket dot shop. Every application is reviewed.' })
+    slides.push({ type: 'mwall', photos: wall, kicker: 'For businesses in Zambia', lines: ['Sell online', 'in Lusaka.'], sub: 'Your shop on ZaMarket', say: 'Run a business in Zambia? Sell online, on ZaMarket.' })
+    slides.push({ type: 'mphone', photos: shop, kicker: 'Your own shop', line: 'Your products, on your own shop page', say: 'Your products get their own shop page, with photos, prices and ordering.' })
+    slides.push({ type: 'mbig', kicker: 'More people see you', lines: ['Affiliates share', 'your products.'], say: 'Approved affiliates share your products with their own customers.' })
+    slides.push({ type: 'mbig', kicker: 'Never miss one', lines: ['An alert for', 'every order.'], say: 'When an order comes in, you get an alert, so you can prepare it.' })
+    slides.push({ type: 'msteps', kicker: 'How to start', line: 'Three steps', items: [['Apply', 'Every application is reviewed'], ['Add your products', 'Photos, prices, details'], ['Get orders', 'An alert for each one']], say: 'Apply, add your products, and get orders.' })
     end = { cta: 'Apply to sell on ZaMarket', foot: 'Applications are reviewed' }
     endSay = 'Apply on zamarket dot shop. The link is in the description.'
-    caption = ['Sell on ZaMarket', '✓ Your products on your own shop page', '✓ Approved affiliates can share your products', '✓ An alert when an order comes in', 'Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/apply/vendor'}`, '#ZaMarket #Lusaka #SmallBusinessZambia #ShopLocal'].join('\n')
+    caption = ['Sell on ZaMarket', '✓ Your products on your own shop page', '✓ Approved affiliates share your products', '✓ An alert for every order', 'Applications are reviewed.', `Apply: ${link || 'https://zamarket.shop/apply/vendor'}`, '#ZaMarket #Lusaka #SmallBusinessZambia #ShopLocal'].join('\n')
   } else {
-    slides.push({ type: 'collage', photos: mix.length ? mix : grid(pool), kicker: 'Online marketplace in Zambia', line: 'This is ZaMarket', sub: 'zamarket.shop', say: 'This is ZaMarket, an online marketplace here in Zambia.' })
-    if (products.length) slides.push({ type: 'collage', photos: grid(products), kicker: 'Shop', line: 'Products from local sellers', sub: 'Order online · delivered in Lusaka', say: 'Shop products from local sellers and order online, with delivery in Lusaka.' })
-    if (cars.length) slides.push({ photo: cars[0], kicker: 'ZaMarket Motors', line: 'Cars for sale', sub: 'Enquire and arrange a viewing', say: 'On ZaMarket Motors you can see cars for sale, ask about them and arrange a viewing.' })
-    if (lunch.length) slides.push({ photo: lunch[0], kicker: 'Weekly lunch', line: 'Homemade lunch to your office or door', say: 'And you can order your weekly lunch, delivered to your office or your door.' })
+    slides.push({ type: 'mwall', photos: wall, kicker: 'Online marketplace', lines: ['Lusaka’s marketplace,', 'in your pocket.'], sub: 'zamarket.shop', say: 'This is ZaMarket: Lusaka’s online marketplace, right in your pocket.' })
+    if (tiles.length > 1) slides.push(tileScene('Shop, cars and lunch', `${tiles.map((x) => x[0] === 'Shop' ? 'shop from local sellers' : x[0] === 'Motors' ? 'find a car' : 'order your weekly lunch').join(', ')}, all in one place.`.replace(/^./, (c) => c.toUpperCase())))
+    if (shop.length) slides.push({ type: 'mphone', photos: shop, kicker: 'Shop', line: 'Products from local sellers', say: 'Browse products from local sellers, with photos and prices.' })
+    slides.push({ type: 'mbig', kicker: 'Simple', lines: ['Order online.', 'Delivered in Lusaka.'], say: 'Order online, and it is delivered in Lusaka.' })
+    slides.push({ type: 'msteps', kicker: 'How it works', line: 'Three steps', items: [['Find it', 'On zamarket.shop'], ['Order', 'In a few taps'], ['Get it', 'Delivered in Lusaka']], say: 'Find it, order it, get it.' })
     end = { cta: 'Visit zamarket.shop', foot: [products.length && 'Shop', cars.length && 'Motors', lunch.length && 'Lunch'].filter(Boolean).join(' · ') }
     endSay = 'Visit zamarket dot shop. The link is in the description.'
-    caption = ['ZaMarket: an online marketplace in Zambia', products.length ? '✓ Products from local sellers, delivered in Lusaka' : '', cars.length ? '✓ Cars for sale on ZaMarket Motors' : '', lunch.length ? '✓ Weekly lunch to your office or door' : '', link || 'https://zamarket.shop', '#ZaMarket #Lusaka #Zambia #ShopLocal'].filter(Boolean).join('\n')
+    caption = ['ZaMarket: Lusaka’s online marketplace', products.length ? '✓ Products from local sellers, delivered in Lusaka' : '', cars.length ? '✓ Cars for sale on ZaMarket Motors' : '', lunch.length ? '✓ Weekly lunch to your office or door' : '', link || 'https://zamarket.shop', '#ZaMarket #Lusaka #Zambia #ShopLocal'].filter(Boolean).join('\n')
   }
-  const out = slides.map((x) => ({ kicker: '', line: '', sub: '', ...x, photo: x.photo || x.photos?.[0] || null }))
+  const out = slides.map((x) => ({ kicker: '', line: (x.lines || []).join(' ') || '', sub: '', ...x, photo: x.photo || x.photos?.[0] || null }))
   return { slides: out, voice: [...out.map((x) => x.say), endSay].join(' '), caption, endSay, end }
 }
 
@@ -275,7 +279,7 @@ function lookOf(slides, i) {
   if (s.type === 'specs') return 'specs'
   if (s.type === 'collage') return 'collage'
   if (s.type === 'offer') return 'offer'
-  if (s.type === 'clock' || s.type === 'menu' || s.type === 'route' || s.type === 'hookfood' || s.type === 'hookbusy') return s.type
+  if (['clock', 'menu', 'route', 'hookfood', 'hookbusy', 'mwall', 'mbig', 'mphone', 'mcats', 'msteps'].includes(s.type)) return s.type
   if (s.type === 'howto') return 'howto'
   if (i === 0 && isWords(s)) return 'hero'
   if (!isWords(s)) return 'photo'
@@ -298,6 +302,11 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (look === 'clock') return drawClock(ctx, s, img, local)
   if (look === 'hookfood') return drawHookFood(ctx, s, img, local)
   if (look === 'hookbusy') return drawHookBusy(ctx, s, img, local)
+  if (look === 'mwall') return drawWall(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
+  if (look === 'mbig') return drawBig(ctx, s, local)
+  if (look === 'mphone') return drawShopPhone(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
+  if (look === 'mcats') return drawTiles(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
+  if (look === 'msteps') return drawSteps(ctx, s, local)
   if (look === 'menu') return drawMenu(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
   if (look === 'route') return drawRoute(ctx, s, local)
   if (look === 'specs') { if (img) { ctx.save(); ctx.globalAlpha = 0.55; fill(ctx, img, 0, 0, W, H, 1.08); ctx.restore() } drawSpecs(ctx, s, local); return }
@@ -399,6 +408,194 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (img) { if (still) drawWhole(ctx, img, s); else fill(ctx, img, 0, 0, W, H, soft ? 1.02 + 0.05 * p : 1.04 + 0.1 * p, (i % 2 ? 1 : -1) * 30 * p) }
   if (no && feats.length > 1) counter(ctx, no, feats.length, W - 72, 230, local, 'right')
   wordsBottom(ctx, s, local, { bar: true })
+}
+
+// ---- Marketplace videos: designed scenes in the ZaMarket colours ----------
+// Words that land one by one with a little "pop", each line its own colour.
+function popLines(ctx, rows, { x = 72, y, local, start = 0.25, from = 110, to = 64, align = 'left', gap = 0.11, lineGap = 0.14 }) {
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  let delay = start; let yy = y
+  const lands = []
+  for (const [text, colour] of rows) {
+    const f = fitText(ctx, text, W - 144, { from, to, lines: 1 })
+    for (const line of f.lines) {
+      const width = ctx.measureText(line).width
+      let xx = align === 'center' ? (W - width) / 2 : x
+      lands.push(delay)
+      for (const word of line.split(' ')) {
+        const k = (local - delay) / 0.22
+        const w = ctx.measureText(`${word} `).width
+        if (k > 0) {
+          const sc = 1 + 0.35 * Math.max(0, 1 - k) ** 2
+          ctx.save(); ctx.globalAlpha = Math.min(1, k * 1.6); ctx.translate(xx, yy); ctx.scale(sc, sc)
+          ctx.fillStyle = colour; ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 20
+          ctx.fillText(word, 0, 0); ctx.restore()
+        }
+        xx += w; delay += gap
+      }
+      yy += Math.round(f.size * 1.14)
+    }
+    delay += lineGap
+  }
+  ctx.restore()
+  return { y: yy, done: delay, lands }
+}
+
+// A moving wall of the shop's real photos, three columns drifting in
+// opposite directions, the headline big in the middle.
+function drawWall(ctx, s, imgs, local) {
+  ctx.fillStyle = '#0E1013'; ctx.fillRect(0, 0, W, H)
+  const colW = 360; const tileH = 460; const g = 18
+  if (imgs.length) {
+    for (let c = 0; c < 3; c += 1) {
+      const dir = c === 1 ? 1 : -1
+      const off = ((local * 70 * dir) % (tileH + g) + (tileH + g)) % (tileH + g) - (c === 1 ? tileH * 0.5 : 0)
+      for (let r = -1; r < 6; r += 1) {
+        const img = imgs[(c * 5 + r + 7) % imgs.length]
+        const x = -30 + c * (colW + g); const y = r * (tileH + g) + off
+        ctx.save(); roundRect(ctx, x, y, colW, tileH, 30); ctx.clip(); fill(ctx, img, x, y, colW, tileH); ctx.restore()
+      }
+    }
+  }
+  const veil = ctx.createLinearGradient(0, 0, 0, H)
+  veil.addColorStop(0, 'rgba(14,16,19,.55)'); veil.addColorStop(0.42, 'rgba(14,16,19,.86)'); veil.addColorStop(0.62, 'rgba(14,16,19,.9)'); veil.addColorStop(1, 'rgba(14,16,19,.6)')
+  ctx.fillStyle = veil; ctx.fillRect(0, 0, W, H)
+  const glow = ctx.createRadialGradient(W / 2, 900, 40, W / 2, 900, 700)
+  glow.addColorStop(0, 'rgba(138,108,255,.35)'); glow.addColorStop(1, 'rgba(138,108,255,0)')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+  if (local < 0.18) { ctx.fillStyle = `rgba(255,255,255,${0.4 * (1 - local / 0.18)})`; ctx.fillRect(0, 0, W, H) }
+  // The logo, big, popping in.
+  const k = back(local / 0.45)
+  if (k > 0) { ctx.save(); ctx.translate(W / 2, 560); ctx.scale(k, k); brandMark(ctx, -80, -80, 160); ctx.restore() }
+  ctx.save(); ctx.globalAlpha = ease((local - 0.15) / 0.35); ctx.textAlign = 'center'; ctx.fillStyle = '#A892FF'; ctx.font = '800 40px Inter, Arial, sans-serif'
+  ctx.fillText(String(s.kicker || '').toUpperCase(), W / 2, 760); ctx.restore()
+  const lines = s.lines?.length ? s.lines : [s.line || '']
+  const r = popLines(ctx, lines.map((t, i) => [t, i === lines.length - 1 ? '#A892FF' : '#fff']), { y: 900, local, start: 0.35, from: 104, to: 60, align: 'center' })
+  if (s.sub) {
+    const kk = back((local - r.done - 0.05) / 0.35)
+    if (kk > 0) {
+      ctx.save(); ctx.font = '700 40px Inter, Arial, sans-serif'
+      const w = ctx.measureText(s.sub).width + 64
+      ctx.translate(W / 2, r.y + 40); ctx.scale(kk, kk)
+      ctx.fillStyle = 'rgba(14,16,19,.85)'; roundRect(ctx, -w / 2, 0, w, 84, 42); ctx.fill()
+      ctx.strokeStyle = '#8A6CFF'; ctx.lineWidth = 4; roundRect(ctx, -w / 2, 0, w, 84, 42); ctx.stroke()
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(s.sub, 0, 44)
+      ctx.restore()
+    }
+  }
+}
+
+// Big statement: short lines landing one after another, the last in violet.
+function drawBig(ctx, s, local) {
+  const g = ctx.createLinearGradient(0, 0, W, H)
+  g.addColorStop(0, '#241E45'); g.addColorStop(0.55, '#15181C'); g.addColorStop(1, '#0E1013')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  // A slow violet light moving behind.
+  const lx = W * (0.3 + 0.4 * Math.sin(local * 0.6)); const glow = ctx.createRadialGradient(lx, 760, 30, lx, 760, 640)
+  glow.addColorStop(0, 'rgba(138,108,255,.28)'); glow.addColorStop(1, 'rgba(138,108,255,0)')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+  ctx.save(); ctx.globalAlpha = ease((local - 0.05) / 0.35); ctx.fillStyle = '#A892FF'; ctx.font = '800 42px Inter, Arial, sans-serif'; ctx.textAlign = 'left'
+  ctx.fillText(String(s.kicker || '').toUpperCase(), 72, 660); ctx.restore()
+  // A violet bar that grows under the kicker.
+  ctx.fillStyle = '#8A6CFF'; roundRect(ctx, 72, 690, 140 * ease((local - 0.1) / 0.5), 10, 5); ctx.fill()
+  const lines = s.lines?.length ? s.lines : [s.line || '']
+  const r = popLines(ctx, lines.map((t, i) => [t, i === lines.length - 1 ? '#A892FF' : '#fff']), { y: 860, local, start: 0.25, from: 120, to: 64, gap: 0.08, lineGap: 0.32 })
+  if (s.sub) { ctx.save(); ctx.globalAlpha = ease((local - r.done - 0.1) / 0.4); ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = '600 44px Inter, Arial, sans-serif'; ctx.textAlign = 'left'; ctx.fillText(s.sub, 72, r.y + 50, W - 144); ctx.restore() }
+}
+
+// The shop on a phone: real product photos in a scrolling grid, a finger
+// taps one.
+function drawShopPhone(ctx, s, imgs, local) {
+  scene(ctx)
+  heading(ctx, s, local, 270)
+  const P = { x: 150, y: 470, w: 780, h: 1330, r: 70 }
+  const rise = ease(local / 0.5)
+  ctx.save(); ctx.translate(0, (1 - rise) * 200); ctx.globalAlpha = rise
+  ctx.shadowColor = 'rgba(0,0,0,.6)'; ctx.shadowBlur = 50
+  ctx.fillStyle = '#05060a'; roundRect(ctx, P.x, P.y, P.w, P.h, P.r); ctx.fill(); ctx.shadowColor = 'transparent'
+  const sx = P.x + 22; const sy = P.y + 22; const sw = P.w - 44; const sh = P.h - 44
+  ctx.save(); roundRect(ctx, sx, sy, sw, sh, P.r - 20); ctx.clip()
+  ctx.fillStyle = '#0E1013'; ctx.fillRect(sx, sy, sw, sh)
+  // The grid, scrolling up.
+  const cw = (sw - 60) / 2; const ch = cw + 110
+  const scroll = Math.max(0, local - 0.6) * 90
+  for (let i = 0; i < 12; i += 1) {
+    const col = i % 2; const row = Math.floor(i / 2)
+    const x = sx + 20 + col * (cw + 20); const y = sy + 150 + row * (ch + 20) - scroll
+    if (y > sy + sh || y + ch < sy) continue
+    ctx.fillStyle = '#15181C'; roundRect(ctx, x, y, cw, ch, 22); ctx.fill()
+    const img = imgs.length ? imgs[i % imgs.length] : null
+    if (img) { ctx.save(); roundRect(ctx, x, y, cw, cw, 22); ctx.clip(); fill(ctx, img, x, y, cw, cw); ctx.restore() }
+    ctx.fillStyle = 'rgba(255,255,255,.22)'; roundRect(ctx, x + 18, y + cw + 26, cw * 0.7, 18, 9); ctx.fill()
+    ctx.fillStyle = 'rgba(168,146,255,.55)'; roundRect(ctx, x + 18, y + cw + 62, cw * 0.38, 18, 9); ctx.fill()
+  }
+  // The shop's bar on top.
+  ctx.fillStyle = '#15181C'; ctx.fillRect(sx, sy, sw, 130)
+  brandMark(ctx, sx + 30, sy + 40, 54)
+  ctx.font = '900 44px Inter, Arial, sans-serif'; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
+  ctx.fillStyle = '#A892FF'; ctx.fillText('Za', sx + 100, sy + 68); ctx.fillStyle = '#fff'; ctx.fillText('Market', sx + 100 + ctx.measureText('Za').width, sy + 68)
+  ctx.restore()
+  // A finger taps the first product.
+  const tap = (local - 2.3) / 0.5
+  if (tap > 0) {
+    const fx = sx + 20 + cw * 0.55; const fy = sy + sh * 0.5
+    const ring = Math.min(1, tap)
+    ctx.strokeStyle = `rgba(168,146,255,${1 - ring})`; ctx.lineWidth = 8; ctx.beginPath(); ctx.arc(fx, fy, 30 + 70 * ring, 0, Math.PI * 2); ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,.9)'; ctx.beginPath(); ctx.arc(fx, fy, 30, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+}
+
+// The sections of the marketplace as big photo cards sliding in.
+function drawTiles(ctx, s, imgs, local) {
+  scene(ctx)
+  heading(ctx, s, local, 270)
+  const tiles = (s.tiles || []).slice(0, 3)
+  const top = 470; const h = Math.min(420, (1760 - top - (tiles.length - 1) * 30) / Math.max(1, tiles.length))
+  tiles.forEach((t, j) => {
+    const k = ease((local - 0.3 - j * 0.3) / 0.5)
+    if (k <= 0) return
+    const y = top + j * (h + 30)
+    ctx.save(); ctx.globalAlpha = k; ctx.translate((1 - k) * (j % 2 ? -160 : 160), 0)
+    ctx.save(); roundRect(ctx, 56, y, W - 112, h, 36); ctx.clip()
+    const img = t.pi >= 0 ? imgs[t.pi] : null
+    if (img) fill(ctx, img, 56, y, W - 112, h, 1.05 + 0.04 * Math.min(1, local / SLIDE)); else { ctx.fillStyle = '#241E45'; ctx.fillRect(56, y, W - 112, h) }
+    const gr = ctx.createLinearGradient(0, y + h * 0.35, 0, y + h)
+    gr.addColorStop(0, 'rgba(14,16,19,0)'); gr.addColorStop(1, 'rgba(14,16,19,.92)')
+    ctx.fillStyle = gr; ctx.fillRect(56, y, W - 112, h)
+    ctx.restore()
+    ctx.strokeStyle = 'rgba(138,108,255,.6)'; ctx.lineWidth = 3; roundRect(ctx, 56, y, W - 112, h, 36); ctx.stroke()
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    ctx.fillStyle = '#fff'; ctx.font = '900 72px Inter, Arial, sans-serif'; ctx.fillText(t.label, 96, y + h - 92)
+    ctx.fillStyle = '#C9BCFF'; ctx.font = '600 38px Inter, Arial, sans-serif'; ctx.fillText(t.sub, 96, y + h - 40, W - 192)
+    ctx.restore()
+  })
+}
+
+// Three steps, ticked off one by one down a violet line.
+function drawSteps(ctx, s, local) {
+  scene(ctx)
+  heading(ctx, s, local, 330)
+  const items = (s.items || []).slice(0, 3)
+  const top = 640; const gapY = 330
+  const lineK = ease((local - 0.4) / (0.5 + items.length * 0.35))
+  ctx.strokeStyle = 'rgba(138,108,255,.5)'; ctx.lineWidth = 8
+  ctx.beginPath(); ctx.moveTo(150, top + 70); ctx.lineTo(150, top + 70 + (items.length - 1) * gapY * lineK); ctx.stroke()
+  items.forEach(([title, sub], j) => {
+    const k = back((local - 0.35 - j * 0.45) / 0.4)
+    if (k <= 0) return
+    const y = top + j * gapY
+    ctx.save(); ctx.translate(150, y + 70); ctx.scale(k, k)
+    ctx.fillStyle = '#8A6CFF'; ctx.beginPath(); ctx.arc(0, 0, 70, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.font = '900 64px Inter, Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(j + 1), 0, 4)
+    ctx.restore()
+    const t = ease((local - 0.45 - j * 0.45) / 0.4)
+    ctx.save(); ctx.globalAlpha = t; ctx.translate((1 - t) * 60, 0); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+    const f = fitText(ctx, title, W - 300, { from: 76, to: 48, lines: 1 })
+    ctx.fillStyle = '#fff'; ctx.fillText(f.lines[0] || '', 260, y + 70)
+    ctx.fillStyle = '#C9BCFF'; ctx.font = '600 40px Inter, Arial, sans-serif'; ctx.fillText(sub || '', 260, y + 135, W - 320)
+    ctx.restore()
+  })
 }
 
 // ---- Lunch: the 12:30 opening, the week menu, the delivery --------------------
@@ -1222,7 +1419,8 @@ function wrapText(ctx, text, max) {
 // The picture(s) a scene draws: one photo, or a list (grid, offer card, the
 // week menu, which keeps its places so each day keeps its own dish).
 export function sceneImages(x, get) {
-  if (x.type === 'menu') return (x.photos || []).map((u) => get(u) || null)
+  if (x.type === 'menu' || x.type === 'mcats') return (x.photos || []).map((u) => get(u) || null)
+  if (x.type === 'mwall' || x.type === 'mphone') return (x.photos || []).map(get).filter(Boolean)
   if (x.type === 'collage' || x.type === 'offer') return (x.photos || []).map(get).filter(Boolean)
   return get(x.photo) || null
 }
@@ -1441,7 +1639,7 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const KEEP = ['line2', 'punch', 'slot', 'ask', 'when', 'order', 'area', 'note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
+const KEEP = ['lines', 'tiles', 'items', 'line2', 'punch', 'slot', 'ask', 'when', 'order', 'area', 'note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
 const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...Object.fromEntries(KEEP.filter((k) => sc[k] != null).map((k) => [k, sc[k]])) })
 
 // A new scene from a block, on a chosen photo.

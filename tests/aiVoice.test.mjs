@@ -64,3 +64,11 @@ test('my videos fold into one bar; a nasheed can be added to a finished video wi
   assert.match(n, /duckUnder\(voice, bed\)/)
   assert.match(read('src/lib/videoRender.js'), /duckUnder\(voice, bed\)/)
 })
+
+test('marketplace videos are designed scenes, not random photos with words', () => {
+  const lv = read('src/lib/listingVideo.js')
+  for (const f of ['function drawWall', 'function drawBig', 'function drawShopPhone', 'function drawTiles', 'function drawSteps']) assert.ok(lv.includes(f), f)
+  const m = lv.slice(lv.indexOf('function marketScript'), lv.indexOf('function marketScript') + 9000)
+  assert.doesNotMatch(m, /type: 'collage'/)
+  assert.match(m, /Earnings depend on completed sales/)
+})

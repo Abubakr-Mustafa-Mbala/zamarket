@@ -6,7 +6,7 @@ import { clockSwitch, sceneSeconds } from './listingVideo'
 
 const RATE = 48000
 
-const OPENINGS = ['clock', 'hookfood', 'hookbusy']
+const OPENINGS = ['clock', 'hookfood', 'hookbusy', 'mwall', 'mbig']
 export const hasOpening = (slides) => OPENINGS.includes(slides?.[0]?.type) || slides?.some((x) => x.type === 'clock')
 
 // The sounds each opening plays, at moments in the scene (seconds).
@@ -23,6 +23,17 @@ function cues(s) {
     return [...p.map((_, j) => ({ at: 0.1 + j * gap + 0.02, kind: 'thump' })), { at: T - 0.15, kind: 'whoosh' }]
   }
   if (s.type === 'clock') return [{ at: T - 0.15, kind: 'whoosh' }]
+  if (s.type === 'mwall') {
+    // Whoosh in; a deep hit as the violet line lands.
+    const first = String((s.lines || [])[0] || '').split(' ').length
+    return [{ at: 0.001, kind: 'whoosh' }, { at: 0.35 + first * 0.11 + 0.14 + 0.05, kind: 'thump' }]
+  }
+  if (s.type === 'mbig') {
+    // A hit on each line as it lands.
+    let at = 0.25; const out = []
+    for (const line of s.lines || []) { out.push({ at: at + 0.03, kind: 'thump' }); at += String(line).split(' ').length * 0.08 + 0.32 }
+    return out
+  }
   return []
 }
 
