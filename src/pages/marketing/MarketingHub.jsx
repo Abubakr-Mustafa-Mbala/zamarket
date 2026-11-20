@@ -1,11 +1,17 @@
-import { useMemo, useState } from 'react'
-import { NavLink, useParams, Navigate, Link } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { NavLink, useParams, Navigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
 import { money, num, date, title } from '../../lib/format'
 import { Loading, Modal, Field, Input, Select, Textarea, useToast, Empty, Badge, CopyLine, Segmented } from '../../components/ui'
-import BarChart from '../../components/BarChart'
+import GIcon from '../../components/GrowthIcons'
+import LineChart from '../../components/LineChart'
+import Donut from '../../components/Donut'
+import BrandMark from '../../components/BrandMark'
+import { WORKSPACES, ALL_TOOLS, QUICK, toolByKey, searchTools, workspaceOfSection } from '../../lib/marketingTools'
+import { useTraffic, trafficTotals, dayPoints, sourceItems, Period, Stat } from '../admin/Traffic'
+import '../../growth-centre.css'
 import { DateBar, useRange } from '../shared/Earnings'
 import { buildIdeas, WEEK_PLAN } from '../../lib/contentIdeas'
 import Leads, { CHANNELS, LeadDrawer, StageChip, FollowUp } from './Leads'
@@ -32,54 +38,200 @@ const SECTIONS = [
 export default function MarketingHub() {
   const { section = '' } = useParams()
   if (!SECTIONS.some(([k]) => k === section)) return <Navigate to="/admin/marketing" replace />
-  const Page = { '': Overview, growth: GrowthDesk, giveaways: Giveaways, start: StartHere, 'front-page': FrontPage, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, launch: Launchpad, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  const Page = { '': GrowthCentre, growth: GrowthDesk, giveaways: Giveaways, start: StartHere, 'front-page': FrontPage, featured: Featured, proof: Proof, creatives: Creatives, funnels: Funnels, blog: Blog, launch: Launchpad, coupons: Coupons, seo: Seo, coverage: Coverage, today: Today, leads: Leads, campaigns: Campaigns, content: Content, magnets: Magnets, referrals: Referrals, requests: AdRequests, spend: SpendAndSources }[section]
+  if (!section) return <div className="gc"><Page /></div>
   const heading = SECTIONS.find(([k]) => k === section)[1]
+  const where = workspaceOfSection(section)
+  const ws = where?.workspace
+  const tool = where?.tool
   return (
-    <div className="stack mk">
-      <div className="mk-head premium-marketing-head">
-        <div><span className="eyebrow"><span className="status-dot" /> THE GROWTH DESK</span>
-          <h1>{section ? heading : 'Marketing command centre'}</h1>
-          <p>{{
-            '': 'What marketing brought in, and where it came from.',
-            giveaways: 'Free-to-enter prize draws. Entry on ZaMarket, winners picked by the system, never by you.',
-            'front-page': 'What a shopper sees first. Pick the products worth leading with; the rest of the page arranges itself underneath.',
-            growth: 'Where the orders are actually coming from, and which products people open but never buy.',
-            start: 'New to this? Start here: what to do, in order, and what every number means.',
-            creatives: 'Every advert and price list made, and which styles get shared.',
-            proof: 'Real customer words and photos from completed orders, ready to post.',
-            featured: 'Who or what is at the top of the homepage today, and what it brought.',
-            coverage: 'Which products affiliates are ignoring, and how to fix it.',
-            blog: 'Articles that answer what people search for, each one ending at something they can buy.',
-            launch: 'Promote your actual products and articles with tracked links and ready-to-share content.',
-            coupons: 'Discount codes, and who is paying for each one.',
-            seo: 'Being found on Google for free, and what each page still needs.',
-            funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
-            today: 'Your checklist for today. Do the work, watch the numbers move.',
-            leads: 'Everyone who showed interest. Call, message, follow up, win.',
-            campaigns: 'Every ad, post and message gets a short link so results are counted.',
-            content: 'What was posted, where, and what it brought in.',
-            magnets: 'Free guides, vouchers and checklists that turn visitors into leads.',
-            referrals: 'Customers inviting friends, and the rewards they earn.',
-            requests: 'Vendors asking ZaMarket to advertise for them.',
-            spend: 'What each channel costs and what it returns.',
-          }[section]}</p>
+    <div className="stack mk gc gc-tool-page">
+      <header className="gc-page-head">
+        <div className="gc-crumbs"><Link to="/admin/marketing">Marketing & Growth</Link><span>›</span>{ws ? <><Link to={`/admin/marketing?ws=${ws.key}#tools`}>{ws.name}</Link><span>›</span></> : null}<span>{tool?.name || heading}</span></div>
+        <div className="gc-head-row">
+          <div className={`gc-head-ico tone-${ws?.tone || 'violet'}`}><GIcon name={tool?.icon || 'book'} size={28} /></div>
+          <div>
+            <h1>{tool?.name || heading}</h1>
+            <p>{SECTION_HELP[section] || tool?.desc}</p>
+          </div>
         </div>
-        <div className="marketing-head-actions"><Link to="/admin/marketing/launch" className="btn primary">Launch a campaign</Link><Link to="/admin/marketing/seo" className="btn">SEO centre</Link><Link to="/admin/marketing/blog" className="btn">Write an article</Link></div>
-      </div>
-      <nav className="mk-nav" aria-label="Marketing sections">
-        {SECTIONS.map(([k, l]) => <NavLink key={k || 'overview'} end to={`/admin/marketing${k ? `/${k}` : ''}`}>{l}</NavLink>)}
-      </nav>
+        {ws && (
+          <nav className="gc-ws-tabs" aria-label={`${ws.name} tools`}>
+            {ws.tools.map((t) => (t.to.startsWith('/admin/marketing/') ? <NavLink key={t.key} to={t.to}>{t.name}</NavLink> : <Link key={t.key} to={t.to}>{t.name}</Link>))}
+            <Link to="/admin/marketing#tools" className="gc-ws-all">All tools</Link>
+          </nav>
+        )}
+      </header>
       <Page />
     </div>
   )
 }
 
-// ---------------- Overview ----------------
+const SECTION_HELP = {
+  giveaways: 'Free-to-enter prize draws. Entry on ZaMarket, winners picked by the system, never by you.',
+  'front-page': 'What a shopper sees first. Pick the products worth leading with; the rest of the page arranges itself underneath.',
+  growth: 'Where the orders are actually coming from, and which products people open but never buy.',
+  start: 'New to this? Start here: which tool to use, in what order, and what every number means.',
+  creatives: 'Every advert and price list made, and which styles get shared.',
+  proof: 'Real customer words and photos from completed orders, ready to post.',
+  featured: 'Who or what is at the top of the homepage today, and what it brought.',
+  coverage: 'Which products affiliates are ignoring, and how to fix it.',
+  blog: 'Articles that answer what people search for, each one ending at something they can buy.',
+  launch: 'Promote your actual products and articles with tracked links and ready-to-share content.',
+  coupons: 'Discount codes, and who is paying for each one.',
+  seo: 'Being found on Google for free, and what each page still needs.',
+  funnels: 'One path from first seeing you to buying again, with the weakest step marked.',
+  today: 'Your checklist for today. Do the work, watch the numbers move.',
+  leads: 'Everyone who showed interest. Call, message, follow up, win.',
+  campaigns: 'Every ad, post and message gets a short link so results are counted.',
+  content: 'What to post, what was posted, where, and what it brought in.',
+  magnets: 'Free guides, vouchers and checklists that turn visitors into leads.',
+  referrals: 'Customers inviting friends, and the rewards they earn.',
+  requests: 'Vendors asking ZaMarket to advertise for them.',
+  spend: 'What each channel costs and what it returns.',
+}
+
+// ---------------- Marketing & Growth Centre ----------------
+function GrowthCentre() {
+  const [params, setParams] = useSearchParams()
+  const [find, setFind] = useState('')
+  const wsKey = params.get('ws') || ''
+  const found = useMemo(() => searchTools(find), [find])
+  const openWs = (k) => {
+    const next = new URLSearchParams(params)
+    if (k) next.set('ws', k); else next.delete('ws')
+    setParams(next, { replace: true })
+    setTimeout(() => document.getElementById('tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 30)
+  }
+  useEffect(() => {
+    const id = window.location.hash.slice(1)
+    if (id) setTimeout(() => document.getElementById(id)?.scrollIntoView({ block: 'start' }), 60)
+  }, [])
+  const shown = wsKey ? WORKSPACES.filter((w) => w.key === wsKey) : WORKSPACES
+  return (
+    <div className="gc-centre">
+      <section className="gc-hero">
+        <div className="gc-hero-text">
+          <span className="gc-eyebrow"><BrandMark size={20} /> MARKETING & GROWTH CENTRE</span>
+          <h1>Grow ZaMarket. <em>Get More Customers.</em></h1>
+          <p>Everything you need to find buyers, promote products, manage campaigns and increase sales, all in one place.</p>
+          <div className="gc-search">
+            <GIcon name="search" />
+            <input type="search" value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search for a marketing tool: leads, video, coupons, SEO…" aria-label="Search marketing tools" />
+            {find && <button type="button" onClick={() => setFind('')} aria-label="Clear">×</button>}
+          </div>
+          {find && (
+            <div className="gc-found">
+              {found.length ? found.map((t) => <ToolLink key={t.key} t={t} />) : <p className="gc-note">No tool matches “{find}”. Try “video”, “leads”, “coupon” or “Google”.</p>}
+            </div>
+          )}
+        </div>
+        <div className="gc-hero-art" aria-hidden="true">
+          <svg viewBox="0 0 220 150"><defs><linearGradient id="gch" x1="0" x2="1"><stop offset="0" stopColor="#8A6CFF" /><stop offset="1" stopColor="#E879F9" /></linearGradient></defs>
+            <rect x="8" y="12" width="204" height="126" rx="16" fill="rgba(255,255,255,.04)" stroke="rgba(168,146,255,.35)" />
+            {[30, 52, 74, 96, 118, 140, 162].map((x, i) => <rect key={x} x={x} y={118 - [18, 30, 26, 46, 58, 70, 92][i]} width="14" height={[18, 30, 26, 46, 58, 70, 92][i]} rx="4" fill="url(#gch)" opacity={0.45 + i * 0.08} />)}
+            <path d="M28 104 L60 84 L86 92 L116 64 L146 56 L188 22" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" /><path d="M176 20h14v14" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </section>
+
+      <div className="gc-ws-grid">
+        {WORKSPACES.map((w) => (
+          <article key={w.key} className={`gc-ws tone-${w.tone} ${wsKey === w.key ? 'on' : ''}`}>
+            <button type="button" className="gc-ws-top" onClick={() => openWs(wsKey === w.key ? '' : w.key)} aria-expanded={wsKey === w.key}>
+              <span className="gc-ws-ico"><GIcon name={w.icon} size={30} /></span>
+              <span className="gc-ws-text"><b>{w.name}</b><small>{w.blurb}</small></span>
+              <span className="gc-ws-go"><GIcon name="chevron" size={18} /></span>
+            </button>
+            <div className="gc-ws-tools">
+              <button type="button" className="gc-ws-count" onClick={() => openWs(w.key)}>{w.tools.length} tools</button>
+              {w.tools.map((t) => <Link key={t.key} to={t.to}>{t.name}</Link>)}
+            </div>
+          </article>
+        ))}
+      </div>
+
+      <section className="gc-quick">
+        <h2><GIcon name="bolt" /> Quick access</h2>
+        <div className="gc-quick-row">
+          {QUICK.map((k) => { const t = toolByKey(k); return <Link key={k} to={t.to} className={`gc-quick-btn tone-${t.tone} ${k === 'start' ? 'is-guide' : ''}`}><GIcon name={t.icon} size={24} /><span>{t.name}</span></Link> })}
+        </div>
+      </section>
+
+      <div className="gc-main-side">
+        <div className="gc-main">
+          <Overview />
+          <section className="gc-panel" id="tools">
+            <div className="gc-panel-head">
+              <h2><GIcon name="layers" /> {wsKey ? `${shown[0].name} tools` : `All marketing tools (${ALL_TOOLS.length})`}</h2>
+              {wsKey && <button type="button" className="gc-link" onClick={() => openWs('')}>Show all</button>}
+            </div>
+            <div className={`gc-tool-cols ${wsKey ? 'one' : ''}`}>
+              {shown.map((w) => (
+                <div key={w.key} className={`gc-tool-col tone-${w.tone}`}>
+                  <div className="gc-tool-col-head"><GIcon name={w.icon} /><b>{w.name}</b><small>{w.tools.length}</small></div>
+                  {w.tools.map((t) => <ToolLink key={t.key} t={t} withDesc={!!wsKey} />)}
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+        <aside className="gc-side">
+          <VisitorsSnapshot />
+          <Link to="/admin/marketing/start" className="gc-guide">
+            <span className="gc-guide-ico"><GIcon name="book" size={30} /></span>
+            <span><b>Marketing Guide</b><small>Which tool to use, what each one does, how to attract customers, promote products and track sales. Start here.</small></span>
+            <span className="gc-guide-btn">Open the guide <GIcon name="arrow" size={16} /></span>
+          </Link>
+        </aside>
+      </div>
+    </div>
+  )
+}
+
+function ToolLink({ t, withDesc = false }) {
+  return (
+    <Link to={t.to} className={`gc-tool tone-${t.tone}`}>
+      <GIcon name={t.icon} size={20} />
+      <span><b>{t.name}</b>{withDesc && <small>{t.desc}</small>}</span>
+      <GIcon name="chevron" size={16} className="gc-chev" />
+    </Link>
+  )
+}
+
+// A quick look at visitors (the full report is its own page).
+function VisitorsSnapshot() {
+  const [days, setDays] = useState(30)
+  const { data, error } = useTraffic(days)
+  const t = trafficTotals(data)
+  return (
+    <section className="gc-panel gc-snap">
+      <div className="gc-panel-head"><h2><GIcon name="chart" /> Visitors & Traffic</h2><Link to="/admin/traffic" className="gc-link">Full report</Link></div>
+      <Period days={days} setDays={setDays} />
+      {error ? <p className="gc-note">{error}</p> : !data ? <Loading /> : (
+        <>
+          <div className="gc-stats gc-stats-3">
+            <Stat icon="users" tone="violet" label="Visitors" value={t.visitors} />
+            <Stat icon="calendar" tone="blue" label="Today" value={t.today} />
+            <Stat icon="pages" tone="pink" label="Pages opened" value={t.pages} />
+            <Stat icon="car" tone="amber" label="Vehicle views" value={t.vviews} />
+            <Stat icon="whatsapp" tone="green" label="WhatsApp taps" value={t.whatsapp} />
+            <Stat icon="phone" tone="purple" label="Enquiries & calls" value={t.asks} />
+          </div>
+          {days > 1 && <LineChart points={dayPoints(data.days)} series={[{ key: 'v', name: 'Visitors', color: '#A892FF' }]} height={180} markPeak empty="No visits recorded in this period yet." />}
+          {(data.sources || []).length > 0 && <><h3 className="gc-sub">Where visitors come from</h3><Donut items={sourceItems(data.sources, 4)} centre="visitors" size={140} /></>}
+        </>
+      )}
+      <Link to="/admin/traffic" className="gc-cta">Open the full visitor report <GIcon name="arrow" size={16} /></Link>
+    </section>
+  )
+}
+
+// ---------------- Overview: what marketing brought in ----------------
+const CHANNEL_COLORS = ['#A892FF', '#F472B6', '#38BDF8', '#F5B53F', '#34D399', '#FB7185', '#C084FC']
 function Overview() {
   const [range, setRange] = useRange('30d')
-  const [metric, setMetric] = useState('leads')
   const { data, loading, error } = useData(() => q(supabase.rpc('marketing_overview', { p_from: range.from, p_to: range.to })), [range.from, range.to])
-  if (error) return <Empty title="Couldn't load marketing">{error}</Empty>
   const d = data && data.channels ? {
     ...data,
     referrals: data.referrals || { invites: 0, orders: 0, owed: 0 },
@@ -89,103 +241,98 @@ function Overview() {
   const cpc = d && d.won + d.referrals.orders > 0 && d.spend > 0 ? d.spend / (d.won + d.referrals.orders) : null
   const roas = d && d.spend > 0 ? d.marketing_sales / d.spend : null
   const channels = (d?.channels || []).filter((c) => c.leads || c.orders || c.spend || ['warm', 'content', 'cold', 'paid'].includes(c.channel))
-  const maxLeads = Math.max(1, ...channels.map((c) => Math.max(c.leads, c.orders)))
-  const points = (d?.series || []).map((r) => ({ key: r.day, value: r[metric], label: new Date(`${r.day}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), long: new Date(`${r.day}T00:00:00`).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }) }))
+  const points = (d?.series || []).map((r) => { const dt = new Date(`${r.day}T00:00:00`); return { key: r.day, label: dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }), long: dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' }), values: { leads: Number(r.leads) || 0, won: Number(r.won) || 0 } } })
 
   return (
-    <div className="stack">
-      <div className="marketing-starter-grid">
-        <Link to="/admin/marketing/launch" className="marketing-action-tile"><span className="marketing-tile-num">01 / CAMPAIGNS</span><strong>Make something worth sharing</strong><small>Turn a product into a tracked social campaign.</small><span className="marketing-tile-link">Open launchpad →</span></Link>
-        <Link to="/admin/marketing/seo" className="marketing-action-tile"><span className="marketing-tile-num">02 / ORGANIC SEARCH</span><strong>Be easier to discover</strong><small>See which pages need search optimisation.</small><span className="marketing-tile-link">Review SEO →</span></Link>
-        <Link to="/admin/marketing/blog" className="marketing-action-tile"><span className="marketing-tile-num">03 / CONTENT</span><strong>Publish useful buying guides</strong><small>Write with images, video and products.</small><span className="marketing-tile-link">Open blog →</span></Link>
-      </div>
-      <div className="card marketing-range"><DateBar range={range} setRange={setRange} /></div>
-      {loading || !d ? <Loading /> : (
+    <div className="gc-overview" id="overview">
+      <section className="gc-panel">
+        <div className="gc-panel-head"><h2><GIcon name="gauge" /> Marketing overview</h2></div>
+        <div className="gc-range"><DateBar range={range} setRange={setRange} /></div>
+        {error ? <Empty title="Couldn't load marketing">{error}</Empty> : loading || !d ? <Loading /> : (
+          <div className="gc-stats gc-stats-5">
+            <Stat icon="users" tone="violet" label="Leads" value={num(d.leads)} sub={`${num(d.engaged)} engaged`} to="/admin/marketing/leads" />
+            <Stat icon="trophy" tone="amber" label="Customers won" value={num(d.won)} sub={d.leads ? `${Math.round((d.won / d.leads) * 100)}% of leads` : 'from leads'} />
+            <Stat icon="cart" tone="pink" label="Sales from marketing" value={money(d.marketing_sales, { whole: true })} sub={d.all_sales ? `${Math.round((d.marketing_sales / d.all_sales) * 100)}% of all sales` : `${num(d.marketing_orders)} orders`} />
+            <Stat icon="wallet" tone="blue" label="Advertising spend" value={money(d.spend, { whole: true })} sub={roas ? `${roas.toFixed(1)}× back in sales` : 'Log spend to see returns'} to="/admin/marketing/spend" />
+            <Stat icon="target" tone="green" label="Cost per customer" value={cpc ? money(cpc, { whole: true }) : '—'} sub="spend ÷ customers won" />
+          </div>
+        )}
+      </section>
+
+      {d && !loading && (
         <>
-          <div className="mk-kpis">
-            <div className="kpi lead"><span>Leads</span><strong>{num(d.leads)}</strong><em>{num(d.engaged)} engaged</em></div>
-            <div className="kpi"><span>Customers won</span><strong>{num(d.won)}</strong><em>{d.leads ? `${Math.round((d.won / d.leads) * 100)}% of leads` : 'from leads'}</em></div>
-            <div className="kpi"><span>Sales from marketing</span><strong>{money(d.marketing_sales)}</strong><em>{d.all_sales ? `${Math.round((d.marketing_sales / d.all_sales) * 100)}% of all sales` : `${num(d.marketing_orders)} orders`}</em></div>
-            <div className="kpi"><span>Ad spend</span><strong>{money(d.spend)}</strong><em>{roas ? `${roas.toFixed(1)}× back in sales` : 'Log spend to see returns'}</em></div>
-            <div className="kpi"><span>Cost per customer</span><strong>{cpc ? money(cpc) : '—'}</strong><em>spend ÷ customers won</em></div>
-          </div>
-
-          <div className="mk-attention">
-            <Link to="/admin/marketing/today" className={`att ${d.due ? 'hot' : ''}`}><strong>{num(d.due)}</strong><span>follow-ups due</span></Link>
-            <Link to="/admin/marketing/leads" className={`att ${d.untouched ? 'hot' : ''}`}><strong>{num(d.untouched)}</strong><span>new leads not contacted</span></Link>
-            <Link to="/admin/marketing/requests" className={`att ${d.requests ? 'hot' : ''}`}><strong>{num(d.requests)}</strong><span>vendor ad requests</span></Link>
-            <Link to="/admin/marketing/referrals" className="att"><strong>{money(d.referrals.owed)}</strong><span>referral rewards to pay</span></Link>
-          </div>
-
-          <div className="card">
-            <div className="between mb">
-              <h3>{metric === 'leads' ? 'New leads' : 'Customers won'} by day</h3>
-              <Segmented options={[['leads', 'Leads'], ['won', 'Won']]} value={metric} onChange={setMetric} />
+          <section className="gc-panel">
+            <div className="gc-panel-head"><h2><GIcon name="bell" /> Attention & actions</h2></div>
+            <div className="gc-attn">
+              <AttnCard to="/admin/marketing/today" icon="bell" n={num(d.due)} label="Follow-ups due" hot={d.due > 0} />
+              <AttnCard to="/admin/marketing/leads" icon="userPlus" n={num(d.untouched)} label="New leads not contacted" hot={d.untouched > 0} />
+              <AttnCard to="/admin/marketing/requests" icon="store" n={num(d.requests)} label="Vendor ad requests" hot={d.requests > 0} />
+              <AttnCard to="/admin/marketing/referrals" icon="coins" n={money(d.referrals.owed, { whole: true })} label="Referral rewards to pay" hot={d.referrals.owed > 0} />
             </div>
-            <BarChart points={points} format={(v) => num(Math.round(v))} tone="copper" />
-          </div>
+          </section>
 
-          <div className="card">
-            <h3 className="mb">Where customers come from</h3>
-            <div className="channels">
-              <div className="ch-row ch-headrow"><span>Channel</span><span>Leads</span><span>Engaged</span><span>Won</span><span>Orders</span><span>Sales</span><span>Spend</span></div>
-              {channels.map((c) => (
-                <div key={c.channel} className="ch-row">
-                  <span className="ch-name">
-                    <strong>{CHANNELS[c.channel]?.label || title(c.channel)}</strong>
-                    <em>{CHANNELS[c.channel]?.hint}</em>
-                    <i className="ch-bar"><b style={{ width: `${(Math.max(c.leads, c.orders) / maxLeads) * 100}%` }} /></i>
-                  </span>
-                  <span data-l="Leads">{num(c.leads)}</span>
-                  <span data-l="Engaged">{num(c.engaged)}</span>
-                  <span data-l="Won">{num(c.won)}</span>
-                  <span data-l="Orders">{num(c.orders)}</span>
-                  <span data-l="Sales">{money(c.sales)}</span>
-                  <span data-l="Spend">{c.spend ? money(c.spend) : '—'}</span>
-                </div>
-              ))}
-            </div>
-            <p className="tiny muted mt">Warm outreach, content, cold outreach and paid ads are the four ways to get customers. Doing more of what works is how you grow.</p>
-          </div>
+          <section className="gc-panel">
+            <div className="gc-panel-head"><h2><GIcon name="trend" /> New leads and customers won by day</h2></div>
+            <LineChart points={points} series={[{ key: 'leads', name: 'Leads', color: '#A892FF' }, { key: 'won', name: 'Customers won', color: '#34D399' }]} format={(v) => num(Math.round(v))} empty="No leads or customers won in this period yet." />
+            <div className="gc-legend"><span><i style={{ background: '#A892FF' }} /> Leads</span><span><i style={{ background: '#34D399' }} /> Customers won</span></div>
+          </section>
 
-          <div className="grid-2 tight">
-            <div className="card">
-              <h3 className="mb">Lead funnel</h3>
-              <Funnel steps={[['Leads', d.leads], ['Engaged', d.engaged], ['Won', d.won]]} />
-            </div>
-            <div className="card">
-              <h3 className="mb">Affiliate recruitment</h3>
-              <Funnel steps={[['Applied', d.resellers.applied], ['Approved', d.resellers.approved], ['Made a first sale', d.resellers.first_sale], ['Active in 30 days', d.resellers.active]]} />
-            </div>
-          </div>
-
-          {d.magnets.length > 0 && (
-            <div className="card">
-              <div className="between mb"><h3>Lead magnets working now</h3><Link to="/admin/marketing/magnets" className="small">All magnets</Link></div>
-              <div className="mini-table">
-                {d.magnets.map((m) => (
-                  <div key={m.id} className="between small">
-                    <span className="strong">{m.name}</span>
-                    <span className="muted">{num(m.views)} views · {num(m.leads)} leads · {num(m.won)} won{m.views ? ` · ${Math.round((m.leads / m.views) * 100)}% sign up` : ''}</span>
-                  </div>
-                ))}
+          <section className="gc-panel">
+            <div className="gc-panel-head"><h2><GIcon name="share" /> Where customers come from</h2></div>
+            {channels.length ? (
+              <div className="gc-table-wrap">
+                <table className="gc-table gc-channels">
+                  <thead><tr><th>Channel</th><th>Leads</th><th>Engaged</th><th>Won</th><th>Orders</th><th>Sales</th><th>Spend</th></tr></thead>
+                  <tbody>{channels.map((c, i) => (
+                    <tr key={c.channel}>
+                      <td><span className="gc-ch"><i style={{ background: CHANNEL_COLORS[i % CHANNEL_COLORS.length] }} /><span><b>{CHANNELS[c.channel]?.label || title(c.channel)}</b><small>{CHANNELS[c.channel]?.hint}</small></span></span></td>
+                      <td>{num(c.leads)}</td><td>{num(c.engaged)}</td><td>{num(c.won)}</td><td>{num(c.orders)}</td><td>{money(c.sales)}</td><td>{c.spend ? money(c.spend) : '—'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
               </div>
-            </div>
-          )}
+            ) : <p className="gc-note">No leads or orders recorded in this period yet.</p>}
+            <p className="gc-foot">Warm outreach, content, cold outreach and paid ads are the four ways to get customers. Do more of what works.</p>
+          </section>
+
+          <div className="gc-grid-3">
+            <section className="gc-panel">
+              <div className="gc-panel-head"><h2><GIcon name="funnel" /> Lead funnel</h2></div>
+              <Funnel steps={[['Leads', d.leads], ['Engaged', d.engaged], ['Won', d.won]]} />
+            </section>
+            <section className="gc-panel">
+              <div className="gc-panel-head"><h2><GIcon name="handshake" /> Affiliate recruitment</h2></div>
+              <Funnel steps={[['Applied', d.resellers.applied], ['Approved', d.resellers.approved], ['First sale', d.resellers.first_sale], ['Active in 30 days', d.resellers.active]]} />
+            </section>
+            <section className="gc-panel">
+              <div className="gc-panel-head"><h2><GIcon name="magnet" /> Lead magnets working now</h2></div>
+              {d.magnets.length ? (
+                <ul className="gc-rank">{d.magnets.map((m) => <li key={m.id}><span><b>{m.name}</b><small>{num(m.views)} views · {num(m.won)} won</small></span><em>{num(m.leads)}<small>leads{m.views ? ` · ${Math.round((m.leads / m.views) * 100)}%` : ''}</small></em></li>)}</ul>
+              ) : (
+                <div className="gc-empty"><GIcon name="magnet" size={30} /><p>No lead magnet brought leads in this period.</p><Link to="/admin/marketing/magnets" className="gc-cta">Create a lead magnet <GIcon name="arrow" size={16} /></Link></div>
+              )}
+            </section>
+          </div>
         </>
       )}
     </div>
   )
 }
 
+function AttnCard({ to, icon, n, label, hot }) {
+  return <Link to={to} className={`gc-attn-card ${hot ? 'hot' : ''}`}><span className="gc-attn-ico"><GIcon name={icon} /></span><span><strong>{n}</strong><small>{label}</small></span><GIcon name="chevron" size={18} className="gc-chev" /></Link>
+}
+
+const FUNNEL_TONES = ['#8A6CFF', '#A892FF', '#C084FC', '#34D399']
 function Funnel({ steps }) {
   const top = Math.max(1, steps[0][1])
+  if (!steps[0][1]) return <p className="gc-note">Nothing in this period yet.</p>
   return (
-    <div className="funnel">
+    <div className="gc-funnel">
       {steps.map(([label, value], i) => (
-        <div key={label} className="fn-step">
-          <div className="fn-bar" style={{ width: `${Math.max(8, (value / top) * 100)}%` }}><strong>{num(value)}</strong></div>
-          <span className="fn-label">{label}{i > 0 && steps[i - 1][1] ? <em> · {Math.round((value / steps[i - 1][1]) * 100)}%</em> : ''}</span>
+        <div key={label} className="gc-fstep">
+          <span className="gc-fbar" style={{ width: `${Math.max(14, (value / top) * 100)}%`, background: FUNNEL_TONES[i % FUNNEL_TONES.length] }}><b>{num(value)}</b></span>
+          <span className="gc-flabel">{label}{i > 0 && steps[i - 1][1] ? <em>{Math.round((value / steps[i - 1][1]) * 100)}%</em> : null}</span>
         </div>
       ))}
     </div>
