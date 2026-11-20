@@ -6,6 +6,7 @@ import { Loading, useToast } from '../../components/ui'
 import { openMic } from '../../lib/studioVoice'
 import { playClock } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
+import { placeVoice } from '../../lib/voiceAlign'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
@@ -421,6 +422,20 @@ export default function VideoMaker() {
       toast(v.unsure.length ? `Your video is being made. Listen to scene ${v.unsure.map((i) => i + 1).join(', ')}: the voice may not have read it word for word.` : 'Your video is being made with the AI voice; you can leave this page.')
     } catch (e) { toast(e.message, true) } finally { setBusy(''); setStage('') }
   }
+  // Your own recording of the whole script, made in one go (here or in any
+  // recorder app): each scene is placed where you start reading its line.
+  const [reading, setReading] = useState(false)
+  const useTake = async (file) => {
+    if (!fast()) return toast('This phone records videos the slow way, which cannot use a separate recording. Use Chrome, or a newer phone.', true)
+    setBusy('take'); setStage('Placing your voice…')
+    try {
+      const lines = [...script.slides.map((x) => x.say || ''), parts.endSay || '']
+      const v = await placeVoice(file, lines)
+      await startVideo({ ...spec(), audio: v.audio, marks: v.marks, duration: v.duration })
+      setReading(false)
+      toast(v.confident ? 'Your voice is in place. The video is being made; you can leave this page.' : `The video is being made, but only ${v.found} of ${v.needed} pauses between lines were clear. Watch it; next time take a breath between lines.`, !v.confident)
+    } catch (e) { toast(/decode|Unable to/i.test(e.message) ? 'That file could not be read. Use an audio or video recording.' : e.message, true) } finally { setBusy(''); setStage('') }
+  }
   const hearAi = async () => {
     if (hearing?.url) { hearing.el?.pause(); URL.revokeObjectURL(hearing.url); setHearing(null); return }
     setHearing({ loading: true })
@@ -495,9 +510,11 @@ export default function VideoMaker() {
             {aiKind && <AiCheck ai={ai} again={aiAgain} toggle={toggleSeen} isKept={isKept} car={kind === 'vehicle'} />}
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
-              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => setReading((x) => !x)}>{busy === 'take' ? 'Placing your voice…' : 'Read the script and record'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Record while the scenes play'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={makeAi}>{busy === 'ai' ? 'The AI is reading…' : 'Make it with an AI voice'}</button>
             </div>
+            {reading && <ReadScript script={script} endSay={parts.endSay} kind={kind} busy={!!busy} onUse={useTake} hearAi={hearAi} hearing={hearing} toast={toast} close={() => setReading(false)} />}
             <section className="vx-card-block vx-aivoice">
               <h3>AI voice</h3>
               <div className="vx-tabs">{AI_VOICES.map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={aiVoice === v ? 'on' : ''} onClick={() => pickVoice(v)}>{l}</button>)}</div>
@@ -891,6 +908,83 @@ function SceneEditor({ parts, scenes, left = [], open, setOpen, update, move, re
           </>
         )}
       </div>
+      )}
+    </section>
+  )
+}
+
+// Read the script and record it in one go. Practise as often as you like,
+// listen back, record again; when it sounds right, it goes into the video
+// with each scene placed where you start its line. A recording made with
+// another app works too.
+const TONE_HINT = {
+  lunch: 'Warm and smiling, like telling a colleague about a lunch you love.',
+  vehicle: 'Calm and confident, like a trusted dealer walking someone round the car.',
+  product: 'Friendly and upbeat, like recommending something you really like.',
+  market: 'Warm and inviting, like welcoming someone into your shop.',
+}
+function ReadScript({ script, endSay, kind, busy, onUse, hearAi, hearing, toast, close }) {
+  const [phase, setPhase] = useState('ready') // ready | count | rec | done
+  const [count, setCount] = useState(0)
+  const [take, setTake] = useState(null)
+  const [secs, setSecs] = useState(0)
+  const rec = useRef(null)
+  const lines = [...script.slides.map((x) => [x.kicker || x.line || '', x.say || '']), ['End', endSay || '']].filter(([, s]) => s)
+  useEffect(() => () => { rec.current?.stop?.(); if (take?.url) URL.revokeObjectURL(take.url) }, [take])
+  useEffect(() => {
+    if (phase !== 'rec') return
+    const at = performance.now()
+    const id = setInterval(() => setSecs((performance.now() - at) / 1000), 250)
+    return () => clearInterval(id)
+  }, [phase])
+  const start = async () => {
+    let mic
+    try { mic = await openMic() } catch (e) { return toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true) }
+    setPhase('count')
+    for (const n of [3, 2, 1]) { setCount(n); await sleep(1000) }
+    setCount(0)
+    const type = pickAudio()
+    const r = new MediaRecorder(mic, type ? { mimeType: type, audioBitsPerSecond: 128000 } : undefined)
+    const chunks = []
+    r.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data) }
+    r.onstop = () => {
+      mic.getTracks().forEach((x) => x.stop())
+      const blob = new Blob(chunks, { type: (r.mimeType || type || 'audio/webm').split(';')[0] })
+      setTake({ blob, url: URL.createObjectURL(blob) }); setPhase('done')
+    }
+    rec.current = r; r.start(500); setSecs(0); setPhase('rec')
+  }
+  const stop = () => rec.current?.state === 'recording' && rec.current.stop()
+  const again = () => { if (take?.url) URL.revokeObjectURL(take.url); setTake(null); setPhase('ready') }
+  const upload = (f) => { if (!f) return; if (take?.url) URL.revokeObjectURL(take.url); setTake({ blob: f, url: URL.createObjectURL(f), name: f.name }); setPhase('done') }
+  return (
+    <section className="vx-card-block vx-read">
+      <div className="between"><h3>Read the script</h3><button type="button" className="vx-btn ghost" onClick={close} disabled={phase === 'rec'}>Close</button></div>
+      <p className="vx-muted tiny"><b>How to say it:</b> {TONE_HINT[kind] || TONE_HINT.product} Hold the phone a hand’s width from your mouth. <b>Take a breath (about one second) between lines</b>: that is how each scene finds its place.</p>
+      <ol className={`vx-read-lines ${phase === 'rec' ? 'live' : ''}`}>
+        {lines.map(([label, say], i) => <li key={i}><small>{label}</small><span>{say}</span></li>)}
+      </ol>
+      {phase === 'count' && <div className="vx-read-count">{count}</div>}
+      {phase === 'ready' && (
+        <div className="vx-read-actions">
+          <button type="button" className="vx-btn primary big" disabled={busy} onClick={start}>● Record</button>
+          <button type="button" className="vx-btn ghost" disabled={busy || hearing?.loading} onClick={hearAi}>{hearing?.loading ? 'Reading…' : hearing?.url ? '■ Stop' : '▶ Hear the AI read it first'}</button>
+          <label className="vx-btn ghost">Use a recording from my phone<input type="file" hidden accept="audio/*,video/*,.m4a,.mp3,.aac,.wav,.ogg,.opus,.amr" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = '' }} /></label>
+        </div>
+      )}
+      {phase === 'rec' && (
+        <div className="vx-read-actions">
+          <span className="vx-rec-dot">● Recording {Math.floor(secs / 60)}:{String(Math.floor(secs % 60)).padStart(2, '0')}</span>
+          <button type="button" className="vx-btn primary big" onClick={stop}>■ Stop</button>
+        </div>
+      )}
+      {phase === 'done' && take && (
+        <div className="vx-read-actions">
+          <audio controls src={take.url} preload="auto" />
+          {take.name && <small className="vx-muted">{take.name}</small>}
+          <button type="button" className="vx-btn primary big" disabled={busy} onClick={() => onUse(take.blob)}>Use this recording</button>
+          <button type="button" className="vx-btn ghost" disabled={busy} onClick={again}>Record again</button>
+        </div>
       )}
     </section>
   )

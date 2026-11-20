@@ -756,3 +756,15 @@ button.vx-sound-add { background: transparent; font: inherit; font-weight: 800; 
 .vx-wave-bars span.on { background: var(--vx-accent); }
 .vx-wave-part { position: absolute; top: 0; bottom: 0; border: 3px solid #ffd36b; border-radius: 14px; background: rgba(255,211,107,.12); pointer-events: none; box-sizing: border-box; }
 .vx-wave-head-line { position: absolute; top: 4px; bottom: 4px; width: 3px; margin-left: -1px; background: #fff; border-radius: 2px; pointer-events: none; }
+
+/* Read the script: a calm teleprompter, big enough to read at arm's length */
+.vx-read .vx-read-lines { list-style: none; margin: 12px 0; padding: 0; display: grid; gap: 10px; max-height: 52vh; overflow-y: auto; }
+.vx-read .vx-read-lines li { padding: 12px 14px; border-radius: 14px; background: rgba(138, 108, 255, .08); border: 1px solid rgba(138, 108, 255, .22); display: grid; gap: 4px; }
+.vx-read .vx-read-lines small { color: #A892FF; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; font-size: .72rem; }
+.vx-read .vx-read-lines span { font-size: 1.15rem; line-height: 1.45; font-weight: 600; }
+.vx-read .vx-read-lines.live { max-height: 62vh; }
+.vx-read .vx-read-lines.live span { font-size: 1.3rem; }
+.vx-read .vx-read-count { font-size: 4rem; font-weight: 900; text-align: center; color: #A892FF; }
+.vx-read .vx-read-actions { display: grid; gap: 10px; }
+.vx-read .vx-read-actions audio { width: 100%; }
+.vx-read .vx-rec-dot { color: #ff5d6c; font-weight: 800; text-align: center; }
