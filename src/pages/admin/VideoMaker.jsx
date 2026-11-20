@@ -8,7 +8,7 @@ import { openMic } from '../../lib/studioVoice'
 import { playOpening, hasOpening } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
 import { placeVoice } from '../../lib/voiceAlign'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, explainScenes, sceneSeconds, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice, upcomingMenu } from '../../lib/lunch'
@@ -53,6 +53,9 @@ export default function VideoMaker() {
   const toast = useToast()
   const { profile } = useAuth()
   const [kind, setKind] = useState('vehicle')
+  const today = PLAN[new Date().getDay()]
+  const planned = useRef(null) // what Today's post asked for, applied once the list loads
+  const [skipped, setSkipped] = useState([])
   const [items, setItems] = useState(null)
   const [pick, setPick] = useState(null)
   const [busy, setBusy] = useState('')
@@ -134,6 +137,23 @@ export default function VideoMaker() {
     q.then(({ data }) => setItems((data || []).filter((p) => (p.images || []).length)))
   }, [kind])
 
+  useEffect(() => {
+    const p = planned.current
+    if (!p || !items || p.kind !== kind) return
+    planned.current = null
+    const it = nextFor(items, p, p.skip || [])
+    if (!it) { toast(p.food ? 'No food or cakes listed yet: pick any product' : 'Nothing to pick here yet', true); return }
+    if (p.style) chooseStyle(p.style)
+    chooseShort(!!p.short)
+    setPick(it)
+  }, [items, kind])
+  const makeToday = (again = false) => {
+    const skip = again && pick ? [...skipped, pick.id] : []
+    setSkipped(skip)
+    planned.current = { ...today, skip }
+    if (kind === today.kind && items) { setPick(null); setItems([...items]) } else setKind(today.kind)
+  }
+  const begin = (s) => { markUsed(pick?.id); return startVideo(s) }
   const code = profile?.partner?.code
   const link = pick ? (kind === 'market' ? pick.link : kind === 'lunch'
     ? `https://zamarket.shop/lunch/${pick.slug}`
@@ -148,6 +168,10 @@ export default function VideoMaker() {
     const n = new Set(named); if (on) n.add(sellerKey); else n.delete(sellerKey)
     setNamed(n); try { localStorage.setItem('zm-video-named', JSON.stringify([...n])) } catch { /* ignore */ }
   }
+  // Cars and products: an advert, or an "Explain it" video that teaches.
+  const [style, setStyle] = useState(() => { try { return localStorage.getItem('zm-video-style') || 'ad' } catch { return 'ad' } })
+  const chooseStyle = (v) => { setStyle(v); try { localStorage.setItem('zm-video-style', v) } catch { /* ignore */ } }
+  const explaining = style === 'explain' && (kind === 'product' || kind === 'vehicle')
   // How a lunch video opens (remembered on this phone).
   const [opening, setOpening] = useState(() => { try { return localStorage.getItem('zm-video-opening') || 'food' } catch { return 'food' } })
   const chooseOpening = (v) => { setOpening(v); try { localStorage.setItem('zm-video-opening', v) } catch { /* ignore */ } }
@@ -162,7 +186,7 @@ export default function VideoMaker() {
     }
   }, [pick, showSeller, sellerName, kind, opening])
   const parts = useMemo(() => (subject ? videoParts(subject, kind, link) : null), [subject, kind, link])
-  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}${kind === 'lunch' ? `-${opening}` : ''}` : ''
+  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}${kind === 'lunch' ? `-${opening}` : ''}${explaining ? '-explain' : ''}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   // The full video, or the ~30-second ad cut of it.
@@ -239,8 +263,31 @@ export default function VideoMaker() {
   // "maybe" ones are out unless you put them in.
   const kept = (m, off) => (m.spotted || []).filter((f) => (f.sure === 'yes' ? !off.has(f.feature) : off.has(`+${f.feature}`)))
   const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off), keepUnseen: kind !== 'vehicle' })
+  // "Explain it": the listing's own words straight away, then the AI's
+  // lesson (what it is, who it's for, how to use it, what to check).
+  const explainKey = pick ? `zm-explain-v1-${kind}-${pick.id}${showSeller ? '-n' : ''}` : ''
+  const applyExplain = (r) => {
+    const list = explainScenes(subject, kind, r)
+    setScenes(list); setOpen(null)
+    setAiCaption(r.caption ? `${r.caption}\n${link}\n#ZaMarket #Lusaka #Zambia` : '')
+    setAi({ state: 'done', explain: true, count: list.length })
+  }
+  const runExplain = async (fresh) => {
+    let cached = null
+    if (!fresh) { try { cached = JSON.parse(localStorage.getItem(explainKey) || 'null') } catch { cached = null } }
+    if (cached?.scenes?.length) return applyExplain(cached)
+    setAi({ state: 'writing', explain: true })
+    try {
+      const r = await askAssist({ task: 'explain', product_id: pick.id })
+      if (!r.scenes?.length) { setAi({ state: 'error', explain: true, note: 'the AI did not write anything safe to use; the video uses the listing’s own words' }); return }
+      try { localStorage.setItem(explainKey, JSON.stringify(r)) } catch { /* full */ }
+      if (touched.current) { setAi({ state: 'done', explain: true, count: r.scenes.length, late: true }); return }
+      applyExplain(r)
+    } catch (e) { setAi({ state: 'error', explain: true, note: e.message }) }
+  }
   const runAi = async (fresh) => {
     if (kind === 'lunch' && pick) return runLunch(fresh)
+    if (explaining && pick) return runExplain(fresh)
     if (!pick || !aiKind || !(pick.images || []).length) return
     const off = new Set(); setLeftOut(off)
     const cached = !fresh && cachedMatch(pick, featureList)
@@ -263,7 +310,7 @@ export default function VideoMaker() {
   }
   const isKept = (f) => (f.sure === 'yes' ? !leftOut.has(f.feature) : leftOut.has(`+${f.feature}`))
   const aiAgain = () => {
-    if (touched.current && !window.confirm(kind === 'lunch' ? 'Let the AI write the lunch video again? Your changes are replaced.' : 'Let the AI arrange the photos again? Your changes for this car are replaced.')) return
+    if (touched.current && !window.confirm(kind === 'lunch' || explaining ? 'Let the AI write the video again? Your changes are replaced.' : 'Let the AI arrange the photos again? Your changes for this car are replaced.')) return
     touched.current = false; forget()
     runAi(true)
   }
@@ -274,14 +321,14 @@ export default function VideoMaker() {
     let saved = null
     try { saved = JSON.parse(localStorage.getItem(draftKey) || 'null') } catch { saved = null }
     const hasDraft = Array.isArray(saved) && saved.length
-    setScenes(hasDraft ? saved : parts.starter)
+    setScenes(hasDraft ? saved : explaining ? explainScenes(subject, kind) : parts.starter)
     touched.current = !!hasDraft
     setAi({ state: 'idle' }); setAiCaption('')
     if (!hasDraft && aiKind) runAi(false)
     setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
-  }, [parts])
+  }, [parts, explaining])
   // Kept only once you have changed something: an untouched video is simply
   // rebuilt (and photo-checked) next time.
   useEffect(() => { if (draftKey && scenes.length && touched.current) { try { localStorage.setItem(draftKey, JSON.stringify(scenes)) } catch { /* full */ } } }, [scenes, draftKey])
@@ -349,7 +396,7 @@ export default function VideoMaker() {
     if (!assets || !script.slides.length) return
     if (fast()) {
       if (voice) return recordVoice()
-      await startVideo(spec())
+      await begin(spec())
       toast('Making your video. You can leave this page; it will be in My videos.')
       return
     }
@@ -409,7 +456,7 @@ export default function VideoMaker() {
       cancelAnimationFrame(raf)
       rec.stop(); await stopped
       const audio = new Blob(chunks, { type: (rec.mimeType || type || 'audio/webm').split(';')[0] })
-      await startVideo({ ...spec(), audio, marks, duration })
+      await begin({ ...spec(), audio, marks, duration })
       toast('Recorded. Your video is being made; you can leave this page.')
     } catch (e) {
       toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true)
@@ -426,20 +473,21 @@ export default function VideoMaker() {
     setOpen(null); setBusy('ai'); setStage('The AI voice is reading the script…')
     try {
       const v = await aiVoiceOver(aiLines(script), aiVoice, aiTone)
-      await startVideo({ ...spec(), studio: false, audio: v.audio, marks: v.marks, duration: v.duration })
+      await begin({ ...spec(), studio: false, audio: v.audio, marks: v.marks, duration: v.duration })
       toast(v.unsure.length ? `Your video is being made. Listen to scene ${v.unsure.map((i) => i + 1).join(', ')}: the voice may not have read it word for word.` : 'Your video is being made with the AI voice; you can leave this page.')
     } catch (e) { toast(e.message, true) } finally { setBusy(''); setStage('') }
   }
   // Your own recording of the whole script, made in one go (here or in any
   // recorder app): each scene is placed where you start reading its line.
   const [reading, setReading] = useState(false)
+  const [slides, setSlides] = useState(false)
   const useTake = async (file) => {
     if (!fast()) return toast('This phone records videos the slow way, which cannot use a separate recording. Use Chrome, or a newer phone.', true)
     setBusy('take'); setStage('Placing your voice…')
     try {
       const lines = [...script.slides.map((x) => x.say || ''), parts.endSay || '']
       const v = await placeVoice(file, lines)
-      await startVideo({ ...spec(), audio: v.audio, marks: v.marks, duration: v.duration })
+      await begin({ ...spec(), audio: v.audio, marks: v.marks, duration: v.duration })
       setReading(false)
       toast(v.confident ? 'Your voice is in place. The video is being made; you can leave this page.' : `The video is being made, but only ${v.found} of ${v.needed} pauses between lines were clear. Watch it; next time take a breath between lines.`, !v.confident)
     } catch (e) { toast(/decode|Unable to/i.test(e.message) ? 'That file could not be read. Use an audio or video recording.' : e.message, true) } finally { setBusy(''); setStage('') }
@@ -469,6 +517,17 @@ export default function VideoMaker() {
         <div><h1>Video maker</h1><p>Turn a car, a product or a lunch plan into a short vertical video for TikTok, Reels, Facebook and WhatsApp status, made from its own photos and details. No face or camera needed.</p></div>
       </div>
       {!pick && <MyVideos videos={videos} toast={toast} copy={copy} kit={{ sounds, setSounds, sound, setSound, music, fetching }} />}
+      <section className="vx-today">
+        <div>
+          <small>Today’s post · {new Date().toLocaleDateString('en-ZM', { weekday: 'long' })}</small>
+          <b>{today.label}</b>
+          <span>{today.why}</span>
+        </div>
+        <div className="vx-today-go">
+          <button type="button" className="vx-btn primary" disabled={!!busy} onClick={() => makeToday(false)}>Make it</button>
+          {pick && kind === today.kind && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => makeToday(true)}>Another</button>}
+        </div>
+      </section>
       <div className="vx-tabs">{KINDS.map(([k, l]) => <button key={k} type="button" className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
 
       {!pick ? (
@@ -521,7 +580,9 @@ export default function VideoMaker() {
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => setReading((x) => !x)}>{busy === 'take' ? 'Placing your voice…' : 'Read the script and record'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Record while the scenes play'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={makeAi}>{busy === 'ai' ? 'The AI is reading…' : 'Make it with an AI voice'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => setSlides(true)}>Make photo slides</button>
             </div>
+            {slides && assets && <PhotoSlides script={script} assets={assets} slug={pick?.slug || 'zamarket'} caption={script.caption} copy={copy} close={() => setSlides(false)} />}
             {reading && <ReadScript script={script} endSay={parts.endSay} kind={kind} busy={!!busy} onUse={useTake} hearAi={hearAi} hearing={hearing} toast={toast} close={() => setReading(false)} />}
             <section className="vx-card-block vx-aivoice">
               <h3>AI voice</h3>
@@ -550,6 +611,13 @@ export default function VideoMaker() {
                 <span>Seller’s name</span>
                 <div className="vx-tabs">{[[false, 'Only ZaMarket'], [true, `Show ${sellerName.length > 22 ? `${sellerName.slice(0, 20)}…` : sellerName}`]].map(([v, l]) => <button key={String(v)} type="button" disabled={!!busy} className={showSeller === v ? 'on' : ''} onClick={() => nameSeller(v)}>{l}</button>)}</div>
                 <small className="vx-muted">{showSeller ? `The video names ${sellerName}. Remembered for this seller.` : 'The video shows only ZaMarket; the seller is not named in the words, the voice or the caption. Remembered for this seller.'}</small>
+              </div>
+            )}
+            {(kind === 'product' || kind === 'vehicle') && (
+              <div className="vx-pace">
+                <span>Kind of video</span>
+                <div className="vx-tabs">{[['ad', 'Advert'], ['explain', 'Explain it']].map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={style === v ? 'on' : ''} onClick={() => chooseStyle(v)}>{l}</button>)}</div>
+                <small className="vx-muted">{explaining ? (kind === 'vehicle' ? 'Teaches first: is this kind of car right for you, what it suits, what to check before buying any used car. Then where to see this one.' : 'Teaches first: what it is, who it’s for, how to use it, what to check. Then where to get it. People save and share these, and that brings followers.') : 'Shows the item and its best points, with the price. For selling.'}</small>
               </div>
             )}
             {kind === 'lunch' && (
@@ -748,7 +816,13 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
   if (ai.state === 'idle') return null
   return (
     <div className={`vx-ai is-${ai.state}`} role="status">
-      {ai.state === 'writing' && <><span className="vx-spin" /><span>AI is looking at the dishes and writing the lunch video from the plan…</span></>}
+      {ai.state === 'writing' && <><span className="vx-spin" /><span>{ai.explain ? 'AI is writing the lesson: what it is, who it’s for, how to use it, what to check…' : 'AI is looking at the dishes and writing the lunch video from the plan…'}</span></>}
+      {ai.state === 'done' && ai.explain && (
+        <span>
+          <b>✨ AI wrote this explainer.</b> {ai.count} scenes that teach first and sell last. General facts about this kind of item; anything about this one comes from its listing. Scenes with numbers not in the listing, or hype, were left out.
+          {ai.late ? ' You had already changed the scenes, so nothing was replaced; tap Write again to use it.' : ''}
+        </span>
+      )}
       {ai.state === 'done' && ai.lunch && (
         <span>
           <b>✨ AI wrote this lunch video.</b> {ai.count} scenes, told as an offer: the problem it solves, the food, and why it is easy to say yes. Every price, time and discount was checked against the plan; nothing made up.
@@ -756,7 +830,7 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
         </span>
       )}
       {ai.state === 'checking' && <><span className="vx-spin" /><span>AI is looking at the photos{ai.steps > 1 ? ` (${Math.min(ai.step + 1, ai.steps)} of ${ai.steps} batches)` : ''} to find each feature…</span></>}
-      {ai.state === 'done' && !ai.lunch && (
+      {ai.state === 'done' && !ai.lunch && !ai.explain && (
         <span>
           <b>✨ AI checked the photos.</b>{' '}
           {ai.total ? `${ai.found} of ${ai.total} listed ${car ? 'features' : 'points'} are on a photo that shows them.` : 'It picked the best opening photo and put the photos in a good order.'}
@@ -766,14 +840,14 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
           {ai.late ? ' You had already changed the scenes, so nothing was moved; tap Check again to use it.' : ''}
         </span>
       )}
-      {ai.state === 'done' && !ai.lunch && ai.spotted.length > 0 && (
+      {ai.state === 'done' && !ai.lunch && !ai.explain && ai.spotted.length > 0 && (
         <div className="vx-ai-seen">
           <small>The AI also saw these in the photos. Tap to leave one out (or put a &ldquo;not sure&rdquo; one in):</small>
           <div>{ai.spotted.map((f) => <button key={f.feature} type="button" className={isKept(f) ? 'on' : ''} onClick={() => toggle(f)}>{isKept(f) ? '✓ ' : '+ '}{f.feature}{f.sure === 'maybe' ? ' (not sure)' : ''}</button>)}</div>
         </div>
       )}
-      {ai.state === 'error' && <span>The AI photo check did not work: {ai.note}</span>}
-      {ai.state !== 'checking' && ai.state !== 'writing' && <button type="button" className="vx-btn ghost" onClick={again}>{ai.lunch ? 'Write again' : 'Check again'}</button>}
+      {ai.state === 'error' && <span>{ai.explain ? `The AI could not write the explainer (${ai.note}). The video uses the listing’s own words.` : `The AI photo check did not work: ${ai.note}`}</span>}
+      {ai.state !== 'checking' && ai.state !== 'writing' && <button type="button" className="vx-btn ghost" onClick={again}>{ai.lunch || ai.explain ? 'Write again' : 'Check again'}</button>}
     </div>
   )
 }
@@ -977,6 +1051,30 @@ function SceneEditor({ parts, scenes, left = [], open, setOpen, update, move, re
 // listen back, record again; when it sounds right, it goes into the video
 // with each scene placed where you start its line. A recording made with
 // another app works too.
+// Today's post: the weekly plan, so there is always something to post.
+// Each day has its kind of video; the item is the one you made a video of
+// longest ago (never one you used this week if another is there), so the
+// whole shop takes its turn and you never run out.
+const PLAN = {
+  1: { kind: 'lunch', label: 'Lunch video', why: 'Monday is when offices plan the week' },
+  2: { kind: 'product', style: 'explain', label: 'Explain a product', why: 'Teaching posts get saved and shared, and bring followers' },
+  3: { kind: 'product', style: 'ad', short: true, label: 'Product advert, 30 seconds', why: 'Show one product and its price' },
+  4: { kind: 'vehicle', style: 'ad', label: 'A car for sale', why: 'One car from ZaMarket Motors' },
+  5: { kind: 'vehicle', style: 'explain', label: 'Explain a car', why: 'Buyers save what helps them choose' },
+  6: { kind: 'product', style: 'ad', food: true, label: 'Food and cakes', why: 'Weekend treats sell on Saturday' },
+  0: { kind: 'market', label: 'Marketplace video', why: 'Invite shoppers, sellers or affiliates' },
+}
+const USED = 'zm-content-used'
+const usedMap = () => { try { return JSON.parse(localStorage.getItem(USED) || '{}') } catch { return {} } }
+const markUsed = (id) => { if (!id) return; const m = usedMap(); m[id] = Date.now(); try { localStorage.setItem(USED, JSON.stringify(m)) } catch { /* full */ } }
+const FOOD_RE = /cake|food|pastr|bak|snack|meal|bread|cookie|biscuit|juice|lunch|cupcake|dough|samosa|pizza/i
+function nextFor(items, plan, skip = []) {
+  const used = usedMap()
+  let list = (items || []).filter((x) => !skip.includes(x.id))
+  if (plan.food) { const f = list.filter((x) => FOOD_RE.test(`${x.category || ''} ${x.name || ''}`)); if (f.length) list = f }
+  return [...list].sort((a, b) => (used[a.id] || 0) - (used[b.id] || 0))[0] || null
+}
+
 const OPENINGS = [
   ['food', 'Food first', 'Your best dish fills the screen from the very first second, and “Lunch at work, sorted for the week.” lands word by word with the price. The strongest for adverts: food stops the scroll.'],
   ['busy', 'Busy day', '“Meetings. Deadlines. No time for lunch?” lands line by line, then the food rises in with the answer. Speaks straight to busy working people.'],
@@ -1053,5 +1151,53 @@ function ReadScript({ script, endSay, kind, busy, onUse, hearAi, hearing, toast,
         </div>
       )}
     </section>
+  )
+}
+
+// Photo slides: every scene as a still picture, with the logo, plus the end
+// card with the link and QR code. For TikTok photo posts, WhatsApp Status,
+// Stories and Facebook: people swipe through them at their own pace, and
+// educational ones get saved and shared.
+function PhotoSlides({ script, assets, slug, caption, copy, close }) {
+  const [pics, setPics] = useState(null)
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      const S = sceneSeconds()
+      const total = script.slides.length * S
+      const times = [...script.slides.map((_, i) => i * S + Math.min(S - 0.3, Math.max(S * 0.8, 3.2))), total + 2.5]
+      const out = []
+      for (const [n, t] of times.entries()) {
+        const c = document.createElement('canvas'); c.width = W; c.height = H
+        drawFrame(c.getContext('2d'), t, script.slides, assets.imgs, assets.end)
+        const blob = await new Promise((ok) => c.toBlob(ok, 'image/jpeg', 0.92))
+        out.push({ blob, url: URL.createObjectURL(blob), name: `${String(slug).slice(0, 40)}-${String(n + 1).padStart(2, '0')}.jpg` })
+        await new Promise((ok) => setTimeout(ok, 0))
+      }
+      if (alive) setPics(out); else out.forEach((p) => URL.revokeObjectURL(p.url))
+    })()
+    return () => { alive = false }
+  }, [script, assets, slug])
+  useEffect(() => () => pics?.forEach((p) => URL.revokeObjectURL(p.url)), [pics])
+  const files = () => pics.map((p) => new File([p.blob], p.name, { type: 'image/jpeg' }))
+  const canShareAll = () => { try { return !!navigator.canShare?.({ files: files() }) } catch { return false } }
+  const shareAll = async () => { try { await navigator.share({ files: files(), title: 'ZaMarket' }) } catch { /* closed */ } }
+  const saveAll = () => pics.forEach((p, i) => setTimeout(() => { const a = document.createElement('a'); a.href = p.url; a.download = p.name; a.click() }, i * 350))
+  return (
+    <Modal title="Photo slides" onClose={close}>
+      <div className="vx vx-slides">
+        <p className="vx-muted tiny">One picture per scene, then the end card with the link. Post them together as a TikTok photo post, on WhatsApp Status, as Stories or on Facebook. Change the words in Change scenes and make them again.</p>
+        {!pics ? <div className="vx-ai is-checking"><span className="vx-spin" /><span>Making the slides…</span></div> : (
+          <>
+            <div className="vx-slides-grid">{pics.map((p, i) => <a key={p.url} href={p.url} download={p.name} className="vx-slide"><img src={p.url} alt={`Slide ${i + 1}`} /><small>{i + 1}</small></a>)}</div>
+            <div className="vx-myvideo-actions">
+              {canShareAll() ? <button type="button" className="vx-btn primary big" onClick={shareAll}>Share all {pics.length}</button> : null}
+              <button type="button" className={`vx-btn ${canShareAll() ? 'outline' : 'primary big'}`} onClick={saveAll}>Save all {pics.length} to the phone</button>
+              {caption && <button type="button" className="vx-btn outline" onClick={() => copy(caption, 'Caption')}>Copy caption</button>}
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }

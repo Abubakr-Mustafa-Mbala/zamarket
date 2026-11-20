@@ -13,7 +13,7 @@ test('AI voice: checked lines, only staff quota, realtime model (speech models s
   const src = read('netlify/functions/ai-assist.js')
   assert.match(src, /gpt-realtime-2\.1-mini/)
   assert.doesNotMatch(src, /v1\/audio\/speech/)
-  assert.match(src, /task === 'voice' \? 'lead'/)
+  assert.ok(src.includes("['photos', 'lunch_video', 'voice', 'explain'].includes(task) ? 'lead'"))
 })
 
 test('AI voice is laid out scene by scene, each long enough to see', async () => {
@@ -71,4 +71,20 @@ test('marketplace videos are designed scenes, not random photos with words', () 
   const m = lv.slice(lv.indexOf('function marketScript'), lv.indexOf('function marketScript') + 9000)
   assert.doesNotMatch(m, /type: 'collage'/)
   assert.match(m, /Earnings depend on completed sales/)
+})
+
+test('content tools: explain-it videos, photo slides, today’s post', async () => {
+  const fn = await import('../netlify/functions/ai-assist.js')
+  const r = fn.safeExplain({ question: 'What is an airbed?', scenes: [
+    { kicker: 'What it is', line: 'A bed you fill with air', say: 'An airbed is a mattress you fill with air.', photo: 0 },
+    { kicker: 'Size', line: 'Fits 4 people', say: 'Big.', photo: 9 },
+    { kicker: 'Tip', line: 'The best airbed ever made', say: 'x', photo: 1 },
+  ], caption: 'c' }, 3, '{"name":"Queen airbed 152 cm"}')
+  assert.deepEqual(r.scenes.map((x) => x.line), ['A bed you fill with air'])
+  const m = read('src/pages/admin/VideoMaker.jsx')
+  assert.match(m, /\['explain', 'Explain it'\]/)
+  assert.match(m, /function PhotoSlides/)
+  assert.match(m, /const PLAN = \{/)
+  assert.match(m, /markUsed\(pick\?\.id\)/)
+  assert.match(read('src/lib/listingVideo.js'), /export function explainScenes/)
 })

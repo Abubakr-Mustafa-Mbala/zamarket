@@ -159,7 +159,7 @@ test('video maker: built frame by frame in the background, kept in My videos', (
   assert.match(j, /indexedDB\.open/)
   assert.match(j, /visibilitychange/)
   assert.match(j, /wakeLock/)
-  assert.match(ui, /await startVideo\(\{ \.\.\.spec\(\), audio, marks, duration \}\)/)
+  assert.match(ui, /await begin\(\{ \.\.\.spec\(\), audio, marks, duration \}\)/)
   assert.match(read('src/components/Shell.jsx'), /<VideoJobsChip \/>/)
 })
 

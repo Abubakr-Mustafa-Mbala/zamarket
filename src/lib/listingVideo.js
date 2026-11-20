@@ -1752,3 +1752,29 @@ export function adCut(scenes, secs = 4, target = 32) {
   const keep = new Set(scenes.map((s, i) => [score(s, i), i]).sort((a, b) => b[0] - a[0] || a[1] - b[1]).slice(0, room).map((x) => x[1]))
   return scenes.filter((_, i) => keep.has(i))
 }
+
+// ---- "Explain it": an educational video about a product or a car ------------
+// Opens with a question in big words, then teaches: what it is, why people use
+// it, the questions buyers ask, and where to get it. Without the AI it is
+// built from the listing alone (its description, benefits and questions).
+export function explainScenes(item, kind, written = null) {
+  const photos = (item.images || []).filter(Boolean)
+  const pic = (i) => photos[i % Math.max(1, photos.length)] || null
+  const v = kind === 'vehicle' ? vehicleOf(item) : null
+  const name = kind === 'vehicle' ? vehicleTitle(v, item.name) : item.name
+  const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
+  const q = written?.question || (kind === 'vehicle' ? `Is the ${name} right for you?` : `What is a ${String(item.name || '').replace(/^(a|an|the)\s+/i, '').toLowerCase()}?`)
+  const out = [{ type: 'mbig', kicker: kind === 'vehicle' ? 'Before you buy' : 'Did you know?', lines: [shortLine(q, 60)], line: shortLine(q, 60), sub: '', say: q, photo: null }]
+  if (written?.scenes?.length) {
+    written.scenes.forEach((x, i) => out.push({ kicker: x.kicker || '', line: shortLine(x.line, 70), sub: '', say: x.say || `${x.line}.`, photo: x.photo >= 0 ? photos[x.photo] || pic(i) : pic(i + 1) }))
+  } else {
+    const desc = sentences(item.description || item.short_description || '').slice(0, 1)
+    if (desc[0]) out.push({ kicker: 'What it is', line: shortLine(desc[0], 70), sub: '', say: `${desc[0]}.`, photo: pic(0) })
+    const pts = (item.benefits || []).map((x) => String(x || '').replace(/^[\s•*·–—-]+/, '').trim()).filter(Boolean).slice(0, 3)
+    pts.forEach((x, i) => out.push({ kicker: i === 0 ? 'Why people use it' : '', line: shortLine(x), sub: '', say: `${x.replace(/[.!]+$/, '')}.`, photo: pic(i + 1) }))
+    ;(item.faqs || []).slice(0, 2).forEach((f, i) => { const qq = f.q || f.question; const a = f.a || f.answer; if (qq && a) out.push({ kicker: 'You asked', line: shortLine(qq, 70), sub: shortLine(a, 70), say: `${qq} ${a}`, photo: pic(i + 4) }) })
+    if (kind === 'vehicle') out.push({ kicker: 'Tip', line: 'Ask for the service records and take a test drive', sub: '', say: 'Whatever car you buy, ask for the service records, check the tyres, and take a test drive.', photo: pic(2) })
+  }
+  out.push({ kicker: kind === 'vehicle' ? 'On ZaMarket Motors' : 'Get it on ZaMarket', line: name, sub: price, say: `${kind === 'vehicle' ? 'This one is' : 'You can get it'} on ZaMarket${price ? `, for ${price}` : ''}.`, photo: pic(0) })
+  return out.map((x) => ({ id: sceneId(), photo: x.photo || null, ...clean({ kicker: '', line: '', sub: '', ...x }) }))
+}
