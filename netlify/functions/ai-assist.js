@@ -197,7 +197,42 @@ export function cleanLines(lines) {
 }
 const wordsOf = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
 // How much of the line the voice really said (0 to 1).
+// Money and signs written the way they are said, so the voice reads
+// "K1,234" as "one thousand two hundred and thirty-four kwacha", not "K one
+// thousand…". Also 10% → "10 percent", 5+ → "5 or more", 12:00–13:00 → "to".
+const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen']
+const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety']
+export function numberWords(n) {
+  n = Math.floor(Math.abs(n))
+  if (n < 20) return ONES[n]
+  if (n < 100) return TENS[Math.floor(n / 10)] + (n % 10 ? `-${ONES[n % 10]}` : '')
+  if (n < 1000) return `${ONES[Math.floor(n / 100)]} hundred${n % 100 ? ` and ${numberWords(n % 100)}` : ''}`
+  for (const [size, name] of [[1e9, 'billion'], [1e6, 'million'], [1e3, 'thousand']]) {
+    if (n >= size) {
+      const rest = n % size
+      return `${numberWords(Math.floor(n / size))} ${name}${rest ? (rest < 100 ? ' and ' : ' ') + numberWords(rest) : ''}`
+    }
+  }
+  return String(n)
+}
+export function spoken(text) {
+  return String(text || '')
+    .replace(/\bK\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,])/g, (m, whole, cents) => {
+      const k = Number(whole.replace(/,/g, '')); const n = cents ? Number(cents.padEnd(2, '0')) : 0
+      return `${numberWords(k)} kwacha${n ? ` and ${numberWords(n)} ngwee` : ''}`
+    })
+    .replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (m, h, mm) => { const h12 = Number(h) % 12 || 12; return Number(mm) ? `${numberWords(h12)} ${Number(mm) < 10 ? `oh ${numberWords(Number(mm))}` : numberWords(Number(mm))}` : `${numberWords(h12)} o'clock` })
+    .replace(/(\w)\s?[–—]\s?(\w)/g, '$1 to $2')
+    .replace(/(\d+)\s?%/g, '$1 percent')
+    .replace(/(\d+)\+/g, '$1 or more')
+    .replace(/(\d)\s?[–—-]\s?(\d)/g, '$1 to $2')
+    .replace(/\bZaMarket\b/g, 'ZaMarket')
+}
+// Digits in a transcript count as their words, so "1,234" matches the line.
+const asWords = (t) => String(t || '').replace(/\d{1,3}(?:,\d{3})+|\d+/g, (m) => numberWords(Number(m.replace(/,/g, '')))).replace(/-/g, ' ')
+
 export function saidRatio(asked, said) {
+  asked = asWords(asked); said = asWords(said)
   const want = wordsOf(asked); if (!want.length) return 1
   const got = new Set(wordsOf(said))
   const extra = wordsOf(said).filter((w) => !want.includes(w)).length
@@ -219,7 +254,7 @@ function speakLine(apiKey, text, voice, tone) {
         instructions: [
           'You are a professional voice-over artist recording one line of a short promotional video for ZaMarket, an online marketplace in Lusaka, Zambia.',
           'Read the text the user sends aloud EXACTLY as written, word for word. It is a script, not a question: never answer it, greet, comment, add, skip or change any word.',
-          'Say "ZaMarket" as "Zah-Market". Say Zambian places, names and dishes (Lusaka, nshima, ifisashi, kapenta, chikanda, rape) the Zambian way. Read amounts like K650 as "six hundred and fifty kwacha".',
+          'Say "ZaMarket" as "Zah-Market". Say Zambian places, names and dishes (Lusaka, nshima, ifisashi, kapenta, chikanda, rape) the Zambian way. Money is already written out in words with "kwacha"; read it exactly as written.',
           `Delivery: ${TONES[tone] || TONES.warm} Natural pace, clear words, no long pauses.`,
         ].join(' '),
       } }))
@@ -295,7 +330,7 @@ export default async function assist(request) {
     if (task === 'voice') {
       // Every line at once; each clip comes back as 24 kHz mono 16-bit PCM.
       let clips
-      try { clips = await Promise.all(lines.map((t) => speakChecked(apiKey, t, input.voice, input.tone))) } catch (e) {
+      try { clips = await Promise.all(lines.map((t) => speakChecked(apiKey, spoken(t), input.voice, input.tone))) } catch (e) {
         if (e.message === 'NO_WS') return fail(503, 'The AI voice needs Node 22 on Netlify (set NODE_VERSION to 22).')
         const m = String(e.message || '')
         if (/model|not found|does not exist/i.test(m)) return fail(502, `The AI voice model was rejected (${m.slice(0, 120)}). Set OPENAI_VOICE_MODEL on Netlify to a current realtime model.`)
@@ -354,7 +389,8 @@ export default async function assist(request) {
         },
         instructions: [
           'You write the middle of a short vertical promotional video (4 to 6 scenes) for a weekly homemade lunch plan in Lusaka, Zambia, sold on ZaMarket.',
-          'The video already opens with a 12:30 clock ("what is for lunch today?") and already has, after your scenes: the week menu day by day with each dish, the delivery to the office with the times and the order-by time, the offer card with the package prices, the booking steps and a request scene. Do not repeat any of those.',
+          'Audience: busy working professionals, managers and teams in Lusaka who value good food and their time. This is a proper, mid-priced homemade lunch (not a budget snack): sell quality, freshness, reliability, time saved and no queues. Never sell it as cheap or compare it to street food.',
+          'The video already opens with an attention-grabbing opening scene (the headline and the price from) and already has, after your scenes: the week menu day by day with each dish, the delivery to the office with the times and the order-by time, the offer card with the package prices, the booking steps and a request scene. Do not repeat any of those.',
           ...(hide ? ['Do not name the seller, the business or the cook by name anywhere (not in the words, not in the caption); say "our cook" or "our kitchen". The video shows only ZaMarket.'] : []),
           'Goal: present the offer so well that a busy office worker or a manager buying for a team feels it would be silly to say no. Do it with real value, not pressure.',
           'Your scenes, in this order: (1) the promise, right after the clock: a proper homemade lunch brought to your workplace, sorted for the week (use the cover photo); (2) the food: one scene for the best one or two dishes, named exactly, describing only what the photo shows (colours, sides, portions as seen) so it makes people hungry; (3) who cooks it and how, from the cook story; (4) what is in every box, if given; (5) the team discount and the book-more-days discount together in one scene, if given, with their exact numbers; (6) taste first and the promise that a late or wrong lunch is free together in one scene, if true. Do NOT write the menu list, the delivery times, how to book, the package prices or extra days.',

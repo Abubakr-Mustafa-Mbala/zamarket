@@ -3,7 +3,7 @@ import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
 import { soundBed } from './videoSounds'
 import { studioVoice, mixUnder } from './studioVoice'
-import { clockTrack, mixTracks } from './videoFx'
+import { openingTrack, mixTracks } from './videoFx'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
 // of recording the screen in real time. A 30-second video takes seconds, and
@@ -19,7 +19,7 @@ const FPS = 30
 // timers right down when the page is in the background.
 const breathe = () => new Promise((ok) => { const c = new MessageChannel(); c.port1.onmessage = () => ok(); c.port2.postMessage(0) })
 
-export async function renderJob(spec, onProgress) {
+export async function renderJob(spec, onProgress, stopped = () => false) {
   const mb = await tools()
   const slides = spec.script.slides
   const cache = new Map()
@@ -81,7 +81,7 @@ export async function renderJob(spec, onProgress) {
   let sound = null
   // The ticking clock of the lunch opening, on unless you turned it off.
   let ticks = null
-  if (spec.ticks !== false) { try { ticks = clockTrack(slides, timeAt, length) } catch (e) { console.warn('[video] ticks skipped', e) } }
+  if (spec.ticks !== false) { try { ticks = openingTrack(slides, timeAt, length) } catch (e) { console.warn('[video] ticks skipped', e) } }
   const audio = ticks ? await mixTracks([voice || bed, ticks], length) : voice || bed
   if (audio) { sound = new mb.AudioBufferSource({ codec: 'aac', bitrate: 128000 }); output.addAudioTrack(sound) }
   await output.start()
@@ -90,6 +90,7 @@ export async function renderJob(spec, onProgress) {
   const frames = Math.ceil(length * FPS)
   try {
   for (let i = 0; i < frames; i += 1) {
+    if (stopped()) throw new Error('CANCELLED')
     apply()
     place()
     drawFrame(ctx, timeAt(i / FPS), slides, imgs, end)
@@ -101,6 +102,8 @@ export async function renderJob(spec, onProgress) {
   } catch (e) {
     // The encoder broke while the page was on screen: this phone records the
     // slower way from now on.
+    // You cancelled it: free the encoder and stop, nothing is wrong.
+    if (e?.message === 'CANCELLED') { try { await output.cancel() } catch { /* ignore */ } throw e }
     if (typeof document !== 'undefined' && !document.hidden) fastFailed()
     throw e
   }

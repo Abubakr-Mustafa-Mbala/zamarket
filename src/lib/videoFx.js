@@ -6,25 +6,49 @@ import { clockSwitch, sceneSeconds } from './listingVideo'
 
 const RATE = 48000
 
-// When the ticks fall in the finished video. `timeAt` turns video time into
-// story time (with your voice, the scenes follow the moments you tapped Next).
-export function clockMoments(slides, timeAt, length) {
-  const S = sceneSeconds(); const T = clockSwitch(); const run = T * 0.75
-  const ticks = []; const whooshes = []
-  let lastTick = -1; let lastScene = -1; let lastLocal = 0
+const OPENINGS = ['clock', 'hookfood', 'hookbusy']
+export const hasOpening = (slides) => OPENINGS.includes(slides?.[0]?.type) || slides?.some((x) => x.type === 'clock')
+
+// The sounds each opening plays, at moments in the scene (seconds).
+function cues(s) {
+  const T = clockSwitch()
+  if (s.type === 'hookfood') {
+    // A whoosh as the photo punches in; a deep thump as the violet line lands.
+    const n1 = String(s.line || '').split(' ').length
+    return [{ at: 0.001, kind: 'whoosh' }, { at: 0.3 + n1 * 0.11 + 0.12, kind: 'thump' }]
+  }
+  if (s.type === 'hookbusy') {
+    const p = (s.punch || []).slice(0, 3)
+    const gap = Math.min(0.55, (T - 0.4) / Math.max(1, p.length))
+    return [...p.map((_, j) => ({ at: 0.1 + j * gap + 0.02, kind: 'thump' })), { at: T - 0.15, kind: 'whoosh' }]
+  }
+  if (s.type === 'clock') return [{ at: T - 0.15, kind: 'whoosh' }]
+  return []
+}
+
+// When the opening's sounds fall in the finished video. `timeAt` turns video
+// time into story time (with your voice, the scenes follow your voice).
+export function openingMoments(slides, timeAt, length) {
+  const S = sceneSeconds(); const run = clockSwitch() * 0.75
+  const out = []
+  let lastTick = -1; let lastScene = -1; let lastLocal = -1
   for (let t = 0; t < length; t += 1 / 240) {
     const st = timeAt(t)
     const i = Math.floor(st / S)
-    if (i >= slides.length || slides[i]?.type !== 'clock') { lastScene = i; continue }
+    const s = slides[i]
+    if (!s || !OPENINGS.includes(s.type)) { lastScene = i; continue }
     const local = st - i * S
-    if (i !== lastScene) { lastTick = -1; lastLocal = 0 }
-    const n = Math.floor(local * 5) // five ticks a second while the hands run
-    if (local < run + 0.2 && n !== lastTick) { ticks.push({ t, tock: n % 2 === 1 }); lastTick = n }
-    if (lastLocal < T - 0.15 && local >= T - 0.15) whooshes.push(t)
+    if (i !== lastScene) { lastTick = -1; lastLocal = -1 }
+    if (s.type === 'clock') {
+      const n = Math.floor(local * 5) // five ticks a second while the hands run
+      if (local < run + 0.2 && n !== lastTick) { out.push({ t, kind: n % 2 ? 'tock' : 'tick' }); lastTick = n }
+    }
+    for (const c of cues(s)) if (lastLocal < c.at && local >= c.at) out.push({ t, kind: c.kind })
     lastScene = i; lastLocal = local
   }
-  return { ticks, whooshes }
+  return out
 }
+export const clockMoments = openingMoments
 
 function addTick(d, at, tock) {
   const start = Math.round(at * RATE)
@@ -40,6 +64,20 @@ function addTick(d, at, tock) {
   }
 }
 
+// A deep, short hit: the "boom" a headline lands with in adverts.
+function addThump(d, at) {
+  const start = Math.round(at * RATE)
+  const len = Math.round(0.4 * RATE)
+  let phase = 0
+  for (let n = 0; n < len && start + n < d.length; n += 1) {
+    const x = n / RATE
+    const f = 48 + 70 * Math.exp(-x / 0.05) // pitch falls fast, like a drum
+    phase += 2 * Math.PI * f / RATE
+    const click = x < 0.004 ? (Math.random() * 2 - 1) * (1 - x / 0.004) * 0.35 : 0
+    d[start + n] += 0.85 * Math.exp(-x / 0.12) * Math.sin(phase) + click
+  }
+}
+
 function addWhoosh(d, at) {
   const start = Math.round(at * RATE)
   const len = Math.round(0.65 * RATE)
@@ -52,16 +90,20 @@ function addWhoosh(d, at) {
   }
 }
 
-// The ticking as a sound track of the video's length (null if no clock).
-export function clockTrack(slides, timeAt, length) {
-  const { ticks, whooshes } = clockMoments(slides, timeAt, length)
-  if (!ticks.length) return null
+// The opening's sounds as a track of the video's length (null if none).
+export function openingTrack(slides, timeAt, length) {
+  const moments = openingMoments(slides, timeAt, length)
+  if (!moments.length) return null
   const buf = new AudioBuffer({ length: Math.ceil(length * RATE), numberOfChannels: 1, sampleRate: RATE })
   const d = buf.getChannelData(0)
-  ticks.forEach((x) => addTick(d, x.t, x.tock))
-  whooshes.forEach((t) => addWhoosh(d, t))
+  for (const m of moments) {
+    if (m.kind === 'tick' || m.kind === 'tock') addTick(d, m.t, m.kind === 'tock')
+    else if (m.kind === 'thump') addThump(d, m.t)
+    else addWhoosh(d, m.t)
+  }
   return buf
 }
+export const clockTrack = openingTrack
 
 // Voice (with any nasheed under it) and the ticking together, never clipping.
 export async function mixTracks(tracks, length) {
@@ -80,13 +122,13 @@ export async function mixTracks(tracks, length) {
 }
 
 // "Listen": the opening's sound on its own, once.
-export async function playClock() {
+export async function playOpening(scene = { type: 'clock' }) {
   const S = sceneSeconds()
-  const slides = [{ type: 'clock' }]
-  const buf = clockTrack(slides, (t) => t, Math.min(S, clockSwitch() + 0.8))
+  const buf = openingTrack([scene], (t) => t, Math.min(S, clockSwitch() + 0.9))
   const A = window.AudioContext || window.webkitAudioContext
   if (!buf || !A) return
   const ctx = new A()
   const s = ctx.createBufferSource(); s.buffer = buf; s.connect(ctx.destination); s.start()
   s.onended = () => ctx.close().catch(() => {})
 }
+export const playClock = () => playOpening()

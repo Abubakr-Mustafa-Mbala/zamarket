@@ -89,7 +89,8 @@ function lunchScript(item, link) {
   slides.push({ kicker: 'Homemade', line: 'Cooked fresh for the day you booked', sub: seller ? `By ${seller}` : '', photo: kitchen || dishPics[1] || item.cover_url, say: `Every lunch is homemade${seller ? ` by ${seller}` : ''}, cooked for the day you booked, never the day before.` })
   // The food, big: the best dish full screen (the week menu shows the rest).
   const hasMenu = at('after').some((x) => x.type === 'menu')
-  dishes.filter((d) => d.images?.[0]).slice(0, hasMenu ? 1 : 2).forEach((d) => slides.push({ kicker: 'On the menu', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images[0], say: `${d.name}.` }))
+  const opened = at('open')[0]?.photo
+  dishes.filter((d) => d.images?.[0] && d.images[0] !== opened).slice(0, hasMenu ? 1 : 2).forEach((d) => slides.push({ kicker: 'On the menu', line: d.name, sub: d.price ? money(d.price, { whole: true }) : '', photo: d.images[0], say: `${d.name}.` }))
   if (!hasMenu && dishPics.length > 2) slides.push({ type: 'collage', photos: dishPics.slice(0, 4), kicker: 'On the menu', line: `${dishes.length} homemade dishes`, sub: '', say: `On the menu: ${dishes.slice(0, 3).map((d) => d.name).join(', ')}.` })
   // The week, the delivery, the offer.
   slides.push(...at('after'))
@@ -129,7 +130,20 @@ export function offerScenes(item, dishPics = []) {
     say: `Here is the week: ${cooking.slice(0, 3).map((d) => `${({ Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday' })[d.label]}, ${d.dish}`).join('; ')}${cooking.length > 3 ? ', and more' : ''}.` } : null
   const route = { type: 'route', fixed: true, slot: 'after', kicker: 'Delivered to you', line: 'To your office or door', when, order: `${cutoff}:00 the day before`, area: String(item.delivery_area || '').replace(/\s+/g, ' ').slice(0, 140), photo: null, sub: '',
     say: `We bring it to your office or your door${when ? `, between ${when}` : ''}. Just order by ${cutoff} hundred hours the day before.` }
-  const clock = { type: 'clock', fixed: true, slot: 'open', kicker: 'Weekly lunch', ask: 'What’s for lunch today?', line: 'Your lunch, sorted for the week', sub: from ? `From ${from} a lunch` : '', photo: item.cover_url || dishPics[0] || null,
+  // The opening: the first two seconds decide if people keep watching.
+  //   food  (default) the best dish, full screen at once, the headline lands
+  //         word by word: "Lunch at work, sorted for the week."
+  //   busy  "Meetings. Deadlines. No time for lunch?", then the food rises in
+  //   clock 12:30 on a ticking clock, then the food
+  const hero = dishPics[0] || item.cover_url || null
+  const priceLine = from ? `Homemade · delivered · from ${from}` : 'Homemade · delivered to your office'
+  const openings = {
+    food: { type: 'hookfood', fixed: true, slot: 'open', kicker: 'Weekly lunch', line: 'Lunch at work,', line2: 'sorted for the week.', sub: priceLine, photo: hero,
+      say: 'Lunch at work, sorted for the whole week. Homemade, and brought to your office.' },
+    busy: { type: 'hookbusy', fixed: true, slot: 'open', kicker: 'Weekly lunch', punch: ['Meetings.', 'Deadlines.', 'No time for lunch?'], line: 'Homemade lunch, brought to your office', sub: from ? `From ${from} a lunch` : '', photo: hero,
+      say: 'Meetings. Deadlines. No time for a proper lunch? We bring a homemade lunch to your office, on the days you choose.' },
+  }
+  const clock = openings[item.opening] || (item.opening === 'clock' ? null : openings.food) || { type: 'clock', fixed: true, slot: 'open', kicker: 'Weekly lunch', ask: 'What’s for lunch today?', line: 'Your lunch, sorted for the week', sub: from ? `From ${from} a lunch` : '', photo: item.cover_url || dishPics[0] || null,
     say: 'Twelve thirty. What’s for lunch today? With ZaMarket, it is already sorted, for the whole week.' }
   const step = (n, how, line, sub, say, demo = {}) => ({ type: 'howto', fixed: true, slot: 'close', step: n, steps: 3, how, line, sub, say, demo, photo: null, kicker: '' })
   return [
@@ -261,7 +275,7 @@ function lookOf(slides, i) {
   if (s.type === 'specs') return 'specs'
   if (s.type === 'collage') return 'collage'
   if (s.type === 'offer') return 'offer'
-  if (s.type === 'clock' || s.type === 'menu' || s.type === 'route') return s.type
+  if (s.type === 'clock' || s.type === 'menu' || s.type === 'route' || s.type === 'hookfood' || s.type === 'hookbusy') return s.type
   if (s.type === 'howto') return 'howto'
   if (i === 0 && isWords(s)) return 'hero'
   if (!isWords(s)) return 'photo'
@@ -282,6 +296,8 @@ function drawScene(ctx, slides, imgs, i, local) {
   if (look === 'offer') return drawOffer(ctx, s, Array.isArray(imgs[i]) ? imgs[i].filter(Boolean) : [], local)
   if (look === 'howto') return drawHowto(ctx, s, local)
   if (look === 'clock') return drawClock(ctx, s, img, local)
+  if (look === 'hookfood') return drawHookFood(ctx, s, img, local)
+  if (look === 'hookbusy') return drawHookBusy(ctx, s, img, local)
   if (look === 'menu') return drawMenu(ctx, s, Array.isArray(imgs[i]) ? imgs[i] : [], local)
   if (look === 'route') return drawRoute(ctx, s, local)
   if (look === 'specs') { if (img) { ctx.save(); ctx.globalAlpha = 0.55; fill(ctx, img, 0, 0, W, H, 1.08); ctx.restore() } drawSpecs(ctx, s, local); return }
@@ -405,6 +421,96 @@ function heading(ctx, s, local, y = 300) {
 
 // "12:30. What's for lunch today?" on a clock whose hands run to lunchtime,
 // then the cover photo rises in: already sorted, for the week.
+// Food first: the dish fills the screen from the first frame with a quick
+// push-in, a flash of light, and the headline landing word by word, the
+// second line in ZaMarket violet; then "homemade · delivered · from K…".
+function drawHookFood(ctx, s, img, local) {
+  const pop = (x) => { const k = Math.max(0, Math.min(1, x)); return 1 + 0.35 * (1 - k) * (1 - k) }
+  if (img) {
+    const z = local < 0.9 ? 1.2 - 0.14 * ease(local / 0.9) : 1.06 + 0.03 * Math.min(1, (local - 0.9) / SLIDE)
+    fill(ctx, img, 0, 0, W, H, z)
+  } else scene(ctx)
+  const g = ctx.createLinearGradient(0, H * 0.38, 0, H)
+  g.addColorStop(0, 'rgba(14,16,19,0)'); g.addColorStop(0.55, 'rgba(14,16,19,.78)'); g.addColorStop(1, 'rgba(14,16,19,.95)')
+  ctx.fillStyle = g; ctx.fillRect(0, H * 0.38, W, H * 0.62)
+  if (local < 0.18) { ctx.fillStyle = `rgba(255,255,255,${0.45 * (1 - local / 0.18)})`; ctx.fillRect(0, 0, W, H) }
+  ctx.save(); ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+  const k0 = ease((local - 0.15) / 0.35)
+  ctx.globalAlpha = k0; ctx.fillStyle = '#A892FF'; ctx.font = '800 42px Inter, Arial, sans-serif'
+  ctx.fillText(String(s.kicker || '').toUpperCase(), 72, 1150)
+  ctx.globalAlpha = 1
+  // The two headline lines, word by word.
+  let delay = 0.3
+  const rows = [[s.line || '', '#fff'], [s.line2 || '', '#A892FF']].filter(([t]) => t)
+  let y = 1270
+  for (const [text, colour] of rows) {
+    const f = fitText(ctx, text, W - 144, { from: 104, to: 70, lines: 1 })
+    for (const line of f.lines) {
+      let x = 72
+      for (const word of line.split(' ')) {
+        const k = (local - delay) / 0.22
+        const w = ctx.measureText(`${word} `).width
+        if (k > 0) {
+          const sc = pop(k)
+          ctx.save(); ctx.globalAlpha = Math.min(1, k * 1.6); ctx.translate(x, y); ctx.scale(sc, sc)
+          ctx.fillStyle = colour; ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 18
+          ctx.fillText(word, 0, 0); ctx.restore()
+        }
+        x += w; delay += 0.11
+      }
+      y += Math.round(f.size * 1.12)
+    }
+    delay += 0.12
+  }
+  // The pill: homemade · delivered · from K…
+  if (s.sub) {
+    const k = back((local - delay - 0.1) / 0.35)
+    if (k > 0) {
+      ctx.font = '700 40px Inter, Arial, sans-serif'
+      const w = Math.min(W - 144, ctx.measureText(s.sub).width + 64)
+      ctx.save(); ctx.translate(72, y + 20); ctx.scale(k, k)
+      ctx.fillStyle = 'rgba(14,16,19,.82)'; roundRect(ctx, 0, 0, w, 84, 42); ctx.fill()
+      ctx.strokeStyle = '#8A6CFF'; ctx.lineWidth = 4; roundRect(ctx, 0, 0, w, 84, 42); ctx.stroke()
+      ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle'; ctx.fillText(s.sub, 32, 44, w - 64)
+      ctx.restore()
+    }
+  }
+  ctx.restore()
+}
+
+// Busy day: three short punches land one after another on a dark screen,
+// then the food rises in with the answer.
+function drawHookBusy(ctx, s, img, local) {
+  scene(ctx)
+  if (img) { ctx.save(); ctx.globalAlpha = 0.18; ctx.drawImage(backdrop(img), 0, 0, W, H); ctx.restore() }
+  const T = clockSwitch()
+  const punch = (s.punch || []).slice(0, 3)
+  const gap = Math.min(0.55, (T - 0.4) / Math.max(1, punch.length))
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+  punch.forEach((p, j) => {
+    const at = 0.1 + j * gap
+    const k = (local - at) / 0.2
+    if (k <= 0) return
+    const lastOne = j === punch.length - 1
+    const newest = j === punch.filter((_, x) => local >= 0.1 + x * gap).length - 1
+    const f = fitText(ctx, p, W - 140, { from: lastOne ? 96 : 120, to: 56, lines: 2 })
+    const sc = 1 + 0.5 * Math.max(0, 1 - k) ** 2
+    ctx.save(); ctx.translate(W / 2, 760 + j * 220); ctx.scale(sc, sc)
+    ctx.globalAlpha = Math.min(1, k * 1.8) * (newest ? 1 : 0.45)
+    ctx.fillStyle = lastOne ? '#A892FF' : '#fff'
+    f.lines.forEach((l, i) => ctx.fillText(l, 0, i * Math.round(f.size * 1.1)))
+    ctx.restore()
+  })
+  ctx.restore()
+  if (local <= T) return
+  const k = ease((local - T) / 0.5)
+  ctx.save(); ctx.translate(0, (1 - k) * H)
+  if (img) fill(ctx, img, 0, 0, W, H, 1.04 + 0.05 * Math.min(1, (local - T) / SLIDE))
+  else scene(ctx, '#15181C')
+  ctx.restore()
+  if (k > 0.6) wordsBottom(ctx, s, local - T - 0.2, { bar: true })
+}
+
 function drawClock(ctx, s, img, local) {
   scene(ctx)
   if (img) { ctx.save(); ctx.globalAlpha = 0.2; ctx.drawImage(backdrop(img), 0, 0, W, H); ctx.restore() }
@@ -1335,7 +1441,7 @@ export function videoParts(item, kind = 'product', link = '') {
   return { photos, blocks, starter, end: base.end, caption: base.caption, endSay: base.endSay }
 }
 
-const KEEP = ['slot', 'ask', 'when', 'order', 'area', 'note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
+const KEEP = ['line2', 'punch', 'slot', 'ask', 'when', 'order', 'area', 'note', 'rows', 'photos', 'week', 'pkgs', 'next', 'demo', 'how', 'step', 'steps', 'fixed']
 const clean = (sc) => ({ type: sc.type || '', kicker: sc.kicker || '', line: sc.line || '', sub: sc.sub || '', say: sc.say || '', ...Object.fromEntries(KEEP.filter((k) => sc[k] != null).map((k) => [k, sc[k]])) })
 
 // A new scene from a block, on a chosen photo.
@@ -1435,7 +1541,7 @@ export function adCut(scenes, secs = 4, target = 32) {
   const score = (s, i) => {
     if (i === 0) return 100
     if (s.type === 'offer') return 90
-    if (s.type === 'clock') return 100
+    if (s.type === 'clock' || s.type === 'hookfood' || s.type === 'hookbusy') return 100
     if (s.type === 'menu') return 72
     if (s.type === 'route') return 50
     if (s.type === 'specs') return s.kicker === 'Also has' ? 48 : 80

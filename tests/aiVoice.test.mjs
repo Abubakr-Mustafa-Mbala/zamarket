@@ -25,3 +25,32 @@ test('AI voice is laid out scene by scene, each long enough to see', async () =>
   assert.ok(Math.abs(marks[2].at - 5.95) < 0.01)
   assert.ok(duration >= 5.95 + 4.5 - 0.01)
 })
+
+test('the AI voice says kwacha, percent and times the way people say them', async () => {
+  const fn = await import('../netlify/functions/ai-assist.js')
+  assert.equal(fn.spoken('From K133 a lunch'), 'From one hundred and thirty-three kwacha a lunch')
+  assert.equal(fn.spoken('K1,234.50'), 'one thousand two hundred and thirty-four kwacha and fifty ngwee')
+  assert.equal(fn.spoken('5+ lunches: 10% off'), '5 or more lunches: 10 percent off')
+  assert.equal(fn.spoken('Order by 18:00'), "Order by six o'clock")
+  assert.equal(fn.saidRatio(fn.spoken('The week is K650.'), 'The week is 650 kwacha.'), 1)
+  assert.match(read('netlify/functions/ai-assist.js'), /speakChecked\(apiKey, spoken\(t\)/)
+})
+
+test('a video being made can be cancelled', () => {
+  const j = read('src/lib/videoJobs.js')
+  assert.match(j, /export async function cancelVideo/)
+  assert.match(read('src/lib/videoRender.js'), /if \(stopped\(\)\) throw new Error\('CANCELLED'\)/)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /onClick=\{\(\) => cancelVideo\(v\.id\)\}>Cancel/)
+})
+
+test('lunch openings: food first by default, busy day, or the clock', () => {
+  const lv = read('src/lib/listingVideo.js')
+  assert.match(lv, /openings\[item\.opening\] \|\| \(item\.opening === 'clock' \? null : openings\.food\)/)
+  for (const f of ['function drawHookFood', 'function drawHookBusy']) assert.ok(lv.includes(f), f)
+  assert.match(read('src/pages/admin/VideoMaker.jsx'), /localStorage\.getItem\('zm-video-opening'\) \|\| 'food'/)
+})
+
+test('cancelling never marks the phone as unable to make videos quickly', () => {
+  const r = read('src/lib/videoRender.js')
+  assert.ok(r.indexOf("e?.message === 'CANCELLED'") < r.indexOf('fastFailed()', r.indexOf('catch (e)')))
+})

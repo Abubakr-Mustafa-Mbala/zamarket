@@ -99,6 +99,16 @@ export async function removeVideo(id) {
   emit(true)
 }
 
+// Stop a video you no longer want: a waiting one is simply dropped; one being
+// made stops at the next frame and is dropped too.
+const cancelled = new Set()
+export async function cancelVideo(id) {
+  const j = jobs.find((x) => x.id === id)
+  if (!j) return
+  if (j.status === 'making') { cancelled.add(id); j.status = 'stopping'; emit(true); return }
+  await removeVideo(id)
+}
+
 export async function retryVideo(id) {
   const j = jobs.find((x) => x.id === id)
   if (!j || !j.spec) return
@@ -123,15 +133,17 @@ async function pump() {
   try { lock = await navigator.wakeLock?.request('screen') } catch { /* not allowed */ }
   try {
     const { renderJob } = await import('./videoRender')
-    const r = await renderJob(job.spec, (p) => { job.progress = p; emit() })
+    const r = await renderJob(job.spec, (p) => { job.progress = p; emit() }, () => cancelled.has(job.id))
     Object.assign(job, { status: 'ready', blob: r.blob, seconds: r.seconds, size: r.blob.size, ext: 'mp4', progress: 1, finishedAt: Date.now() })
     delete job.spec.audio // the voice (or the sound) is inside the video now
     delete job.spec.music
     await save(job)
   } catch (e) {
-    console.warn('[video] making failed', e)
+    console.warn('[video] making stopped', e)
+    // You cancelled it: it is dropped below.
+    if (cancelled.has(job.id)) { /* nothing to keep */ }
     // Stopped because the phone put the page away: carry on when back.
-    if (typeof document !== 'undefined' && document.hidden) job.status = 'waiting'
+    else if (typeof document !== 'undefined' && document.hidden) job.status = 'waiting'
     else {
       job.status = 'failed'
       job.error = /NO_FAST|encod|codec/i.test(String(e?.message || e))
@@ -139,10 +151,11 @@ async function pump() {
         : String(e?.message || e)
       job.slow = /NO_FAST|encod|codec/i.test(String(e?.message || e))
     }
-    await save(job)
+    if (!cancelled.has(job.id)) await save(job)
   } finally {
     try { await lock?.release() } catch { /* ignore */ }
     running = false
+    if (cancelled.has(job.id)) { cancelled.delete(job.id); await removeVideo(job.id) }
     emit(true)
   }
   if (typeof document === 'undefined' || !document.hidden) pump()

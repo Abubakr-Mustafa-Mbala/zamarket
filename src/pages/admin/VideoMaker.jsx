@@ -4,14 +4,14 @@ import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import { openMic } from '../../lib/studioVoice'
-import { playClock } from '../../lib/videoFx'
+import { playOpening, hasOpening } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
 import { placeVoice } from '../../lib/voiceAlign'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice, upcomingMenu } from '../../lib/lunch'
-import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, markSeen } from '../../lib/videoJobs'
+import { startVideo, keepVideo, subscribeVideos, removeVideo, retryVideo, cancelVideo, markSeen } from '../../lib/videoJobs'
 import { fastEncoder } from '../../lib/fastEncoder'
 import { matchPhotos, cachedMatch } from '../../lib/photoMatch'
 import { askAssist } from '../../lib/aiAssist'
@@ -147,14 +147,21 @@ export default function VideoMaker() {
     const n = new Set(named); if (on) n.add(sellerKey); else n.delete(sellerKey)
     setNamed(n); try { localStorage.setItem('zm-video-named', JSON.stringify([...n])) } catch { /* ignore */ }
   }
+  // How a lunch video opens (remembered on this phone).
+  const [opening, setOpening] = useState(() => { try { return localStorage.getItem('zm-video-opening') || 'food' } catch { return 'food' } })
+  const chooseOpening = (v) => { setOpening(v); try { localStorage.setItem('zm-video-opening', v) } catch { /* ignore */ } }
   const subject = useMemo(() => {
+    const base = named0()
+    return base && kind === 'lunch' ? { ...base, opening } : base
+    function named0() {
     if (!pick || showSeller || !sellerName) return pick
     const esc = sellerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const scrub = (x) => (typeof x === 'string' ? x.replace(new RegExp(`\\s*(?:by|from|·|-|–)?\\s*${esc}(?:['’]s)?`, 'gi'), '').trim() : x)
     return { ...pick, vendor_name: '', title: scrub(pick.title), name: scrub(pick.name) || pick.name, tagline: scrub(pick.tagline) }
-  }, [pick, showSeller, sellerName])
+    }
+  }, [pick, showSeller, sellerName, kind, opening])
   const parts = useMemo(() => (subject ? videoParts(subject, kind, link) : null), [subject, kind, link])
-  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}` : ''
+  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}${kind === 'lunch' ? `-${opening}` : ''}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   // The full video, or the ~30-second ad cut of it.
@@ -544,12 +551,19 @@ export default function VideoMaker() {
                 <small className="vx-muted">{showSeller ? `The video names ${sellerName}. Remembered for this seller.` : 'The video shows only ZaMarket; the seller is not named in the words, the voice or the caption. Remembered for this seller.'}</small>
               </div>
             )}
-            {script.slides.some((x) => x.type === 'clock') && (
+            {kind === 'lunch' && (
               <div className="vx-pace">
-                <span>Clock sound</span>
-                <div className="vx-tabs">{[[true, 'Ticking'], [false, 'Off']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={ticks === v ? 'on' : ''} onClick={() => chooseTicks(v)}>{l}</button>)}</div>
-                <button type="button" className="btn small" onClick={() => playClock()}>▶ Listen</button>
-                <small className="vx-muted">{ticks ? 'A loud, clear tick-tock while the clock runs to 12:30, then a soft whoosh as the food comes in. It plays over your voice and any nasheed.' : 'The opening is silent.'}</small>
+                <span>Opening</span>
+                <div className="vx-tabs">{OPENINGS.map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={opening === v ? 'on' : ''} onClick={() => chooseOpening(v)}>{l}</button>)}</div>
+                <small className="vx-muted">{(OPENINGS.find((x) => x[0] === opening) || OPENINGS[0])[2]}</small>
+              </div>
+            )}
+            {hasOpening(script.slides) && (
+              <div className="vx-pace">
+                <span>Opening sound</span>
+                <div className="vx-tabs">{[[true, 'On'], [false, 'Off']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={ticks === v ? 'on' : ''} onClick={() => chooseTicks(v)}>{l}</button>)}</div>
+                <button type="button" className="btn small" onClick={() => playOpening(script.slides[0])}>▶ Listen</button>
+                <small className="vx-muted">{ticks ? 'Sound effects that make people stop scrolling (no music): a whoosh and a deep hit as the words land, or the ticking clock. They play over your voice and any nasheed.' : 'The opening is silent.'}</small>
               </div>
             )}
             <div className="vx-pace">
@@ -794,7 +808,9 @@ function MyVideos({ videos, copy }) {
                 {v.status === 'ready' && <button type="button" className="vx-btn primary" onClick={() => save(v)}>Save or share</button>}
                 {v.status === 'ready' && v.caption && <button type="button" className="vx-btn outline" onClick={() => copy(v.caption, 'Caption')}>Copy caption</button>}
                 {v.status === 'failed' && v.spec && !v.slow && <button type="button" className="vx-btn outline" onClick={() => retryVideo(v.id)}>Try again</button>}
-                {v.status !== 'making' && <button type="button" className="vx-btn ghost" onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
+                {(v.status === 'making' || v.status === 'waiting') && <button type="button" className="vx-btn outline" onClick={() => cancelVideo(v.id)}>Cancel</button>}
+                {v.status === 'stopping' && <small className="vx-muted">Stopping…</small>}
+                {v.status !== 'making' && v.status !== 'waiting' && v.status !== 'stopping' && <button type="button" className="vx-btn ghost" onClick={() => { if (window.confirm('Delete this video from this phone?')) removeVideo(v.id) }}>Delete</button>}
               </div>
             </div>
           </li>
@@ -917,6 +933,12 @@ function SceneEditor({ parts, scenes, left = [], open, setOpen, update, move, re
 // listen back, record again; when it sounds right, it goes into the video
 // with each scene placed where you start its line. A recording made with
 // another app works too.
+const OPENINGS = [
+  ['food', 'Food first', 'Your best dish fills the screen from the very first second, and “Lunch at work, sorted for the week.” lands word by word with the price. The strongest for adverts: food stops the scroll.'],
+  ['busy', 'Busy day', '“Meetings. Deadlines. No time for lunch?” lands line by line, then the food rises in with the answer. Speaks straight to busy working people.'],
+  ['clock', '12:30 clock', 'A ticking clock runs to 12:30, “What’s for lunch today?”, then the food rises in.'],
+]
+
 const TONE_HINT = {
   lunch: 'Warm and smiling, like telling a colleague about a lunch you love.',
   vehicle: 'Calm and confident, like a trusted dealer walking someone round the car.',

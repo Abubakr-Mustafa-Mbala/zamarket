@@ -21,7 +21,7 @@ test('voice is recorded without phone-call processing and shaped for the video',
 test('the clock opening ticks by default, and it can be turned off', () => {
   const fx = read('src/lib/videoFx.js')
   assert.match(fx, /Math\.floor\(local \* 5\)/)
-  assert.match(fx, /export function clockTrack/)
+  assert.match(fx, /export function openingTrack/)
   const r = read('src/lib/videoRender.js')
   assert.match(r, /spec\.ticks !== false/)
   const m = read('src/pages/admin/VideoMaker.jsx')
