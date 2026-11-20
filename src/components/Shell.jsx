@@ -39,6 +39,7 @@ const STAFF_NAV = [
   { to: '/admin/suppliers', label: 'Suppliers', advanced: true },
   { to: '/admin/simulator', label: 'Should I buy?' },
   { group: 'Growth' },
+  { to: '/admin/find-customers', label: 'Find customers' },
   { to: '/admin/offers', label: 'Offers' },
   { to: '/admin/resellers', label: 'Affiliates' },
   { to: '/admin/affiliate-recruiting', label: 'Affiliate recruitment' },

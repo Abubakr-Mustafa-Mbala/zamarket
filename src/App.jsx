@@ -38,6 +38,7 @@ const Vendors = named(adminPartners, 'Vendors')
 const SellerSetup = lazy(() => import('./pages/admin/SellerSetup'))
 const Affiliates = named(adminPartners, 'Resellers')
 const MarketingHub = lazy(() => import('./pages/marketing/MarketingHub'))
+const CustomerFinder = lazy(() => import('./pages/marketing/CustomerFinder'))
 const growthPages = () => import('./pages/public/GrowthPages')
 const MagnetPage = named(growthPages, 'MagnetPage')
 const InvitePage = named(growthPages, 'InvitePage')
@@ -232,6 +233,7 @@ export default function App() {
         <Route path="affiliate-recruiting" element={<Guard roles={['founder','ops','marketing']}><AffiliateRecruiting /></Guard>} />
         <Route path="vendors" element={<Vendors />} />
         <Route path="vendors/:id/shop" element={<SellerSetup />} />
+        <Route path="find-customers" element={<Guard roles={['founder','ops','marketing']}><CustomerFinder /></Guard>} />
         <Route path="marketing" element={<MarketingHub />} />
         <Route path="marketing/:section" element={<MarketingHub />} />
         <Route path="reviews" element={<Reviews />} />

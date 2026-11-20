@@ -2986,3 +2986,34 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .sr-kinds button.on { background: var(--brass, #8A6CFF); border-color: var(--brass, #8A6CFF); color: #fff; }
 .sr-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 420px) { .sr-two { grid-template-columns: 1fr; } }
+
+/* ---------- Find customers ---------- */
+.find .find-list { display: grid; gap: 10px; }
+.find .find-lead { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; display: grid; gap: 10px; }
+.find .find-lead-top { display: flex; justify-content: space-between; gap: 12px; }
+.find .find-lead-main { display: grid; gap: 3px; min-width: 0; }
+.find .find-lead-main b { font-size: 1rem; }
+.find .find-lead-side { display: grid; gap: 4px; justify-items: end; text-align: right; flex: none; }
+.find .find-note { color: var(--muted); font-style: italic; }
+.find .find-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.find .find-actions select { background: var(--paper); color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; font: inherit; font-size: .85rem; max-width: 100%; }
+.find .find-log { display: grid; gap: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.find .find-log input, .find .find-search { background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font: inherit; }
+.find .find-outcomes { display: flex; flex-wrap: wrap; gap: 6px; }
+.find .find-script { margin: 0; padding: 10px 14px 10px 30px; border-radius: 12px; background: rgba(138, 108, 255, .08); border: 1px solid rgba(138, 108, 255, .25); display: grid; gap: 4px; font-size: .9rem; }
+.find .find-goal b { font-size: 1.05rem; }
+.find .find-pct { font-size: 1.6rem; color: var(--brass); }
+.find .find-bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.find .find-bar span { display: block; height: 100%; background: var(--brass); border-radius: 99px; transition: width .4s; }
+.find .find-form { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: end; }
+.find .find-more summary { cursor: pointer; font-weight: 700; padding: 6px 0; }
+.find .find-more[open] { display: grid; gap: 10px; }
+.find .find-copy { background: rgba(138, 108, 255, .08); border: 1px dashed rgba(138, 108, 255, .4); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.find .find-copy p { margin: 0; }
+.find .find-owed-row { padding: 8px 0; border-top: 1px solid var(--line); gap: 10px; }
+.find .find-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.find .find-stats div { background: rgba(138, 108, 255, .08); border-radius: 12px; padding: 12px; display: grid; }
+.find .find-stats strong { font-size: 1.6rem; color: #fff; }
+.find .find-stats small { color: var(--muted); }
+.find .find-report { white-space: pre-wrap; font: inherit; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 12px; }
+.find .find-search { flex: 1; min-width: 160px; }

@@ -88,3 +88,14 @@ test('content tools: explain-it videos, photo slides, today’s post', async () 
   assert.match(m, /markUsed\(pick\?\.id\)/)
   assert.match(read('src/lib/listingVideo.js'), /export function explainScenes/)
 })
+
+test('find customers: its own section, uses the leads list, seller reports by function', () => {
+  const p = read('src/pages/marketing/CustomerFinder.jsx')
+  for (const t of ["['today', 'Today']", "['offices', 'Offices']", "['people', 'People I know']", "['referrals', 'Referrals']", "['sellers', 'Seller reports']"]) assert.ok(p.includes(t), t)
+  assert.match(p, /Never a blast/)
+  assert.doesNotMatch(p, /free tasting/i) // no offer the business has not made
+  assert.match(read('src/App.jsx'), /path="find-customers" element=\{<Guard roles=\{\['founder','ops','marketing'\]\}><CustomerFinder/)
+  const sql = read('supabase/migrations/20261120a_find_customers_REVIEW.sql')
+  assert.match(sql, /if not public\.is_staff\(\) then raise exception 'Staff only'/)
+  assert.match(sql, /add column if not exists list text/)
+})
