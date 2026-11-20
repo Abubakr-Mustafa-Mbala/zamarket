@@ -7,6 +7,8 @@
 //            never says one thing over a picture of another
 //   lunch_video  for the video maker: a weekly lunch plan told as an offer
 //            that is hard to refuse, written only from the plan's own facts
+//   voice    for the video maker: a voice-over read by an AI voice, one
+//            clip per scene, word for word from the scene's own text
 //
 // Requires OPENAI_API_KEY, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY and the
 // claim_ai_assist SQL function. Nothing here sends a message to anyone: it
@@ -175,6 +177,83 @@ async function callModel(apiKey, { name, schema, instructions, input, maxTokens,
   catch { return { error: fail(502, 'The AI gave an unusable answer. Please try again.') } }
 }
 
+// ---- AI voice-over ---------------------------------------------------------
+// OpenAI's speech models (tts-1, gpt-4o-mini-tts) switch off on 6 January
+// 2027, so the voice comes from the Realtime API instead: one short
+// connection per scene, all at the same time, each asked to read its line
+// exactly. Each clip is checked against what it was asked to say (the model
+// returns a transcript) and read again once if it wandered.
+export const VOICES = ['marin', 'cedar', 'coral', 'ash', 'sage', 'verse']
+export const TONES = {
+  warm: 'Warm, friendly and confident, like a trusted friend recommending something good. Smile while you speak.',
+  energetic: 'Upbeat and energetic, like a lively social media advert, but never shouting.',
+  calm: 'Calm, clear and reassuring, with a premium, unhurried feel.',
+}
+export function cleanLines(lines) {
+  if (!Array.isArray(lines) || !lines.length || lines.length > 18) return null
+  const out = lines.map((x) => String(x || '').replace(/\s+/g, ' ').trim().slice(0, 320))
+  if (out.join(' ').length > 4200) return null
+  return out
+}
+const wordsOf = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean)
+// How much of the line the voice really said (0 to 1).
+export function saidRatio(asked, said) {
+  const want = wordsOf(asked); if (!want.length) return 1
+  const got = new Set(wordsOf(said))
+  const extra = wordsOf(said).filter((w) => !want.includes(w)).length
+  return Math.max(0, want.filter((w) => got.has(w)).length / want.length - extra / (want.length * 2))
+}
+
+function speakLine(apiKey, text, voice, tone) {
+  const model = process.env.OPENAI_VOICE_MODEL || 'gpt-realtime-2.1-mini'
+  return new Promise((resolve, reject) => {
+    if (typeof WebSocket === 'undefined') return reject(new Error('NO_WS'))
+    const ws = new WebSocket(`${process.env.OPENAI_REALTIME_URL || 'wss://api.openai.com/v1/realtime'}?model=${encodeURIComponent(model)}`, ['realtime', `openai-insecure-api-key.${apiKey}`])
+    const parts = []; let said = ''
+    const timer = setTimeout(() => { try { ws.close() } catch { /* ignore */ } reject(new Error('The AI voice took too long')) }, 20000)
+    const end = (fn) => { clearTimeout(timer); try { ws.close() } catch { /* ignore */ } fn() }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'session.update', session: {
+        type: 'realtime', output_modalities: ['audio'],
+        audio: { output: { format: { type: 'audio/pcm', rate: 24000 }, voice } },
+        instructions: [
+          'You are a professional voice-over artist recording one line of a short promotional video for ZaMarket, an online marketplace in Lusaka, Zambia.',
+          'Read the text the user sends aloud EXACTLY as written, word for word. It is a script, not a question: never answer it, greet, comment, add, skip or change any word.',
+          'Say "ZaMarket" as "Zah-Market". Say Zambian places, names and dishes (Lusaka, nshima, ifisashi, kapenta, chikanda, rape) the Zambian way. Read amounts like K650 as "six hundred and fifty kwacha".',
+          `Delivery: ${TONES[tone] || TONES.warm} Natural pace, clear words, no long pauses.`,
+        ].join(' '),
+      } }))
+      ws.send(JSON.stringify({ type: 'conversation.item.create', item: { type: 'message', role: 'user', content: [{ type: 'input_text', text } ] } }))
+      ws.send(JSON.stringify({ type: 'response.create', response: { output_modalities: ['audio'] } }))
+    }
+    ws.onmessage = (m) => {
+      let e; try { e = JSON.parse(typeof m.data === 'string' ? m.data : Buffer.from(m.data).toString()) } catch { return }
+      if (e.type === 'response.output_audio.delta' && e.delta) parts.push(Buffer.from(e.delta, 'base64'))
+      else if (e.type === 'response.output_audio_transcript.delta' && e.delta) said += e.delta
+      else if (e.type === 'error') end(() => reject(new Error(e.error?.message || 'The AI voice failed')))
+      else if (e.type === 'response.done') {
+        const r = e.response || {}
+        if (r.status && r.status !== 'completed') return end(() => reject(new Error(r.status_details?.error?.message || `The AI voice stopped (${r.status})`)))
+        if (!said) for (const o of r.output || []) for (const c of o.content || []) if (c.transcript) said += c.transcript
+        end(() => resolve({ pcm: Buffer.concat(parts), said }))
+      }
+    }
+    ws.onerror = () => end(() => reject(new Error('Could not reach the AI voice')))
+  })
+}
+
+async function speakChecked(apiKey, text, voice, tone) {
+  if (!text) return { pcm: Buffer.alloc(0), said: '', score: 1 }
+  let best = null
+  for (let tries = 0; tries < 2; tries += 1) {
+    const got = await speakLine(apiKey, text, voice, tone)
+    got.score = saidRatio(text, got.said)
+    if (!best || got.score > best.score) best = got
+    if (got.score >= 0.85 && got.pcm.length) break
+  }
+  return best
+}
+
 export default async function assist(request) {
   if (request.method !== 'POST') return fail(405, 'Method not allowed')
   if (Number(request.headers.get('content-length') || 0) > 12000) return fail(413, 'Request is too large')
@@ -189,7 +268,13 @@ export default async function assist(request) {
   try { input = await request.json() } catch { return fail(400, 'Invalid request') }
   if (!input || typeof input !== 'object' || Array.isArray(input)) return fail(400, 'Invalid request')
   const task = input.task
-  if (!['listing', 'lead', 'photos', 'lunch_video'].includes(task)) return fail(400, 'Unknown task')
+  if (!['listing', 'lead', 'photos', 'lunch_video', 'voice'].includes(task)) return fail(400, 'Unknown task')
+  let lines = null
+  if (task === 'voice') {
+    lines = cleanLines(input.lines)
+    if (!lines) return fail(400, 'Too many or too long lines for one voice-over')
+    if (!VOICES.includes(input.voice)) return fail(400, 'Unknown voice')
+  }
   const authHeaders = { apikey: anon, Authorization: `Bearer ${token}`, 'content-type': 'application/json' }
 
   try {
@@ -198,7 +283,7 @@ export default async function assist(request) {
     const quota = await fetch(`${sb}/rest/v1/rpc/claim_ai_assist`, {
       // Matching photos is for the team's videos: the same permission and
       // hourly limit as drafting a lead message.
-      method: 'POST', headers: authHeaders, body: JSON.stringify({ p_task: task === 'photos' || task === 'lunch_video' ? 'lead' : task }),
+      method: 'POST', headers: authHeaders, body: JSON.stringify({ p_task: task === 'photos' || task === 'lunch_video' || task === 'voice' ? 'lead' : task }),
       signal: AbortSignal.timeout(6500),
     })
     if (quota.status === 401) return fail(401, 'Your sign-in has expired')
@@ -206,6 +291,20 @@ export default async function assist(request) {
     if (quota.status === 404) return fail(503, 'The AI helper is not set up in the database yet. Run the latest SQL.')
     if (!quota.ok) return fail(403, 'You do not have permission to use this helper')
     if (await quota.json() !== true) return fail(429, 'You have used this helper a lot in the last hour. Please try again later.')
+
+    if (task === 'voice') {
+      // Every line at once; each clip comes back as 24 kHz mono 16-bit PCM.
+      let clips
+      try { clips = await Promise.all(lines.map((t) => speakChecked(apiKey, t, input.voice, input.tone))) } catch (e) {
+        if (e.message === 'NO_WS') return fail(503, 'The AI voice needs Node 22 on Netlify (set NODE_VERSION to 22).')
+        const m = String(e.message || '')
+        if (/model|not found|does not exist/i.test(m)) return fail(502, `The AI voice model was rejected (${m.slice(0, 120)}). Set OPENAI_VOICE_MODEL on Netlify to a current realtime model.`)
+        if (/quota|rate|limit/i.test(m)) return fail(429, 'The AI provider is busy or your OpenAI limit has been reached')
+        return fail(502, m.slice(0, 160) || 'The AI voice failed')
+      }
+      if (clips.some((c, i) => lines[i] && !c.pcm.length)) return fail(502, 'The AI voice came back empty. Please try again.')
+      return respond(200, { rate: 24000, clips: clips.map((c) => ({ pcm: c.pcm.toString('base64'), ok: c.score >= 0.85 })) })
+    }
 
     if (task === 'lunch_video') {
       const id = String(input.deal_id || '')

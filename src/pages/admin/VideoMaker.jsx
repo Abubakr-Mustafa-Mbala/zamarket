@@ -5,6 +5,7 @@ import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import { openMic } from '../../lib/studioVoice'
 import { playClock } from '../../lib/videoFx'
+import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
@@ -163,6 +164,12 @@ export default function VideoMaker() {
   // The ticking clock under the 12:30 opening: on unless you turn it off.
   const [ticks, setTicks] = useState(() => { try { return localStorage.getItem('zm-video-ticks') !== '0' } catch { return true } })
   const chooseTicks = (v) => { setTicks(v); try { localStorage.setItem('zm-video-ticks', v ? '1' : '0') } catch { /* ignore */ } }
+  // The AI voice: which voice and how it sounds, remembered on this phone.
+  const [aiVoice, setAiVoice] = useState(() => { try { return localStorage.getItem('zm-video-ai-voice') || 'marin' } catch { return 'marin' } })
+  const [aiTone, setAiTone] = useState(() => { try { return localStorage.getItem('zm-video-ai-tone') || 'warm' } catch { return 'warm' } })
+  const pickVoice = (v) => { setAiVoice(v); try { localStorage.setItem('zm-video-ai-voice', v) } catch { /* ignore */ } }
+  const pickTone = (v) => { setAiTone(v); try { localStorage.setItem('zm-video-ai-tone', v) } catch { /* ignore */ } }
+  const [hearing, setHearing] = useState(null)
   const chooseShort = (v) => { setShort(v); try { localStorage.setItem('zm-video-ad', v ? '1' : '0') } catch { /* ignore */ } }
   useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
   setMotion(motion)
@@ -403,6 +410,27 @@ export default function VideoMaker() {
       setBusy(''); setStage(''); setCount(0); ctrl.current = null
     }
   }
+  // The AI reads the script; the video is built around its voice.
+  const aiLines = (s) => ({ slides: s.slides, endSay: s.endSay })
+  const makeAi = async () => {
+    if (!fast()) return toast('This phone records videos the slow way, which cannot carry an AI voice. Use Chrome, or a newer phone.', true)
+    setOpen(null); setBusy('ai'); setStage('The AI voice is reading the script…')
+    try {
+      const v = await aiVoiceOver(aiLines(script), aiVoice, aiTone)
+      await startVideo({ ...spec(), studio: false, audio: v.audio, marks: v.marks, duration: v.duration })
+      toast(v.unsure.length ? `Your video is being made. Listen to scene ${v.unsure.map((i) => i + 1).join(', ')}: the voice may not have read it word for word.` : 'Your video is being made with the AI voice; you can leave this page.')
+    } catch (e) { toast(e.message, true) } finally { setBusy(''); setStage('') }
+  }
+  const hearAi = async () => {
+    if (hearing?.url) { hearing.el?.pause(); URL.revokeObjectURL(hearing.url); setHearing(null); return }
+    setHearing({ loading: true })
+    try {
+      const v = await aiVoiceOver(aiLines(script), aiVoice, aiTone)
+      const url = URL.createObjectURL(v.audio); const el = new Audio(url)
+      el.onended = () => { URL.revokeObjectURL(url); setHearing(null) }
+      setHearing({ url, el }); await el.play()
+    } catch (e) { setHearing(null); toast(e.message, true) }
+  }
   useEffect(() => {
     if (stage !== 'Recording') return
     const at = performance.now(); setElapsed(0)
@@ -468,7 +496,15 @@ export default function VideoMaker() {
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Make it with my voice'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={makeAi}>{busy === 'ai' ? 'The AI is reading…' : 'Make it with an AI voice'}</button>
             </div>
+            <section className="vx-card-block vx-aivoice">
+              <h3>AI voice</h3>
+              <div className="vx-tabs">{AI_VOICES.map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={aiVoice === v ? 'on' : ''} onClick={() => pickVoice(v)}>{l}</button>)}</div>
+              <div className="vx-tabs">{AI_TONES.map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={aiTone === v ? 'on' : ''} onClick={() => pickTone(v)}>{l}</button>)}</div>
+              <button type="button" className="vx-btn ghost" disabled={!!busy || hearing?.loading} onClick={hearAi}>{hearing?.loading ? 'Reading the script…' : hearing?.url ? '■ Stop' : '▶ Hear the whole voice-over'}</button>
+              <small className="vx-muted">The AI reads the “Voice-over script” below, word for word, and each scene shows while its line is read. Change a scene’s words to change what it says. Hearing it first does not read it twice: the video uses the same recording.</small>
+            </section>
             <MyVideos videos={videos} toast={toast} copy={copy} />
             {!editing ? (
               <section className="vx-card-block vx-change">
