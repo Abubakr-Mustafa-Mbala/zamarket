@@ -28,7 +28,7 @@ import OfferingCard from '../../components/OfferingCard'
 import Icon from '../../lib/icons'
 import { detectChannel, rememberChannel } from '../../lib/channel'
 import { frontPageOrder, departmentShelves, justAdded, pickedForFront } from '../../lib/frontPage'
-import { startAnalytics, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
+import { startTracking, trackPage, trackViewItem, trackAddToCart } from '../../lib/analytics'
 import { useSeo, productSeo } from '../../lib/seo'
 import ShareProduct from '../../components/ShareProduct'
 import ShareStore from '../../components/ShareStore'
@@ -564,7 +564,7 @@ export function PublicShell() {
   // Analytics loads only if a measurement ID has been saved in Settings, and
   // page views are sent by hand because the URL changes without a page load.
   useEffect(() => {
-    if (startAnalytics(siteSettings)) trackPage(pathname)
+    if (startTracking(siteSettings)) trackPage(pathname)
   }, [siteSettings, pathname])
 
   const seenChannel = useRef(false)

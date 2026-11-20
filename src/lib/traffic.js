@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { detectChannel, storedChannel } from './channel'
+import { trackContact } from './analytics'
 
 // First-party, anonymous visit counting: which pages people open, which
 // vehicles they look at, and what they tap (WhatsApp, call, enquiry, share).
@@ -38,6 +39,7 @@ export const PRIVATE_PATHS = /^\/(admin|vendor|reseller|ops|finance|delivery|mar
 let firstSent = false
 export function track(kind, { path = null, product = null, ref = null } = {}) {
   if (typeof window === 'undefined') return
+  if (kind === 'whatsapp' || kind === 'call' || kind === 'enquiry') trackContact(kind, product)
   try {
     const search = window.location.search
     const channel = detectChannel(search, document.referrer) || storedChannel() || null

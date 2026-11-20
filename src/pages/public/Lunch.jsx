@@ -1,3 +1,4 @@
+import { trackLunchBooked } from '../../lib/analytics'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
@@ -533,6 +534,7 @@ export function BookSheet({ deal, picks, menu, totals, deliveryIncluded = false,
     })
     setBusy(false)
     if (error) return toast(error.message, true)
+    trackLunchBooked(data?.reference || data?.plan_number || ref, data?.total)
     setDone(data)
     onDone?.()
   }

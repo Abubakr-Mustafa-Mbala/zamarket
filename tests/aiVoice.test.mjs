@@ -118,3 +118,14 @@ test('seller offer page and a plainer affiliate page, both honest', () => {
   assert.match(a, /These numbers are only an example/)
   assert.match(a, /Nobody can promise income/)
 })
+
+test('Meta Pixel: off until an ID is saved, events only, no personal details', async () => {
+  const a = read('src/lib/analytics.js')
+  assert.match(a, /const PIXEL = \/\^\\d\{10,20\}\$\//)
+  for (const e of ["'PageView'", "'ViewContent'", "'AddToCart'", "'InitiateCheckout'", "'Purchase'", "'Contact'", "'Lead'"]) assert.ok(a.includes(e), e)
+  assert.doesNotMatch(a, /fbq\('init', id, \{/) // no advanced matching (no email or phone sent)
+  assert.match(read('src/pages/public/Marketplace.jsx'), /startTracking\(siteSettings\)/)
+  const sql = read('supabase/migrations/20261120c_meta_pixel_REVIEW.sql')
+  assert.match(sql, /'meta_pixel_id', '""'/)
+  assert.match(sql, /key <> ''founder_emails''/)
+})

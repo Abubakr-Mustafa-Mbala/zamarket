@@ -57,9 +57,56 @@ const send = (event, params) => {
   try { window.gtag('event', event, params || {}) } catch { /* never break the page for a tag */ }
 }
 
-export const trackPage = (path, title) => send('page_view', {
-  page_path: path, page_title: title || document.title, page_location: window.location.href,
-})
+// ---- Meta Pixel (Facebook and Instagram ads) ---------------------------------
+// The same rule as Analytics: nothing loads until a Pixel ID is saved in
+// Settings. What it is for: so ads can learn who looks, asks and buys, and
+// show the next ad to people like them instead of to anyone who scrolls.
+// Only events are sent (a product looked at, a WhatsApp tap, an order and its
+// total); never a name, phone number, email or address.
+let pixel = ''
+let pixelFailed = false
+const PIXEL = /^\d{10,20}$/
+export function pixelId(settings) {
+  const raw = String(settings?.meta_pixel_id || '').replace(/\s/g, '')
+  return PIXEL.test(raw) ? raw : ''
+}
+export function startPixel(settings) {
+  if (typeof window === 'undefined' || pixelFailed) return ''
+  const id = pixelId(settings)
+  if (!id || pixel === id) return pixel
+  try {
+    if (!window.fbq) {
+      const n = function () { if (n.callMethod) n.callMethod.apply(n, arguments); else n.queue.push(arguments) }
+      window.fbq = n; if (!window._fbq) window._fbq = n
+      n.push = n; n.loaded = true; n.version = '2.0'; n.queue = []
+      const s = document.createElement('script')
+      s.async = true
+      s.src = 'https://connect.facebook.net/en_US/fbevents.js'
+      s.onerror = () => { pixelFailed = true }
+      document.head.appendChild(s)
+    }
+    window.fbq('init', id)
+    pixel = id
+  } catch { pixelFailed = true }
+  return pixel
+}
+export const pixelEvent = (event, params, eventId) => {
+  if (!pixel || typeof window === 'undefined' || !window.fbq) return
+  try { window.fbq('track', event, params || {}, eventId ? { eventID: String(eventId) } : {}) } catch { /* never break the page */ }
+}
+const fbItems = (lines) => ({ content_ids: (lines || []).map((l) => String(l.id)).filter(Boolean), content_type: 'product', num_items: (lines || []).reduce((n, l) => n + (Number(l.qty) || 1), 0) })
+
+// Both trackers at once: whichever are switched on.
+export function startTracking(settings) {
+  const ga = startAnalytics(settings)
+  const fb = startPixel(settings)
+  return !!(ga || fb)
+}
+
+export const trackPage = (path, title) => {
+  send('page_view', { page_path: path, page_title: title || document.title, page_location: window.location.href })
+  pixelEvent('PageView')
+}
 
 // The standard ecommerce events, in the shape GA4 expects. The currency is
 // ZMW so the figures are not silently read as dollars.
@@ -68,23 +115,31 @@ const item = (p, qty = 1) => ({
   item_brand: p?.vendor_name || undefined, price: Number(p?.price) || 0, quantity: qty,
 })
 
-export const trackViewItem = (p) => send('view_item', {
-  currency: 'ZMW', value: Number(p?.price) || 0, items: [item(p)],
-})
+export const trackViewItem = (p) => {
+  send('view_item', { currency: 'ZMW', value: Number(p?.price) || 0, items: [item(p)] })
+  pixelEvent('ViewContent', { content_ids: [String(p?.id || '')], content_type: 'product', content_name: p?.name, currency: 'ZMW', value: Number(p?.price) || 0 })
+}
 
-export const trackAddToCart = (p, qty = 1) => send('add_to_cart', {
-  currency: 'ZMW', value: (Number(p?.price) || 0) * qty, items: [item(p, qty)],
-})
+export const trackAddToCart = (p, qty = 1) => {
+  send('add_to_cart', { currency: 'ZMW', value: (Number(p?.price) || 0) * qty, items: [item(p, qty)] })
+  pixelEvent('AddToCart', { content_ids: [String(p?.id || '')], content_type: 'product', content_name: p?.name, currency: 'ZMW', value: (Number(p?.price) || 0) * qty })
+}
 
-export const trackBeginCheckout = (lines, total) => send('begin_checkout', {
-  currency: 'ZMW', value: Number(total) || 0,
-  items: (lines || []).map((l) => item({ id: l.id, name: l.name, price: l.price }, l.qty)),
-})
+export const trackBeginCheckout = (lines, total) => {
+  send('begin_checkout', { currency: 'ZMW', value: Number(total) || 0, items: (lines || []).map((l) => item({ id: l.id, name: l.name, price: l.price }, l.qty)) })
+  pixelEvent('InitiateCheckout', { ...fbItems(lines), currency: 'ZMW', value: Number(total) || 0 })
+}
 
 // Sent when an order is actually placed. The order number is passed as the
 // transaction id so a figure in Analytics can be traced to a real order —
 // no customer name, phone or address is ever sent to Google.
-export const trackPurchase = (orderNumber, total, lines) => send('purchase', {
-  transaction_id: String(orderNumber || ''), currency: 'ZMW', value: Number(total) || 0,
-  items: (lines || []).map((l) => item({ id: l.id, name: l.name, price: l.price }, l.qty)),
-})
+export const trackPurchase = (orderNumber, total, lines) => {
+  send('purchase', { transaction_id: String(orderNumber || ''), currency: 'ZMW', value: Number(total) || 0, items: (lines || []).map((l) => item({ id: l.id, name: l.name, price: l.price }, l.qty)) })
+  pixelEvent('Purchase', { ...fbItems(lines), currency: 'ZMW', value: Number(total) || 0 }, orderNumber ? `order-${orderNumber}` : '')
+}
+
+// A weekly lunch booked (paid after confirmation, so it counts as a lead
+// with its value), and a tap to ask a seller or ZaMarket on WhatsApp or by
+// phone: the two moments that show someone means it.
+export const trackLunchBooked = (ref, total) => pixelEvent('Lead', { content_name: 'Weekly lunch', content_category: 'lunch', currency: 'ZMW', value: Number(total) || 0 }, ref ? `lunch-${ref}` : '')
+export const trackContact = (kind, productId) => pixelEvent(kind === 'enquiry' ? 'Lead' : 'Contact', productId ? { content_ids: [String(productId)], content_type: 'product' } : {})
