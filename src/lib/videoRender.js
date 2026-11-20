@@ -3,6 +3,7 @@ import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
 import { soundBed } from './videoSounds'
 import { studioVoice, mixUnder } from './studioVoice'
+import { clockTrack, mixTracks } from './videoFx'
 
 // Builds the video frame by frame, as fast as the phone can encode, instead
 // of recording the screen in real time. A 30-second video takes seconds, and
@@ -78,7 +79,10 @@ export async function renderJob(spec, onProgress) {
   const video = new mb.CanvasSource(canvas, { codec: 'avc', fullCodecString: codec, bitrate: Math.max(w, h) > 1280 ? 8_000_000 : 5_000_000, keyFrameInterval: 2 })
   output.addVideoTrack(video, { frameRate: FPS, ...(rot ? { rotation: rot } : {}) })
   let sound = null
-  const audio = voice || bed
+  // The ticking clock of the lunch opening, on unless you turned it off.
+  let ticks = null
+  if (spec.ticks !== false) { try { ticks = clockTrack(slides, timeAt, length) } catch (e) { console.warn('[video] ticks skipped', e) } }
+  const audio = ticks ? await mixTracks([voice || bed, ticks], length) : voice || bed
   if (audio) { sound = new mb.AudioBufferSource({ codec: 'aac', bitrate: 128000 }); output.addAudioTrack(sound) }
   await output.start()
   if (sound) { await sound.add(audio); sound.close() }

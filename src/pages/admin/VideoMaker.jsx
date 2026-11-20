@@ -4,6 +4,7 @@ import { useAuth } from '../../lib/auth'
 import { money } from '../../lib/format'
 import { Loading, useToast } from '../../components/ui'
 import { openMic } from '../../lib/studioVoice'
+import { playClock } from '../../lib/videoFx'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
@@ -159,6 +160,9 @@ export default function VideoMaker() {
   // Studio voice (cleaned and shaped) or the voice exactly as recorded.
   const [studio, setStudio] = useState(() => { try { return localStorage.getItem('zm-video-studio') !== '0' } catch { return true } })
   const chooseStudio = (v) => { setStudio(v); try { localStorage.setItem('zm-video-studio', v ? '1' : '0') } catch { /* ignore */ } }
+  // The ticking clock under the 12:30 opening: on unless you turn it off.
+  const [ticks, setTicks] = useState(() => { try { return localStorage.getItem('zm-video-ticks') !== '0' } catch { return true } })
+  const chooseTicks = (v) => { setTicks(v); try { localStorage.setItem('zm-video-ticks', v ? '1' : '0') } catch { /* ignore */ } }
   const chooseShort = (v) => { setShort(v); try { localStorage.setItem('zm-video-ad', v ? '1' : '0') } catch { /* ignore */ } }
   useEffect(() => { let m = null; try { m = localStorage.getItem(`zm-video-motion-${kind}`) } catch { /* ignore */ } setMotionState(m || defaultMotion(kind)) }, [kind])
   setMotion(motion)
@@ -318,7 +322,7 @@ export default function VideoMaker() {
   }, [assets, script, busy, secs, open, motion])
 
   const spec = () => ({
-    title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion, studio,
+    title: title(pick), slug: pick.slug || pick.id, kind, link, pace: secs, motion, studio, ticks,
     script: { slides: script.slides, end: parts.end, endSay: parts.endSay, caption: script.caption },
     ...(music ? { music: { blob: music.blob, start: sound.start || 0, name: music.name } } : {}),
   })
@@ -485,6 +489,14 @@ export default function VideoMaker() {
                 <span>Seller’s name</span>
                 <div className="vx-tabs">{[[false, 'Only ZaMarket'], [true, `Show ${sellerName.length > 22 ? `${sellerName.slice(0, 20)}…` : sellerName}`]].map(([v, l]) => <button key={String(v)} type="button" disabled={!!busy} className={showSeller === v ? 'on' : ''} onClick={() => nameSeller(v)}>{l}</button>)}</div>
                 <small className="vx-muted">{showSeller ? `The video names ${sellerName}. Remembered for this seller.` : 'The video shows only ZaMarket; the seller is not named in the words, the voice or the caption. Remembered for this seller.'}</small>
+              </div>
+            )}
+            {script.slides.some((x) => x.type === 'clock') && (
+              <div className="vx-pace">
+                <span>Clock sound</span>
+                <div className="vx-tabs">{[[true, 'Ticking'], [false, 'Off']].map(([v, l]) => <button key={l} type="button" disabled={!!busy} className={ticks === v ? 'on' : ''} onClick={() => chooseTicks(v)}>{l}</button>)}</div>
+                <button type="button" className="btn small" onClick={() => playClock()}>▶ Listen</button>
+                <small className="vx-muted">{ticks ? 'A loud, clear tick-tock while the clock runs to 12:30, then a soft whoosh as the food comes in. It plays over your voice and any nasheed.' : 'The opening is silent.'}</small>
               </div>
             )}
             <div className="vx-pace">

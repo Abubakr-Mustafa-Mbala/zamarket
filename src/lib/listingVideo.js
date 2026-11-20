@@ -408,7 +408,7 @@ function heading(ctx, s, local, y = 300) {
 function drawClock(ctx, s, img, local) {
   scene(ctx)
   if (img) { ctx.save(); ctx.globalAlpha = 0.2; ctx.drawImage(backdrop(img), 0, 0, W, H); ctx.restore() }
-  const T = Math.min(2, SLIDE * 0.5)
+  const T = clockSwitch()
   const cx = W / 2; const cy = 760; const R = 270
   const run = ease(Math.min(1, local / (T * 0.75)))
   const mins = 40 + 50 * run // 11:40 → 12:30
@@ -1231,6 +1231,10 @@ export function voiceController(scenes, onScene) {
 // Time on the video's timeline for a scene held open for `held` seconds:
 // moves quickly through the entrance, then slows right down, never stopping
 // dead and never running into the next scene.
+// When the clock opening hands over to the photo, and the scene length now.
+export const clockSwitch = () => Math.min(2, SLIDE * 0.5)
+export const sceneSeconds = () => SLIDE
+
 export function heldTime(scene, held, slides) {
   const total = slides.length * SLIDE
   if (scene >= slides.length) return total + Math.min(held, END - 0.05)
