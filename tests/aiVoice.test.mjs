@@ -75,12 +75,15 @@ test('marketplace videos are designed scenes, not random photos with words', () 
 
 test('content tools: explain-it videos, photo slides, today’s post', async () => {
   const fn = await import('../netlify/functions/ai-assist.js')
-  const r = fn.safeExplain({ question: 'What is an airbed?', scenes: [
-    { kicker: 'What it is', line: 'A bed you fill with air', say: 'An airbed is a mattress you fill with air.', photo: 0 },
-    { kicker: 'Size', line: 'Fits 4 people', say: 'Big.', photo: 9 },
-    { kicker: 'Tip', line: 'The best airbed ever made', say: 'x', photo: 1 },
-  ], caption: 'c' }, 3, '{"name":"Queen airbed 152 cm"}')
-  assert.deepEqual(r.scenes.map((x) => x.line), ['A bed you fill with air'])
+  const r = fn.safeExplain({ question: 'Thinking of an Evoque? Watch this first.', scenes: [
+    { kicker: 'Generation', line: 'First generation, built 2011 to 2018', say: 'This 2016 car is the first-generation Evoque, built from 2011 to 2018.', photo: 0 },
+    { kicker: 'Known issue', line: 'Check the 9-speed gearbox for jerky shifts', say: 'Some owners report hesitant shifts on the 9-speed automatic. On the test drive, pull away gently and feel each change.', photo: 9 },
+    { kicker: 'Condition', line: 'This car is accident-free and reliable', say: 'x', photo: 1 },
+    { kicker: 'Price', line: 'Only K285,000', say: 'Great value at K285,000.', photo: 1 },
+    { kicker: 'Wow', line: 'The best SUV ever made', say: 'Amazing.', photo: 1 },
+  ], caption: 'c' }, 3)
+  assert.deepEqual(r.scenes.map((x) => x.line), ['First generation, built 2011 to 2018', 'Check the 9-speed gearbox for jerky shifts'])
+  assert.equal(r.scenes[1].photo, -1)
   const m = read('src/pages/admin/VideoMaker.jsx')
   assert.match(m, /\['explain', 'Explain it'\]/)
   assert.match(m, /function PhotoSlides/)

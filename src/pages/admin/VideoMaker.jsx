@@ -265,7 +265,7 @@ export default function VideoMaker() {
   const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off), keepUnseen: kind !== 'vehicle' })
   // "Explain it": the listing's own words straight away, then the AI's
   // lesson (what it is, who it's for, how to use it, what to check).
-  const explainKey = pick ? `zm-explain-v1-${kind}-${pick.id}${showSeller ? '-n' : ''}` : ''
+  const explainKey = pick ? `zm-explain-v2-${kind}-${pick.id}${showSeller ? '-n' : ''}` : ''
   const applyExplain = (r) => {
     const list = explainScenes(subject, kind, r)
     setScenes(list); setOpen(null)
@@ -819,7 +819,7 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
       {ai.state === 'writing' && <><span className="vx-spin" /><span>{ai.explain ? 'AI is writing the lesson: what it is, who it’s for, how to use it, what to check…' : 'AI is looking at the dishes and writing the lunch video from the plan…'}</span></>}
       {ai.state === 'done' && ai.explain && (
         <span>
-          <b>✨ AI wrote this explainer.</b> {ai.count} scenes that teach first and sell last. General facts about this kind of item; anything about this one comes from its listing. Scenes with numbers not in the listing, or hype, were left out.
+          <b>✨ AI wrote this explainer.</b> {ai.count} scenes, about a minute or more, that teach first and sell last: {car ? 'the generation, who it suits, engines, owning it in Zambia, known weak points to check, what to ask the seller' : 'how it works, the types, how to choose, how to use it, care, tips'}. Anything about this one comes from its listing. Prices, hype and promises about its condition are left out.
           {ai.late ? ' You had already changed the scenes, so nothing was replaced; tap Write again to use it.' : ''}
         </span>
       )}

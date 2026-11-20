@@ -1773,7 +1773,6 @@ export function explainScenes(item, kind, written = null) {
     const pts = (item.benefits || []).map((x) => String(x || '').replace(/^[\s•*·–—-]+/, '').trim()).filter(Boolean).slice(0, 3)
     pts.forEach((x, i) => out.push({ kicker: i === 0 ? 'Why people use it' : '', line: shortLine(x), sub: '', say: `${x.replace(/[.!]+$/, '')}.`, photo: pic(i + 1) }))
     ;(item.faqs || []).slice(0, 2).forEach((f, i) => { const qq = f.q || f.question; const a = f.a || f.answer; if (qq && a) out.push({ kicker: 'You asked', line: shortLine(qq, 70), sub: shortLine(a, 70), say: `${qq} ${a}`, photo: pic(i + 4) }) })
-    if (kind === 'vehicle') out.push({ kicker: 'Tip', line: 'Ask for the service records and take a test drive', sub: '', say: 'Whatever car you buy, ask for the service records, check the tyres, and take a test drive.', photo: pic(2) })
   }
   out.push({ kicker: kind === 'vehicle' ? 'On ZaMarket Motors' : 'Get it on ZaMarket', line: name, sub: price, say: `${kind === 'vehicle' ? 'This one is' : 'You can get it'} on ZaMarket${price ? `, for ${price}` : ''}.`, photo: pic(0) })
   return out.map((x) => ({ id: sceneId(), photo: x.photo || null, ...clean({ kicker: '', line: '', sub: '', ...x }) }))
