@@ -11,7 +11,7 @@ test('voice is recorded without phone-call processing and shaped for the video',
   assert.match(v, /db\(-16\)/)
   const r = read('src/lib/videoRender.js')
   assert.match(r, /spec\.studio !== false/)
-  assert.match(r, /mixUnder\(voice, bed\)/)
+  assert.match(r, /duckUnder\(voice, bed\)/)
   const m = read('src/pages/admin/VideoMaker.jsx')
   assert.match(m, /Studio voice/)
   assert.match(m, /mic = await openMic\(\)/)
