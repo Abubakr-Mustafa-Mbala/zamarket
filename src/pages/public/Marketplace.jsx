@@ -485,7 +485,7 @@ function ShopFooter({ user, home, giveaway }) {
         </FooterGroup>
         {/* Company and affiliate programme links stay accessible in the footer. */}
         <FooterGroup title="Work with us">
-          <Link to="/apply/vendor">Sell on ZaMarket</Link>
+          <Link to="/grow">Sell on ZaMarket</Link>
           <Link to="/affiliates">Become an affiliate</Link>
         </FooterGroup>
       </div>

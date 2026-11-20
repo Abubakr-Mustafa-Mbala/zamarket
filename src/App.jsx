@@ -51,6 +51,7 @@ const LunchDeals = lazy(() => import('./pages/shared/LunchDeals'))
 const HowItWorks = lazy(() => import('./pages/public/HowItWorks'))
 const Protection = lazy(() => import('./pages/public/Protection'))
 const AffiliateRecruitment = lazy(() => import('./pages/public/AffiliateRecruitment'))
+const GrowWithUs = lazy(() => import('./pages/public/GrowWithUs'))
 const AffiliateRecruiting = lazy(() => import('./pages/admin/AffiliateRecruiting'))
 const GiveawayList = named(() => import('./pages/public/Giveaway'), 'GiveawayList')
 const GiveawayPage = lazy(() => import('./pages/public/Giveaway'))
@@ -183,6 +184,7 @@ export default function App() {
         <Route path="/account" element={<Account />} />
         <Route path="/apply/:kind" element={<Apply />} />
         <Route path="/affiliates" element={<AffiliateRecruitment />} />
+        <Route path="/grow" element={<GrowWithUs />} />
         <Route path="/free/:slug" element={<MagnetPage />} />
         <Route path="/invite/:code" element={<InvitePage />} />
         <Route path="/rate/:link" element={<RatePage />} />

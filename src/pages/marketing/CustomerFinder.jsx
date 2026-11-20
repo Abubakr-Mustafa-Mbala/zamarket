@@ -37,7 +37,7 @@ const DEFAULT_MESSAGES = {
   office: 'Hello {name}, I\'m {me} from ZaMarket. We deliver homemade lunches to offices in Lusaka, ordered once for the whole week and brought to your office at lunchtime. Would your team like to see this week\'s menu? {link}',
   warm_lunch: 'Hi {name}! Hope you\'re well. I\'ve started ZaMarket, and one thing we do is homemade lunch delivered to your office for the week. If you or your colleagues are tired of hunting for lunch, here is the menu: {link}',
   warm_shop: 'Hi {name}! Hope you\'re well. I\'ve started ZaMarket, an online marketplace here in Lusaka with products from local sellers, delivered. Have a look, and tell me if there\'s anything you\'re looking for: https://zamarket.shop',
-  warm_sell: 'Hi {name}! I\'ve started ZaMarket, an online marketplace in Lusaka. If you (or someone you know) sell anything, we can put it online and bring you customers. Want me to tell you how it works?',
+  warm_sell: 'Hi {name}! I\'ve started ZaMarket, an online marketplace in Lusaka. If you (or someone you know) sell anything, we can put it online and bring you customers, with no joining or monthly fee. Here is how it works: https://zamarket.shop/grow',
   warm_earn: 'Hi {name}! I\'ve started ZaMarket. People can earn a commission by sharing our products online when a sale completes. Would you like to hear how it works? https://zamarket.shop/affiliates',
   referral: 'Hi! I order my weekly lunch from ZaMarket: homemade food delivered to the office. Have a look at this week\'s menu: {link}',
 }

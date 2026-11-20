@@ -17,7 +17,7 @@ const money = v => `K${Number(v).toLocaleString('en-ZM', { minimumFractionDigits
 // unknown vendors (and incorrectly tagged noindex).
 const RESERVED = new Set([
   'p', 'search', 'sellers', 'store', 'cart', 'checkout', 'order', 'rate', 'review',
-  'login', 'reset-password', 'recover', 'account', 'apply', 'affiliates', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
+  'login', 'reset-password', 'recover', 'account', 'apply', 'affiliates', 'grow', 'blog', 'admin', 'sell', 'vendor', 'go', 'r', 'v',
   'free', 'invite', 'saved', 'categories', 'about', 'how-it-works', 'protection',
   'giveaways', 'motors', 'lunch',
   'assets', 'favicon.ico', 'robots.txt', 'sitemap.xml',

@@ -106,3 +106,15 @@ test('real numbers: one staff-only function, visit to money, nothing estimated',
   for (const k of ["'visitors'", "'askers'", "'contacted'", "'paid_orders'", "'sales'", "'lunch_paid'", "'channels'", "'weeks'"]) assert.ok(sql.includes(k), k)
   assert.match(read('src/pages/marketing/CustomerFinder.jsx'), /\['results', 'Real numbers'\]/)
 })
+
+test('seller offer page and a plainer affiliate page, both honest', () => {
+  const g = read('src/pages/public/GrowWithUs.jsx')
+  assert.match(g, /We only earn when you sell/)
+  assert.match(g, /Every seller is reviewed/)
+  assert.doesNotMatch(g, /commission|our fee is|\bfee on top/i) // no marketplace economics shown to the public
+  assert.match(read('src/App.jsx'), /path="\/grow" element=\{<GrowWithUs \/>\}/)
+  const a = read('src/pages/public/AffiliateRecruitment.jsx')
+  assert.match(a, /What is affiliate marketing\?/)
+  assert.match(a, /These numbers are only an example/)
+  assert.match(a, /Nobody can promise income/)
+})
