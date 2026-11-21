@@ -357,6 +357,9 @@ export default async function handler(request, context) {
     }
   }
 
+  // TEMPORARY diagnostic: only when the link carries ?t=, never in normal shares.
+  if (current.searchParams.has('t')) title = `${title} [zm v4 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${lastLookup}]`
+  console.log(`zm-preview ${current.pathname} base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${lastLookup}`)
   const types = [].concat(schema?.['@type'] || [])
   const ogType = types.includes('Article') ? 'article' : types.includes('Product') ? 'product' : 'website'
   const head = `
