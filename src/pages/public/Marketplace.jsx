@@ -77,7 +77,9 @@ async function loadCatalogue({ force = false } = {}) {
     let products
     if (productsResult.status === 'rejected') {
       await new Promise((ok) => setTimeout(ok, 1200))
-      products = await fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to))
+      const again = await Promise.allSettled([fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to))])
+      if (again[0].status === 'rejected') throw productsResult.reason
+      products = again[0].value
     } else products = productsResult.value
 
     const optional = (result, label) => {
@@ -107,6 +109,7 @@ async function loadCatalogue({ force = false } = {}) {
 function useCatalogue() {
   const [data, setData] = useState(catalogueCache)
   const [error, setError] = useState('')
+  const [ref, setRef] = useState('')
   const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     let active = true
@@ -115,22 +118,25 @@ function useCatalogue() {
     loadCatalogue({ force: attempt > 0 }).then(update).catch((e) => {
       if (active) {
         console.error('Catalogue request failed:', e)
-        // The reason in small print, so a screenshot says what went wrong.
-        setError({ text: 'We could not connect to the marketplace. Please try again.', detail: [e?.code, e?.message || String(e || '')].filter(Boolean).join(' · ').slice(0, 220) })
+        // Customers never see the technical message, only a short reference
+        // (a database code, or NET for a dropped connection) that tells the
+        // team, from a screenshot, what went wrong.
+        setRef(String(e?.code || (/fetch|network|load failed/i.test(String(e?.message || '')) ? 'NET' : 'APP')).replace(/[^\w-]/g, '').slice(0, 12))
+        setError('We could not connect to the marketplace. Please try again.')
       }
     })
     return () => { active = false; catalogueListeners.delete(update) }
   }, [attempt])
-  return { data, error, retry: () => setAttempt((n) => n + 1) }
+  return { data, error, errorRef: ref, retry: () => setAttempt((n) => n + 1) }
 }
 
-function CatalogueUnavailable({ error, retry }) {
+function CatalogueUnavailable({ error, errorRef, retry }) {
   if (!error) return <Loading />
   return (
     <div className="catalogue-unavailable" role="alert">
       <h2>We couldn't load the marketplace</h2>
-      <p>{error.text || error}</p>
-      {error.detail && <small className="catalogue-detail">{error.detail}</small>}
+      <p>{error}</p>
+      {errorRef && <small className="catalogue-detail">Ref {errorRef}</small>}
       <button type="button" className="btn primary" onClick={retry}>Try again</button>
     </div>
   )
@@ -705,14 +711,14 @@ export function Storefront() {
   const stocked = useStockedDepartments(useDepartments())
   useSeo({ title: 'ZaMarket — buy online in Lusaka, Zambia', description: 'Shop phones, home goods, fashion, cakes made to order and local services in Lusaka. Order online and we call you to confirm the price and delivery.' })
   const DEPARTMENTS = useDepartments()
-  const { data, error, retry } = useCatalogue()
+  const { data, error, errorRef, retry } = useCatalogue()
   const { ref } = useCart()
   const counts = useMemo(() => {
     const m = {}
     for (const p of data?.products || []) m[p.category] = (m[p.category] || 0) + 1
     return m
   }, [data])
-  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
+  if (!data) return <CatalogueUnavailable error={error} errorRef={errorRef} retry={retry} />
   const { products, offersBy, vendors } = data
   // The shop, arranged by department. Inside each one the sellers still take
   // turns, so a department is fair between shops without a cake landing
@@ -927,9 +933,9 @@ function SellerCard({ v, shelf = [] }) {
 
 export function SellersPage() {
   useSeo({ title: 'Sellers on ZaMarket — local businesses in Lusaka', description: 'Browse the shops, bakers, tailors and services selling on ZaMarket in Lusaka, Zambia.' })
-  const { data, error, retry } = useCatalogue()
+  const { data, error, errorRef, retry } = useCatalogue()
   const shelves = useMemo(() => byVendor(data?.products || []), [data])
-  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
+  if (!data) return <CatalogueUnavailable error={error} errorRef={errorRef} retry={retry} />
   return (
     <div className="stack">
       <div className="crumbs"><Link to="/">Home</Link><span>Sellers</span></div>
@@ -959,7 +965,7 @@ export function SearchPage() {
   useSeo(spSeo.get('cat')
     ? { title: `${spSeo.get('cat')} in Lusaka | ZaMarket`, description: `Buy ${spSeo.get('cat').toLowerCase()} online in Lusaka. Delivery in Lusaka District, other areas arranged.` }
     : { title: 'All products | ZaMarket Lusaka', noIndex: !!spSeo.get('q') })
-  const { data, error, retry } = useCatalogue()
+  const { data, error, errorRef, retry } = useCatalogue()
   const [sp, setSp] = useSearchParams()
   const [sheet, setSheet] = useState(false)
   const q = (sp.get('q') || '').trim().toLowerCase()
@@ -998,7 +1004,7 @@ export function SearchPage() {
     return [...list].sort(by)
   }, [data, q, cat, type, sort, deals, minR, pmin, pmax])
 
-  if (!data) return <CatalogueUnavailable error={error} retry={retry} />
+  if (!data) return <CatalogueUnavailable error={error} errorRef={errorRef} retry={retry} />
   const heading = deals ? "Today's deals" : cat || (q ? `Results for “${sp.get('q')}”` : 'All products')
   const active = [cat, type, deals, minR, pmin, pmax].filter(Boolean).length
 

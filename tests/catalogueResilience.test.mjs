@@ -7,7 +7,7 @@ test('a missing product list still fails loudly rather than showing an empty sho
   // that looks empty. That still holds for products: if they cannot be
   // fetched there is no marketplace, so the error page is correct.
   assert.match(source, /fetchCataloguePages\(/)
-  assert.match(source, /if \(productsResult\.status === 'rejected'\) throw productsResult\.reason/)
+  assert.match(source, /if \(again\[0\]\.status === 'rejected'\) throw productsResult\.reason/)
 })
 
 test('offers or vendors failing does not take the whole marketplace down', () => {
