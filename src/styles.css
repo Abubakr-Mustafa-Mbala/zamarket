@@ -3036,3 +3036,4 @@ input:focus-visible, select:focus-visible, textarea:focus-visible,
 .find .find-table { width: 100%; border-collapse: collapse; }
 .find .find-table th, .find .find-table td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: .9rem; }
 .find .find-table td:not(:first-child), .find .find-table th:not(:first-child) { text-align: right; }
+.catalogue-detail { display: block; margin: 0 0 12px; font-size: .72rem; opacity: .6; word-break: break-word; }

@@ -72,9 +72,13 @@ async function loadCatalogue({ force = false } = {}) {
       fetchCataloguePages((from, to) => supabase.from('front_page_picks').select('id,front_rank').order('front_rank').order('id').range(from, to)),
     ])
 
-    // Without products there is no marketplace, so that one still throws.
-    if (productsResult.status === 'rejected') throw productsResult.reason
-    const products = productsResult.value
+    // Without products there is no marketplace. A dropped connection on a
+    // phone network gets one quiet second try before anything is shown.
+    let products
+    if (productsResult.status === 'rejected') {
+      await new Promise((ok) => setTimeout(ok, 1200))
+      products = await fetchCataloguePages((from, to) => supabase.from('public_products').select('*').order('created_at', { ascending: false }).order('id').range(from, to))
+    } else products = productsResult.value
 
     const optional = (result, label) => {
       if (result.status === 'fulfilled') return result.value
@@ -111,7 +115,8 @@ function useCatalogue() {
     loadCatalogue({ force: attempt > 0 }).then(update).catch((e) => {
       if (active) {
         console.error('Catalogue request failed:', e)
-        setError('We could not connect to the marketplace. Please try again.')
+        // The reason in small print, so a screenshot says what went wrong.
+        setError({ text: 'We could not connect to the marketplace. Please try again.', detail: [e?.code, e?.message || String(e || '')].filter(Boolean).join(' · ').slice(0, 220) })
       }
     })
     return () => { active = false; catalogueListeners.delete(update) }
@@ -124,7 +129,8 @@ function CatalogueUnavailable({ error, retry }) {
   return (
     <div className="catalogue-unavailable" role="alert">
       <h2>We couldn't load the marketplace</h2>
-      <p>{error}</p>
+      <p>{error.text || error}</p>
+      {error.detail && <small className="catalogue-detail">{error.detail}</small>}
       <button type="button" className="btn primary" onClick={retry}>Try again</button>
     </div>
   )
