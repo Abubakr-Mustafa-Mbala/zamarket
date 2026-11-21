@@ -25,6 +25,8 @@ const RESERVED = new Set([
 ])
 const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account', 'login', 'reset-password', 'recover', 'order', 'rate', 'invite', 'go', 'r', 'v', 'review', 'saved'])
 
+// What the last database lookup said, for the zm-preview tag (no secrets).
+let lastLookup = 'none'
 async function getOne(path, base, key) {
   try {
     const response = await fetch(`${base}/rest/v1/${path}`, {
@@ -33,10 +35,11 @@ async function getOne(path, base, key) {
       headers: /^eyJ/.test(key) ? { apikey: key, authorization: `Bearer ${key}` } : { apikey: key },
       signal: AbortSignal.timeout(5000),
     })
-    if (!response.ok) return { ok: false, item: null }
+    if (!response.ok) { lastLookup = `http ${response.status}`; return { ok: false, item: null } }
+    lastLookup = 'ok'
     const data = await response.json()
     return { ok: true, item: Array.isArray(data) ? data[0] || null : data }
-  } catch { return { ok: false, item: null } }
+  } catch (e) { lastLookup = `error ${String(e?.name || e).slice(0, 40)}`; return { ok: false, item: null } }
 }
 
 // Schema.org has named types for the trades most of our sellers are in, and a
@@ -146,6 +149,7 @@ export default async function handler(request, context) {
   const response = await context.next()
   if (!(response.headers.get('content-type') || '').includes('text/html')) return response
 
+  lastLookup = 'none'
   const current = new URL(request.url)
   const parts = current.pathname.split('/').filter(Boolean)
   const env = (k) => { try { return Deno.env.get(k) } catch { return '' } }
@@ -367,6 +371,7 @@ export default async function handler(request, context) {
     <meta property="og:image" content="${esc(image)}" />
     <meta property="og:url" content="${esc(parts[0] === 'r' ? `${SITE}${current.pathname}` : canonical)}" />
     <meta property="og:locale" content="en_ZM" />
+    <meta name="zm-preview" content="v3 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${esc(lastLookup)}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${esc(title)}" />
     <meta name="twitter:description" content="${esc(description)}" />
