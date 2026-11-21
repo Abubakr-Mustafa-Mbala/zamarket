@@ -68,6 +68,8 @@ from products p left join vendors v on v.id = p.vendor_id
 where p.status in ('published','out_of_stock') and (p.vendor_id is null or v.status = 'approved')
   and not coalesce(p.lunch_only, false);
 alter view public_products set (security_invoker = true);
+-- Visitors read only granted product columns; the filter above needs this one.
+grant select (lunch_only) on public.products to anon, authenticated;
 grant select on public_products to anon, authenticated;
 
 -- The lunch page reads its lunch-only dishes from here.
