@@ -145,7 +145,7 @@ export function soloSplit(d) {
 
 // The same sums the database uses for profit, line by line, so the number
 // above is never a mystery. Completed orders count on the day they completed.
-async function profitParts(from, to, settings) {
+export async function profitParts(from, to, settings) {
   const lo = `${from}T00:00:00+02:00`
   const hi = `${to}T23:59:59.999+02:00`
   const [orders, exp, ads] = await Promise.all([

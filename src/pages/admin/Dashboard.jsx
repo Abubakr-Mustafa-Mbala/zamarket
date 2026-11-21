@@ -6,23 +6,27 @@ import { useAuth } from '../../lib/auth'
 import { money, num, pct, n } from '../../lib/format'
 import { Stat, Loading, Segmented, Table } from '../../components/ui'
 import Icon from '../../lib/icons'
+import { profitParts } from './Split'
 
 const RANGES = { 7: 'This week', 30: '30 days', 90: '90 days', 365: 'This year' }
 
 export default function Dashboard() {
-  const { advanced, profile } = useAuth()
+  const { advanced, profile, settings } = useAuth()
   const [days, setDays] = useState(30)
   const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10)
   const { data, loading, error, reload } = useData(async () => {
-    const [s, quotes, pending, top] = await Promise.all([
+    const today = new Date(Date.now() + 2 * 36e5).toISOString().slice(0, 10)
+    const [s, quotes, pending, top, parts] = await Promise.all([
       q(supabase.rpc('dashboard_summary', { p_from: from })),
       q(supabase.from('quotes').select('text,author')),
       q(supabase.from('orders').select('id,order_number,total,status,created_at,customer:customers(full_name,phone),district:districts(name)').eq('status', 'pending').order('created_at').limit(8)),
       q(supabase.from('order_items').select('quantity,line_total,product:products(name),orders!inner(status,created_at)').gte('orders.created_at', from).not('orders.status', 'in', '(cancelled,fraud_review)').limit(1000)),
+      // The same sums as Finance → Our split, so both pages agree to the ngwee.
+      profitParts(from, today, settings).catch(() => null),
     ])
     const byProduct = {}
     for (const it of top) { const k = it.product?.name || '?'; byProduct[k] = byProduct[k] || { name: k, units: 0, revenue: 0 }; byProduct[k].units += it.quantity; byProduct[k].revenue += Number(it.line_total) }
-    return { s, quote: quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : null, pending, top: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 5) }
+    return { s, parts, quote: quotes.length ? quotes[Math.floor(Math.random() * quotes.length)] : null, pending, top: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue).slice(0, 5) }
   }, [from])
 
   if (loading) return <Loading />
@@ -35,15 +39,13 @@ export default function Dashboard() {
   )
   const s = data.s
   // Profit uses the same rules as the books: vendors' money is theirs, and
-  // only completed orders count. (Old databases without SQL 37 fall back.)
-  const v2 = s.orders_profit != null
-  const rawProfit = v2
-    ? n(s.orders_profit) - n(s.ad_spend) - n(s.expenses)
-    : n(s.revenue_completed) - n(s.cogs) - n(s.commissions) + n(s.marketplace_fees) + n(s.delivery_income) - n(s.delivery_costs) - n(s.ad_spend) - n(s.expenses)
-  // Profit is never shown below zero; a shortfall is said in words.
+  // only completed orders count. Never shown below zero; a shortfall is said.
+  const p = data.parts
+  const rawProfit = p ? p.profit : n(s.orders_profit) - n(s.ad_spend) - n(s.expenses)
   const netProfit = Math.max(0, rawProfit)
   const short = rawProfit < 0 ? -rawProfit : 0
-  const marginPct = s.revenue_completed > 0 ? (netProfit / s.revenue_completed) * 100 : 0
+  const ours = p ? p.sales - p.vendors : n(s.revenue_completed)
+  const marginPct = ours > 0 ? (netProfit / ours) * 100 : 0
   const aov = s.orders > 0 ? s.revenue / s.orders : 0
   // There used to be a second "action queue" list here, built from the same
   // counts as "Needs attention" below. Two lists of the same numbers is what
@@ -68,8 +70,8 @@ export default function Dashboard() {
         <Stat hero
           label={`Net profit · ${RANGES[days].toLowerCase()}`}
           value={money(netProfit)}
-          sub={<>{short > 0 ? <span className="bad">No profit yet: costs {money(short)} more than earned</span> : <>{pct(marginPct)} of completed sales</>} · <Link to="/admin/finance?tab=split">see why ›</Link></>} />
-        <Stat label="Revenue (completed orders)" value={money(s.revenue_completed)} sub={`${num(s.completed)} of ${num(s.orders)} orders completed`} />
+          sub={<>{short > 0 ? <span className="bad">No profit yet: costs {money(short)} more than earned</span> : <>{pct(marginPct)} of what we kept from sales</>} · <Link to="/admin/finance?tab=split">see why ›</Link></>} />
+        <Stat label="Sales (completed orders)" value={money(p ? p.sales : s.revenue_completed)} sub={p && p.vendors > 0 ? `${money(p.sales - p.vendors)} ours · ${money(p.vendors)} vendors' money` : `${num(s.completed)} of ${num(s.orders)} orders completed`} />
         <Stat label="Orders" value={num(s.orders)} sub={`Average order ${money(aov)}`} />
         <Stat label="Stock on hand" value={money(s.inventory_value)} sub={`${num(s.low_stock)} low · ${num(s.waiting_demand)} waiting requests`} />
       </div>
@@ -113,14 +115,14 @@ export default function Dashboard() {
           <div className="card-title"><h3>Where the money went</h3><span className="small muted">{RANGES[days]}</span></div>
           <div className="finance-visual" aria-label="Income and costs breakdown">
             {[
-              ['Sales (completed)', s.revenue_completed],
-              ['Delivery fees charged', v2 ? s.done_delivery_income : s.delivery_income],
-              ...(v2 ? [['Vendors\' share (their money)', -s.done_vendor_payouts]] : [['Vendor fees earned', s.marketplace_fees]]),
-              ['Product cost', -(v2 ? s.done_cogs : s.cogs)],
-              ['Affiliate commissions', -(v2 ? s.done_commissions : s.commissions)],
-              ['Delivery & fuel', -(v2 ? s.done_delivery_costs : s.delivery_costs)],
-              ['Advertising', -s.ad_spend],
-              ['Other expenses', -s.expenses],
+              ['Sales (completed)', p ? p.sales : s.revenue_completed],
+              ['Vendors\' share (their money)', -(p ? p.vendors : n(s.done_vendor_payouts))],
+              ['Delivery fees charged', p ? p.deliveryCharged : s.delivery_income],
+              ['Product cost', -(p ? p.stock : s.cogs)],
+              ['Affiliate commissions', -(p ? p.affiliates : s.commissions)],
+              ['Delivery & fuel', -(p ? p.delivery : s.delivery_costs)],
+              ['Advertising', -(p ? p.ads : s.ad_spend)],
+              ['Other expenses', -(p ? p.expenses : s.expenses)],
             ].map(([label, raw]) => {
               const amount = Number(raw) || 0
               const scale = Math.max(1, Number(s.revenue_completed) || 0,
