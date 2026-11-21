@@ -203,6 +203,14 @@ export function Team() {
 // ---------------- Settings ----------------
 const GROUPS = [
   {
+    title: 'Order alerts and emails',
+    fields: [
+      { key: 'alert_email', label: 'Email to tell when an order arrives', type: 'text', help: 'A message lands here the moment an order is placed, with every tab closed. Leave empty for none.' },
+      { key: 'alert_whatsapp', label: 'WhatsApp number for order alerts', type: 'text', help: 'Full international form, e.g. 260970000000. Needs a Meta WhatsApp Business account and an approved template, and Meta charges for each message \u2014 phone alerts and email are free, so set those up first.' },
+      { key: 'alert_min_total', label: 'Only alert for orders of at least (K)', type: 'number', help: '0 alerts for every order. Raise it later if small orders become noise.' },
+    ],
+  },
+  {
     title: 'Your business',
     note: 'Used on receipts and messages to customers.',
     fields: [
@@ -274,9 +282,6 @@ const GROUPS = [
       { key: 'analytics_id', label: 'Google Analytics measurement ID', type: 'text', help: 'Looks like G-XXXXXXXXXX. Leave it empty and no Google script is loaded on the site at all \u2014 that is the default. It is for seeing how people move around; the money figures always come from your own order records, not from Google.' },
       { key: 'meta_pixel_id', label: 'Meta Pixel ID (Facebook and Instagram ads)', type: 'text', help: 'Numbers only, from Meta Events Manager \u2192 Data sources \u2192 your Pixel. Leave it empty and nothing from Facebook is loaded. Once set, Facebook learns which visitors look at products, tap WhatsApp, book lunch and order, so ads reach people likely to buy. No names, phone numbers or addresses are ever sent.' },
       { key: 'search_console_verified', label: 'Verified in Google Search Console', type: 'switch', words: [['no', 'Not yet'], ['yes', 'Verified']], help: 'Tick this once zamarket.shop is verified, so the Growth page stops asking.' },
-      { key: 'alert_email', label: 'Email to tell when an order arrives', type: 'text', help: 'A message lands here the moment an order is placed, with every tab closed. Leave empty for none.' },
-      { key: 'alert_whatsapp', label: 'WhatsApp number for order alerts', type: 'text', help: 'Full international form, e.g. 260970000000. Needs a Meta WhatsApp Business account and an approved template, and Meta charges for each message \u2014 phone alerts and email are free, so set those up first.' },
-      { key: 'alert_min_total', label: 'Only alert for orders of at least (K)', type: 'number', help: '0 alerts for every order. Raise it later if small orders become noise.' },
     ],
   },
 ]
