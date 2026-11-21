@@ -9,7 +9,7 @@ import { playOpening, hasOpening } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
 import { placeVoice } from '../../lib/voiceAlign'
 import { hearTalk, editTalk, planSlides, shapeTalk, captionBites } from '../../lib/talkEdit'
-import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, explainScenes, sceneSeconds, W, H } from '../../lib/listingVideo'
+import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, explainScenes, pitchScenes, sceneSeconds, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
 import { fromPrice, upcomingMenu } from '../../lib/lunch'
@@ -175,6 +175,8 @@ export default function VideoMaker() {
   const [style, setStyle] = useState(() => { try { return localStorage.getItem('zm-video-style') || 'ad' } catch { return 'ad' } })
   const chooseStyle = (v) => { setStyle(v); try { localStorage.setItem('zm-video-style', v) } catch { /* ignore */ } }
   const explaining = style === 'explain' && (kind === 'product' || kind === 'vehicle')
+  // "Sell it": the AI writes a persuasive advert from the real facts.
+  const pitching = style === 'pitch' && (kind === 'product' || kind === 'vehicle')
   // How a lunch video opens (remembered on this phone).
   const [opening, setOpening] = useState(() => { try { return localStorage.getItem('zm-video-opening') || 'food' } catch { return 'food' } })
   const chooseOpening = (v) => { setOpening(v); try { localStorage.setItem('zm-video-opening', v) } catch { /* ignore */ } }
@@ -189,7 +191,7 @@ export default function VideoMaker() {
     }
   }, [pick, showSeller, sellerName, kind, opening])
   const parts = useMemo(() => (subject ? videoParts(subject, kind, link) : null), [subject, kind, link])
-  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}${kind === 'lunch' ? `-${opening}` : ''}${explaining ? '-explain' : ''}` : ''
+  const draftKey = pick ? `zm-video-v5-${kind}-${pick.id}${showSeller ? '-named' : ''}${kind === 'lunch' ? `-${opening}` : ''}${explaining ? '-explain' : pitching ? '-pitch' : ''}` : ''
   const [editing, setEditing] = useState(false)
   const [motion, setMotionState] = useState(() => defaultMotion(kind))
   // The full video, or the ~30-second ad cut of it.
@@ -268,20 +270,20 @@ export default function VideoMaker() {
   const build = (m, off) => applyPhotoMatch(parts.starter, m, pick.images || [], { extra: kept(m, off), keepUnseen: kind !== 'vehicle' })
   // "Explain it": the listing's own words straight away, then the AI's
   // lesson (what it is, who it's for, how to use it, what to check).
-  const explainKey = pick ? `zm-explain-v2-${kind}-${pick.id}${showSeller ? '-n' : ''}` : ''
+  const explainKey = pick ? `zm-${pitching ? 'pitch' : 'explain'}-v2-${kind}-${pick.id}${showSeller ? '-n' : ''}` : ''
   const applyExplain = (r) => {
-    const list = explainScenes(subject, kind, r)
+    const list = (pitching && pitchScenes(subject, kind, r)) || explainScenes(subject, kind, r)
     setScenes(list); setOpen(null)
     setAiCaption(r.caption ? `${r.caption}\n${link}\n#ZaMarket #Lusaka #Zambia` : '')
-    setAi({ state: 'done', explain: true, count: list.length })
+    setAi({ state: 'done', explain: true, pitch: pitching, count: list.length })
   }
   const runExplain = async (fresh) => {
     let cached = null
     if (!fresh) { try { cached = JSON.parse(localStorage.getItem(explainKey) || 'null') } catch { cached = null } }
     if (cached?.scenes?.length) return applyExplain(cached)
-    setAi({ state: 'writing', explain: true })
+    setAi({ state: 'writing', explain: true, pitch: pitching })
     try {
-      const r = await askAssist({ task: 'explain', product_id: pick.id })
+      const r = await askAssist({ task: 'explain', product_id: pick.id, mode: pitching ? 'pitch' : 'explain' })
       if (!r.scenes?.length) { setAi({ state: 'error', explain: true, note: 'the AI did not write anything safe to use; the video uses the listing’s own words' }); return }
       try { localStorage.setItem(explainKey, JSON.stringify(r)) } catch { /* full */ }
       if (touched.current) { setAi({ state: 'done', explain: true, count: r.scenes.length, late: true }); return }
@@ -290,7 +292,7 @@ export default function VideoMaker() {
   }
   const runAi = async (fresh) => {
     if (kind === 'lunch' && pick) return runLunch(fresh)
-    if (explaining && pick) return runExplain(fresh)
+    if ((explaining || pitching) && pick) return runExplain(fresh)
     if (!pick || !aiKind || !(pick.images || []).length) return
     const off = new Set(); setLeftOut(off)
     const cached = !fresh && cachedMatch(pick, featureList)
@@ -313,7 +315,7 @@ export default function VideoMaker() {
   }
   const isKept = (f) => (f.sure === 'yes' ? !leftOut.has(f.feature) : leftOut.has(`+${f.feature}`))
   const aiAgain = () => {
-    if (touched.current && !window.confirm(kind === 'lunch' || explaining ? 'Let the AI write the video again? Your changes are replaced.' : 'Let the AI arrange the photos again? Your changes for this car are replaced.')) return
+    if (touched.current && !window.confirm(kind === 'lunch' || explaining || pitching ? 'Let the AI write the video again? Your changes are replaced.' : 'Let the AI arrange the photos again? Your changes for this car are replaced.')) return
     touched.current = false; forget()
     runAi(true)
   }
@@ -331,7 +333,7 @@ export default function VideoMaker() {
     setOpen(null); setEditing(false)
     endCard(parts, link).then(setEnd)
     loadPhotos(parts.photos, cache.current).then(() => setLoaded((n) => n + 1))
-  }, [parts, explaining])
+  }, [parts, explaining, pitching])
   // Kept only once you have changed something: an untouched video is simply
   // rebuilt (and photo-checked) next time.
   useEffect(() => { if (draftKey && scenes.length && touched.current) { try { localStorage.setItem(draftKey, JSON.stringify(scenes)) } catch { /* full */ } } }, [scenes, draftKey])
@@ -653,8 +655,8 @@ export default function VideoMaker() {
             {(kind === 'product' || kind === 'vehicle') && (
               <div className="vx-pace">
                 <span>Kind of video</span>
-                <div className="vx-tabs">{[['ad', 'Advert'], ['explain', 'Explain it']].map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={style === v ? 'on' : ''} onClick={() => chooseStyle(v)}>{l}</button>)}</div>
-                <small className="vx-muted">{explaining ? (kind === 'vehicle' ? 'Teaches first: is this kind of car right for you, what it suits, what to check before buying any used car. Then where to see this one.' : 'Teaches first: what it is, who it’s for, how to use it, what to check. Then where to get it. People save and share these, and that brings followers.') : 'Shows the item and its best points, with the price. For selling.'}</small>
+                <div className="vx-tabs">{[['pitch', 'Sell it (AI)'], ['ad', 'Listing words'], ['explain', 'Explain it']].map(([v, l]) => <button key={v} type="button" disabled={!!busy} className={style === v ? 'on' : ''} onClick={() => chooseStyle(v)}>{l}</button>)}</div>
+                <small className="vx-muted">{pitching ? 'The AI writes a persuasive advert from the real facts: the hook, what each feature means for the buyer, the numbers that matter, then the real price and how to see it. Nothing invented: no fake discounts, deadlines or claims about its condition.' : explaining ? (kind === 'vehicle' ? 'Teaches first: is this kind of car right for you, what it suits, what to check before buying any used car. Then where to see this one.' : 'Teaches first: what it is, who it’s for, how to use it, what to check. Then where to get it. People save and share these, and that brings followers.') : 'Shows the item and its best points, with the price. For selling.'}</small>
               </div>
             )}
             {kind === 'lunch' && (
@@ -853,10 +855,10 @@ function AiCheck({ ai, again, toggle, isKept, car }) {
   if (ai.state === 'idle') return null
   return (
     <div className={`vx-ai is-${ai.state}`} role="status">
-      {ai.state === 'writing' && <><span className="vx-spin" /><span>{ai.explain ? 'AI is writing the lesson: what it is, who it’s for, how to use it, what to check…' : 'AI is looking at the dishes and writing the lunch video from the plan…'}</span></>}
+      {ai.state === 'writing' && <><span className="vx-spin" /><span>{ai.pitch ? 'AI is writing the advert: the hook, what each feature means for the buyer, the numbers that matter…' : ai.explain ? 'AI is writing the lesson: what it is, who it’s for, how to use it, what to check…' : 'AI is looking at the dishes and writing the lunch video from the plan…'}</span></>}
       {ai.state === 'done' && ai.explain && (
         <span>
-          <b>✨ AI wrote this explainer.</b> {ai.count} scenes, about a minute or more, that teach first and sell last: {car ? 'the generation, who it suits, engines, owning it in Zambia, known weak points to check, what to ask the seller' : 'how it works, the types, how to choose, how to use it, care, tips'}. Anything about this one comes from its listing. Prices, hype and promises about its condition are left out.
+          {ai.pitch ? <><b>✨ AI wrote this advert.</b> {ai.count} scenes that make the case from real facts, ending with the real price and how to see it. Change any scene's words if you want. </> : <><b>✨ AI wrote this explainer.</b> {ai.count} scenes, about a minute or more, that teach first and sell last: {car ? 'the generation, who it suits, engines, owning it in Zambia, known weak points to check, what to ask the seller' : 'how it works, the types, how to choose, how to use it, care, tips'}. Anything about this one comes from its listing. Prices, hype and promises about its condition are left out.</>}
           {ai.late ? ' You had already changed the scenes, so nothing was replaced; tap Write again to use it.' : ''}
         </span>
       )}
@@ -1095,18 +1097,18 @@ function SceneEditor({ parts, scenes, left = [], open, setOpen, update, move, re
 const PLAN = {
   1: { kind: 'lunch', label: 'Lunch video', why: 'Monday is when offices plan the week' },
   2: { kind: 'product', style: 'explain', label: 'Explain a product', why: 'Teaching posts get saved and shared, and bring followers' },
-  3: { kind: 'product', style: 'ad', short: true, label: 'Product advert, 30 seconds', why: 'Show one product and its price' },
-  4: { kind: 'vehicle', style: 'ad', label: 'A car for sale', why: 'One car from ZaMarket Motors' },
+  3: { kind: 'product', style: 'pitch', short: true, label: 'Product advert, 30 seconds', why: 'Show one product and its price' },
+  4: { kind: 'vehicle', style: 'pitch', label: 'A car for sale', why: 'One car from ZaMarket Motors' },
   5: { kind: 'vehicle', style: 'explain', label: 'Explain a car', why: 'Buyers save what helps them choose' },
-  6: { kind: 'product', style: 'ad', food: true, label: 'Food and cakes', why: 'Weekend treats sell on Saturday' },
+  6: { kind: 'product', style: 'pitch', food: true, label: 'Food and cakes', why: 'Weekend treats sell on Saturday' },
   0: { kind: 'market', label: 'Marketplace video', why: 'Invite shoppers, sellers or affiliates' },
 }
 // Every kind of video, any day. (Kind and style are what the maker uses.)
 const CHOICES = [
   { key: 'car-explain', kind: 'vehicle', style: 'explain', label: 'Explain a car', note: 'Teach: is it right for you, what to check' },
-  { key: 'car-ad', kind: 'vehicle', style: 'ad', label: 'Car advert', note: 'One car, its best points and price' },
+  { key: 'car-ad', kind: 'vehicle', style: 'pitch', label: 'Car advert', note: 'AI-written pitch: why it’s the one, then the price' },
   { key: 'prod-explain', kind: 'product', style: 'explain', label: 'Explain a product', note: 'What it is, who it’s for, how to use it' },
-  { key: 'prod-ad', kind: 'product', style: 'ad', label: 'Product advert', note: 'Show it and its price' },
+  { key: 'prod-ad', kind: 'product', style: 'pitch', label: 'Product advert', note: 'AI-written pitch: why they need it, then the price' },
   { key: 'lunch', kind: 'lunch', label: 'Lunch video', note: 'The weekly lunch for offices' },
   { key: 'market', kind: 'market', label: 'Marketplace video', note: 'Invite shoppers, sellers or affiliates' },
 ]

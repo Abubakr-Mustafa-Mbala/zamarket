@@ -1778,6 +1778,27 @@ export function explainScenes(item, kind, written = null) {
   return out.map((x) => ({ id: sceneId(), photo: x.photo || null, ...clean({ kicker: '', line: '', sub: '', ...x }) }))
 }
 
+// "Sell it": the AI's persuasive scenes, then the real price from the
+// listing and how to see it. The AI never writes the price.
+export function pitchScenes(item, kind, written = null) {
+  const photos = (item.images || []).filter(Boolean)
+  const pic = (i) => photos[i % Math.max(1, photos.length)] || null
+  const v = kind === 'vehicle' ? vehicleOf(item) : null
+  const name = kind === 'vehicle' ? vehicleTitle(v, item.name) : item.name
+  const price = Number(item.price) > 0 ? money(item.price, { whole: true }) : ''
+  const note = v ? priceNote(v) : ''
+  if (!written?.scenes?.length) return null
+  const out = []
+  if (written.question) out.push({ type: 'mbig', kicker: kind === 'vehicle' ? 'ZaMarket Motors' : 'On ZaMarket', lines: [shortLine(written.question, 60)], line: shortLine(written.question, 60), sub: '', say: written.question, photo: null })
+  written.scenes.forEach((x, i) => out.push({ kicker: x.kicker || '', line: shortLine(x.line, 70), sub: '', say: x.say || `${x.line}.`, photo: x.photo >= 0 ? photos[x.photo] || pic(i) : pic(i + 1) }))
+  out.push({
+    kicker: kind === 'vehicle' ? 'Asking price' : 'Get it on ZaMarket', line: name, sub: [price, note].filter(Boolean).join(' · '),
+    say: `${name}${price ? `, asking ${price}${note ? `, ${note.toLowerCase()}` : ''}` : ''}. ${kind === 'vehicle' ? 'Message us on WhatsApp to arrange a viewing.' : 'Order it on ZaMarket today.'}`,
+    photo: pic(0),
+  })
+  return out.map((x) => ({ id: sceneId(), photo: x.photo || null, ...clean({ kicker: '', line: '', sub: '', ...x }) }))
+}
+
 // Your words on screen as you say them (Talk freely): up to three words at a
 // time in a dark pill, the word being said in violet. Real video time, not
 // scene time, so they stay exactly on your voice.

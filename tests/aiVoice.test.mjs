@@ -139,3 +139,12 @@ test('vehicle units are written the way they are said', async () => {
   assert.equal(spoken('93,000 km'), 'ninety-three thousand kilometres')
   assert.equal(spoken('4x4'), 'four by four')
 })
+
+test('prices are always read in kwacha, even before a comma', async () => {
+  const { spoken } = await import('../netlify/functions/ai-assist.js')
+  assert.equal(spoken('Asking K799,000, negotiable.'), 'Asking seven hundred and ninety-nine thousand kwacha, negotiable.')
+  assert.equal(spoken('K1.2 million'), 'one million two hundred thousand kwacha')
+  assert.equal(spoken('Price: K799 000.'), 'Price: seven hundred and ninety-nine thousand kwacha.')
+  assert.equal(spoken('ZMW 385,000'), 'three hundred and eighty-five thousand kwacha')
+  assert.equal(spoken('4K TV'), '4K TV')
+})
