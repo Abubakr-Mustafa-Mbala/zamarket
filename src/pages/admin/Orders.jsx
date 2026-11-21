@@ -101,7 +101,16 @@ export function OrderDetail() {
   const comm = o.commissions.filter((c) => !['rejected', 'reversed'].includes(c.status)).reduce((s, c) => s + n(c.amount), 0)
   const fees = o.settlements.filter((s) => s.status !== 'cancelled').reduce((s, x) => s + n(x.marketplace_fee), 0)
   const vendorPay = o.settlements.filter((s) => s.status !== 'cancelled').reduce((s, x) => s + n(x.net_payable), 0)
-  const delivCost = n(o.delivery?.delivery_cost) + n(o.delivery?.fuel_cost)
+  const realTrip = n(o.delivery?.delivery_cost) + n(o.delivery?.fuel_cost)
+  // Same rule as the books: a real cost if recorded, nothing if the customer
+  // collected, otherwise the assumed trip cost from Setup.
+  const guessedTrip = !!o.delivery && !realTrip && !o.collection
+  const delivCost = realTrip || (guessedTrip ? n(settings.assumed_delivery_cost ?? 25) : 0)
+  const setNoTrip = async (on) => {
+    const { error } = await supabase.rpc('set_no_trip', { p_order: id, p_no_trip: on, p_reason: on ? 'Customer collected, no trip' : null })
+    if (error) return toast(/set_no_trip/.test(error.message) ? 'Run the latest SQL update (37) in Supabase first.' : error.message, true)
+    toast(on ? 'Marked: no trip, cost nothing' : 'Marked as delivered by trip'); reload()
+  }
 
   // Settlements are only written when an order completes, so until then the
   // page could say nothing about who was owed what — the first thing anybody
@@ -196,11 +205,14 @@ export function OrderDetail() {
               cost ? ['Our product cost', -cost, 'bad'] : null,
               vendorPay ? ['Owed to vendor', -vendorPay, 'bad'] : null,
               comm ? ['Reseller commission', -comm, 'bad'] : null,
-              delivCost ? ['Delivery & fuel cost', -delivCost, 'bad'] : null,
+              delivCost ? [guessedTrip ? 'Delivery (assumed, no cost recorded)' : 'Delivery & fuel cost', -delivCost, 'bad'] : null,
             ]}
             total={[o.status === 'completed' ? 'Profit' : 'Projected profit', profit, profit >= 0 ? 'ok' : 'bad']}
           />
           {fees > 0 && <p className="tiny muted mt">Includes {money(fees)} marketplace fee kept from vendor sales.</p>}
+          {!realTrip && o.status !== 'cancelled' && (o.collection
+            ? <p className="small mt">No trip: the customer collected it, so delivery cost nothing. <button className="btn sm ghost" onClick={() => setNoTrip(false)}>Undo</button></p>
+            : o.delivery && <div className="mt stack-sm"><p className="small muted">No delivery cost recorded, so {money(settings.assumed_delivery_cost ?? 25)} is assumed. Did it cost nothing?</p><button className="btn sm" onClick={() => setNoTrip(true)}>Customer collected, no trip</button></div>)}
         </div>
         <div className="card stack-sm">
           <h3>Payments</h3>

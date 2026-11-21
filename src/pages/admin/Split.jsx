@@ -54,8 +54,10 @@ export default function Split() {
       <div className="split-top">
         <div className="split-profit">
           <span className="small">Profit in these dates</span>
-          <strong className={loss ? 'bad' : ''}>{money(s.profit)}</strong>
-          <span className="tiny muted">After product costs, commissions, vendor payouts, delivery, adverts and expenses</span>
+          <strong>{money(Math.max(0, n(s.profit)))}</strong>
+          {n(s.profit) < 0
+            ? <span className="tiny bad">No profit yet: costs are {money(-n(s.profit))} more than what we earned. See how below.</span>
+            : <span className="tiny muted">After product costs, commissions, vendor payouts, delivery, adverts and expenses</span>}
         </div>
         <div className="split-flow">
           <div>
@@ -147,7 +149,7 @@ async function profitParts(from, to, settings) {
   const lo = `${from}T00:00:00+02:00`
   const hi = `${to}T23:59:59.999+02:00`
   const [orders, exp, ads] = await Promise.all([
-    q(supabase.from('orders').select('id,subtotal,delivery_fee,items:order_items(quantity,unit_cost_snapshot,vendor_id,line_total,product:products(owner_type)),settlements(net_payable,status),commissions(amount,status),deliveries(delivery_cost,fuel_cost)')
+    q(supabase.from('orders').select('id,subtotal,delivery_fee,collection,items:order_items(quantity,unit_cost_snapshot,vendor_id,line_total,product:products(owner_type)),settlements(net_payable,status),commissions(amount,status),deliveries(delivery_cost,fuel_cost)')
       .eq('status', 'completed').gte('completed_at', lo).lte('completed_at', hi)),
     q(supabase.from('expenses').select('amount').gte('spent_on', from).lte('spent_on', to)),
     q(supabase.from('marketing_spend').select('amount').gte('spent_on', from).lte('spent_on', to)).catch(() => []),
@@ -168,7 +170,7 @@ export function sumParts(orders, exp, ads, assumed) {
     t.affiliates += (o.commissions || []).filter((x) => !['rejected', 'reversed'].includes(x.status)).reduce((a, x) => a + n(x.amount), 0)
     for (const d of o.deliveries || []) {
       const real = n(d.delivery_cost) + n(d.fuel_cost)
-      if (real > 0) t.delivery += real; else { t.delivery += assumed; t.guessedDeliveries += 1 }
+      if (real > 0) t.delivery += real; else if (!o.collection) { t.delivery += assumed; t.guessedDeliveries += 1 }
     }
   }
   t.expenses = exp.reduce((a, x) => a + n(x.amount), 0)
@@ -195,11 +197,11 @@ function ProfitParts({ parts: p, profit }) {
         <Row label="Vendors' share of their products" value={p.vendors} minus note={p.vendorSales ? `Their money, not ours: ${money(p.vendorSales)} of vendor products sold, we keep ${money(p.vendorSales - p.vendors)}` : ''} />
         <Row label="What our own stock cost us" value={p.stock} minus />
         <Row label="Affiliate commissions" value={p.affiliates} minus />
-        <Row label="Delivery costs" value={p.delivery} minus note={p.guessedDeliveries ? `${p.guessedDeliveries} with no real cost recorded, so ${money(p.assumed)} each was assumed. Record the real cost on the delivery, or change the assumed cost in Setup.` : ''} />
+        <Row label="Delivery costs" value={p.delivery} minus note={p.guessedDeliveries ? `${p.guessedDeliveries} with no real cost recorded, so ${money(p.assumed)} each was assumed. If there was no trip, open the order and tap "Customer collected, no trip".` : ''} />
         <Row label="Expenses" value={p.expenses} minus note="From the Expenses tab" />
         <Row label="Adverts" value={p.ads} minus note="From Ad spend in Marketing" />
         {Math.abs(diff) >= 0.01 && <Row label="Other adjustments" value={diff} minus={diff < 0} />}
-        <Row label="Profit" value={profit} minus={profit < 0} strong />
+        {profit < 0 ? <Row label="Short by (no profit yet)" value={profit} minus strong /> : <Row label="Profit" value={profit} strong />}
       </div>
     </section>
   )

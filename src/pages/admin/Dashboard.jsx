@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase'
 import { useData } from '../../lib/useData'
 import { useAuth } from '../../lib/auth'
-import { money, num, pct } from '../../lib/format'
+import { money, num, pct, n } from '../../lib/format'
 import { Stat, Loading, Segmented, Table } from '../../components/ui'
 import Icon from '../../lib/icons'
 
@@ -34,8 +34,15 @@ export default function Dashboard() {
     </div>
   )
   const s = data.s
-  const grossProfit = s.revenue_completed - s.cogs - s.commissions + s.marketplace_fees
-  const netProfit = grossProfit + s.delivery_income - s.delivery_costs - s.ad_spend - s.expenses
+  // Profit uses the same rules as the books: vendors' money is theirs, and
+  // only completed orders count. (Old databases without SQL 37 fall back.)
+  const v2 = s.orders_profit != null
+  const rawProfit = v2
+    ? n(s.orders_profit) - n(s.ad_spend) - n(s.expenses)
+    : n(s.revenue_completed) - n(s.cogs) - n(s.commissions) + n(s.marketplace_fees) + n(s.delivery_income) - n(s.delivery_costs) - n(s.ad_spend) - n(s.expenses)
+  // Profit is never shown below zero; a shortfall is said in words.
+  const netProfit = Math.max(0, rawProfit)
+  const short = rawProfit < 0 ? -rawProfit : 0
   const marginPct = s.revenue_completed > 0 ? (netProfit / s.revenue_completed) * 100 : 0
   const aov = s.orders > 0 ? s.revenue / s.orders : 0
   // There used to be a second "action queue" list here, built from the same
@@ -61,7 +68,7 @@ export default function Dashboard() {
         <Stat hero
           label={`Net profit · ${RANGES[days].toLowerCase()}`}
           value={money(netProfit)}
-          sub={<>{pct(marginPct)} of completed revenue · <Link to="/admin/earnings">see the chart ›</Link></>} />
+          sub={<>{short > 0 ? <span className="bad">No profit yet: costs {money(short)} more than earned</span> : <>{pct(marginPct)} of completed sales</>} · <Link to="/admin/finance?tab=split">see why ›</Link></>} />
         <Stat label="Revenue (completed orders)" value={money(s.revenue_completed)} sub={`${num(s.completed)} of ${num(s.orders)} orders completed`} />
         <Stat label="Orders" value={num(s.orders)} sub={`Average order ${money(aov)}`} />
         <Stat label="Stock on hand" value={money(s.inventory_value)} sub={`${num(s.low_stock)} low · ${num(s.waiting_demand)} waiting requests`} />
@@ -106,12 +113,12 @@ export default function Dashboard() {
           <div className="card-title"><h3>Where the money went</h3><span className="small muted">{RANGES[days]}</span></div>
           <div className="finance-visual" aria-label="Income and costs breakdown">
             {[
-              ['Revenue (completed)', s.revenue_completed],
-              ['Delivery fees charged', s.delivery_income],
-              ['Vendor fees earned', s.marketplace_fees],
-              ['Product cost', -s.cogs],
-              ['Reseller commissions', -s.commissions],
-              ['Delivery & fuel', -s.delivery_costs],
+              ['Sales (completed)', s.revenue_completed],
+              ['Delivery fees charged', v2 ? s.done_delivery_income : s.delivery_income],
+              ...(v2 ? [['Vendors\' share (their money)', -s.done_vendor_payouts]] : [['Vendor fees earned', s.marketplace_fees]]),
+              ['Product cost', -(v2 ? s.done_cogs : s.cogs)],
+              ['Affiliate commissions', -(v2 ? s.done_commissions : s.commissions)],
+              ['Delivery & fuel', -(v2 ? s.done_delivery_costs : s.delivery_costs)],
               ['Advertising', -s.ad_spend],
               ['Other expenses', -s.expenses],
             ].map(([label, raw]) => {
@@ -123,7 +130,7 @@ export default function Dashboard() {
                 <div className="finance-visual-track"><span style={{ width: `${Math.min(100, Math.abs(amount) / scale * 100)}%` }} /></div>
               </div>
             })}
-            <div className="finance-visual-total"><span>Net profit</span><strong>{money(netProfit)}</strong></div>
+            <div className="finance-visual-total"><span>{short > 0 ? 'Short by (no profit yet)' : 'Net profit'}</span><strong className={short > 0 ? 'bad' : ''}>{money(short > 0 ? short : netProfit)}</strong></div>
           </div>
         </div>
         <div className="card">
