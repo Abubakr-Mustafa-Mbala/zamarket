@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import BuyingFaq from '../../components/vehicle/BuyingFaq'
 import { Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useSeo } from '../../lib/seo'
@@ -108,10 +107,6 @@ export default function Motors() {
                 )}
             </section>
           )}
-
-      {cars && cars.length > 0 && (
-        <BuyingFaq />
-      )}
 
       {more && (
         <div className="modal-backdrop" onClick={() => setMore(false)}>

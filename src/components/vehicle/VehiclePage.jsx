@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { track } from '../../lib/traffic'
-import BuyingFaq from './BuyingFaq'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { money } from '../../lib/format'
@@ -182,7 +181,6 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
           {!sold && <button type="button" className="vx-btn ghost" onClick={() => ask('Can I come and see it? When?')}>Arrange a viewing</button>}
         </section>
 
-        <BuyingFaq compact />
       </div>
 
       {similar.length > 0 && (
