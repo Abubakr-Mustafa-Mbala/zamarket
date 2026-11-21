@@ -357,9 +357,6 @@ export default async function handler(request, context) {
     }
   }
 
-  // TEMPORARY diagnostic: only when the link carries ?t=, never in normal shares.
-  if (current.searchParams.has('t')) title = `${title} [zm v4 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${lastLookup}]`
-  console.log(`zm-preview ${current.pathname} base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${lastLookup}`)
   const types = [].concat(schema?.['@type'] || [])
   const ogType = types.includes('Article') ? 'article' : types.includes('Product') ? 'product' : 'website'
   const head = `
@@ -374,7 +371,6 @@ export default async function handler(request, context) {
     <meta property="og:image" content="${esc(image)}" />
     <meta property="og:url" content="${esc(parts[0] === 'r' ? `${SITE}${current.pathname}` : canonical)}" />
     <meta property="og:locale" content="en_ZM" />
-    <meta name="generator" content="zm v3 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${esc(lastLookup)}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${esc(title)}" />
     <meta name="twitter:description" content="${esc(description)}" />
