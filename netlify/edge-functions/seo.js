@@ -28,7 +28,9 @@ const PRIVATE = new Set(['admin', 'sell', 'vendor', 'cart', 'checkout', 'account
 async function getOne(path, base, key) {
   try {
     const response = await fetch(`${base}/rest/v1/${path}`, {
-      headers: { apikey: key, authorization: `Bearer ${key}` },
+      // Newer Supabase keys (sb_publishable_…) are not JWTs and are refused
+      // when sent as a Bearer token; the apikey header alone works for both.
+      headers: /^eyJ/.test(key) ? { apikey: key, authorization: `Bearer ${key}` } : { apikey: key },
       signal: AbortSignal.timeout(5000),
     })
     if (!response.ok) return { ok: false, item: null }
