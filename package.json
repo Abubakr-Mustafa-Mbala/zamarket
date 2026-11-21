@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/edge-env.mjs && vite build",
     "preview": "vite preview",
     "db": "bash scripts/apply-schema.sh",
     "check": "eslint src && node --test tests/*.test.mjs"

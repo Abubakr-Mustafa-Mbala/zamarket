@@ -1,3 +1,4 @@
+import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '../edge-env.js'
 import { vehicleOf, vehicleTitle, standoutFeatures, priceNote, km } from '../../src/lib/vehicle.js'
 // Crawlable metadata and initial, truthful page content for JS and non-JS clients.
 // Never publish privileged data or replace search output with unrelated keywords.
@@ -145,8 +146,9 @@ export default async function handler(request, context) {
 
   const current = new URL(request.url)
   const parts = current.pathname.split('/').filter(Boolean)
-  const base = Deno.env.get('VITE_SUPABASE_URL')
-  const key = Deno.env.get('VITE_SUPABASE_ANON_KEY')
+  const env = (k) => { try { return Deno.env.get(k) } catch { return '' } }
+  const base = env('VITE_SUPABASE_URL') || env('SUPABASE_URL') || PUBLIC_SUPABASE_URL
+  const key = env('VITE_SUPABASE_ANON_KEY') || env('SUPABASE_ANON_KEY') || PUBLIC_SUPABASE_ANON_KEY
   let canonical = SITE + (current.pathname === '/' ? '/' : current.pathname.replace(/\/$/, ''))
   let title = `${SHOP} — Shop online in Lusaka, Zambia`
   let description = 'Browse products from local sellers in Lusaka, Zambia. Compare prices and order phones, fashion, home essentials, food and more on ZaMarket.'
@@ -198,10 +200,12 @@ export default async function handler(request, context) {
     // affiliate URLs the same actual product picture and description as the
     // public product, while leaving the URL intact so clicks retain credit.
     const slug = parts[2]
-    const { item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(slug)}&select=name,description,price,images,slug,vendor_name`, base, key)
+    const { item: p } = await getOne(`public_products?slug=eq.${encodeURIComponent(slug)}&select=name,description,price,images,slug,vendor_name,offering_type,page`, base, key)
     if (p) {
       title = `${p.name}${Number.isFinite(Number(p.price)) ? ` — ${money(p.price)}` : ''} | ${SHOP}`
       description = clip(p.description || `View ${p.name} on ZaMarket from ${p.vendor_name || 'a local seller'}.`)
+      // An affiliate's car link gets the same car preview as the car page.
+      if (p.offering_type === 'vehicle') { const car = vehicleSeo(p, `${SITE}/p/${p.slug}`); title = p.page?.seo?.title || car.title; description = clip(p.page?.seo?.description || car.description) }
       const first = (p.images || []).find(x => typeof x === 'string' && /^https:\/\//i.test(x))
       if (first) image = first
       canonical = `${SITE}/p/${encodeURIComponent(slug)}`
