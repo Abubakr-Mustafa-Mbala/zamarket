@@ -371,7 +371,7 @@ export default async function handler(request, context) {
     <meta property="og:image" content="${esc(image)}" />
     <meta property="og:url" content="${esc(parts[0] === 'r' ? `${SITE}${current.pathname}` : canonical)}" />
     <meta property="og:locale" content="en_ZM" />
-    <meta name="zm-preview" content="v3 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${esc(lastLookup)}" />
+    <meta name="generator" content="zm v3 base=${base ? 'yes' : 'no'} key=${key ? (/^eyJ/.test(key) ? 'jwt' : 'new') : 'no'} lookup=${esc(lastLookup)}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${esc(title)}" />
     <meta name="twitter:description" content="${esc(description)}" />
