@@ -392,4 +392,4 @@ export default async function handler(request, context) {
   return new Response(html, { status: response.status, headers })
 }
 
-export const config = { path: '/*', excludedPath: ['/assets/*', '/*.png', '/*.jpg', '/*.svg', '/*.ico', '/*.xml', '/*.txt'] }
+export const config = { path: '/*', excludedPath: ['/car/*', '/assets/*', '/*.png', '/*.jpg', '/*.svg', '/*.ico', '/*.xml', '/*.txt'] }

@@ -157,6 +157,7 @@ export default function VideoMaker() {
   const code = profile?.partner?.code
   const link = pick ? (kind === 'market' ? pick.link : kind === 'lunch'
     ? `https://zamarket.shop/lunch/${pick.slug}`
+    : kind === 'vehicle' && pick.slug ? `https://zamarket.shop/car/${encodeURIComponent(pick.slug)}${code ? `?r=${encodeURIComponent(code)}` : ''}`
     : code ? `https://zamarket.shop/r/${code}/${pick.slug || pick.id}` : `https://zamarket.shop/p/${pick.slug || pick.id}`) : ''
   // The seller's name shows only if you choose it, per seller: by default the
   // video shows only ZaMarket.

@@ -9,7 +9,10 @@ import { vehicleOf, vehicleTitle, whatsappText, whatsappLink } from '../../lib/v
 // credit them when the sale closes.
 export function vehicleLink(p, ref) {
   const origin = typeof window !== 'undefined' ? window.location.origin : 'https://zamarket.shop'
-  return ref ? productShareUrl(origin, p, 'reseller', ref) : productShareUrl(origin, p)
+  // /car/<slug> is a tiny page with the car's own WhatsApp/Facebook preview
+  // that opens the car page at once (an affiliate's code rides along as ?r=).
+  if (!p?.slug) return ref ? productShareUrl(origin, p, 'reseller', ref) : productShareUrl(origin, p)
+  return `${origin}/car/${encodeURIComponent(p.slug)}${ref ? `?r=${encodeURIComponent(ref)}` : ''}`
 }
 
 export function useVehicleContact(p) {

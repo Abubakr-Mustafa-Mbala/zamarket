@@ -382,7 +382,7 @@ export default function VehicleEditor() {
 // Staff and the seller share a vehicle from here with the same poster and
 // caption the showroom uses. The link is the public vehicle page.
 const storeOf = (r) => (r?.vendor?.business_name ? { business_name: r.vendor.business_name, logo_url: r.vendor.logo_url, location: r.vendor.location, category: r.vendor.category } : null)
-const pageLink = (r) => `${typeof window !== 'undefined' ? window.location.origin : 'https://zamarket.shop'}/p/${r.slug || r.id}`
+const pageLink = (r) => `${typeof window !== 'undefined' ? window.location.origin : 'https://zamarket.shop'}${r.slug ? `/car/${encodeURIComponent(r.slug)}` : `/p/${r.id}`}`
 function ShareVehicle({ r, label = 'Share', className = 'vx-btn ghost' }) {
   const v = vehicleOf(r)
   return <ShareProduct product={{ ...r, offering_type: 'vehicle', name: vehicleTitle(v, r.name) }} store={storeOf(r)} link={pageLink(r)} className={className} label={label}>{VI.share}</ShareProduct>
