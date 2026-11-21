@@ -57,6 +57,18 @@ const markAsked = () => { try { localStorage.setItem(ASKED, '1') } catch { /* ig
 // One bell for everything waiting: orders, money, applications, requests.
 // No switches on it: alerts are offered once ("Turn on alerts"), and the
 // choices live behind the gear in the panel.
+// The number on the phone's ZaMarket icon comes from the alerts sitting in
+// the phone's notification tray. Once you've looked, take them away too.
+export async function clearPhoneAlerts() {
+  try { if (navigator.clearAppBadge) await navigator.clearAppBadge() } catch { /* not supported */ }
+  try {
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.getRegistration()
+    const list = reg ? await reg.getNotifications() : []
+    list.forEach((n) => n.close())
+  } catch { /* not supported */ }
+}
+
 export default function ActionBell() {
   const { user } = useAuth() || {}
   const [groups, setGroups] = useState([])
@@ -154,7 +166,8 @@ export default function ActionBell() {
   useEffect(() => {
     load()
     const t = setInterval(load, 60000)
-    const wake = () => document.visibilityState === 'visible' && load()
+    clearPhoneAlerts()
+    const wake = () => { if (document.visibilityState === 'visible') { load(); clearPhoneAlerts() } }
     document.addEventListener('visibilitychange', wake)
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', wake) }
   }, [])
@@ -173,6 +186,7 @@ export default function ActionBell() {
     const now = Object.fromEntries(groups.map((g) => [g.key, Number(g.count || 0)]))
     setSeen(now)
     save(now)
+    clearPhoneAlerts()
   }
   const clearAll = () => {
     const now = Object.fromEntries(groups.map((g) => [g.key, Number(g.count || 0)]))

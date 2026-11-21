@@ -102,7 +102,7 @@ export function OfferingView({ p, packages = [], reviews = [], onPrimary, onSeco
         <span className="seller-mark" aria-hidden>{(p.vendor_name || 'ZaMarket').slice(0, 1)}</span>
         <div className="of-prov-info">
           <strong>{p.vendor_name || 'ZaMarket'}</strong>
-          <span className="small muted">{p.vendor_name ? 'Seller on ZaMarket' : 'Sold by ZaMarket'}{p.rating ? <> · <Stars n={p.rating} /> {p.rating} ({p.review_count} review{p.review_count === 1 ? '' : 's'})</> : ''}</span>
+          <span className="small muted">{p.vendor_name ? 'Seller on ZaMarket' : p.offering_type === 'vehicle' ? 'Listed by ZaMarket Motors for the owner' : 'Sold by ZaMarket'}{p.rating ? <> · <Stars n={p.rating} /> {p.rating} ({p.review_count} review{p.review_count === 1 ? '' : 's'})</> : ''}</span>
         </div>
         <div className="of-prov-links">
           {p.vendor_slug && !preview && <Link to={`/${p.vendor_slug}`} className="btn sm">Visit store</Link>}

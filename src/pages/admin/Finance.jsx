@@ -46,13 +46,15 @@ function Owed() {
   }, [])
   if (loading || !data) return <Loading />
   const total = (rows) => rows.reduce((t, r) => t + r.ready, 0)
+  const all = (rows) => rows.reduce((t, r) => t + r.ready + r.waiting, 0)
+  const sub = (rows, later) => (all(rows) - total(rows) > 0 ? `${money(total(rows))} to pay now · ${money(all(rows) - total(rows))} ${later}` : 'to pay now')
   const Block = ({ title: t, rows, hint }) => (
     <div className="card">
-      <div className="card-title"><h3>{t}</h3><span className="strong money copper">{money(total(rows))}</span></div>
+      <div className="card-title"><h3>{t}</h3><span className="strong money copper">{money(all(rows))}</span></div>
       {rows.length === 0 ? <p className="small muted">Nothing owed.</p> : rows.map((r) => (
         <div key={r.id} className="between small" style={{ padding: '4px 0' }}>
           <span>{r.name}{r.note && <span className="tiny muted"> · {r.note}</span>}</span>
-          <span className="row"><span className="money strong">{money(r.ready)}</span>{r.waiting > 0 && <span className="tiny muted">+{money(r.waiting)} {hint}</span>}</span>
+          <span className="row"><span className="money strong">{money(r.ready + r.waiting)}</span>{r.waiting > 0 && <span className="tiny muted">{money(r.waiting)} {hint}</span>}</span>
         </div>
       ))}
     </div>
@@ -60,12 +62,12 @@ function Owed() {
   return (
     <div className="stack">
       <div className="grid-3">
-        <Stat label="Owed to resellers" value={money(total(data.resellers))} sub="ready to pay" />
-        <Stat label="Owed to vendors" value={money(total(data.vendors))} sub="ready to pay" />
+        <Stat label="Owed to affiliates" value={money(all(data.resellers))} sub={sub(data.resellers, 'after the grace period')} />
+        <Stat label="Owed to vendors" value={money(all(data.vendors))} sub={sub(data.vendors, 'after the return window')} />
         <Stat label="Owed to suppliers" value={money(total(data.suppliers))} sub="unpaid purchases" />
       </div>
-      <Block title="Resellers" rows={data.resellers} hint="in grace period" />
-      <Block title="Vendors" rows={data.vendors} hint="not yet eligible" />
+      <Block title="Affiliates" rows={data.resellers} hint="still in the grace period" />
+      <Block title="Vendors" rows={data.vendors} hint="still in the return window" />
       <Block title="Suppliers" rows={data.suppliers} />
       <p className="tiny muted">Pay people, then mark items as paid in the Commissions and Vendor payouts tabs so the numbers stay honest.</p>
     </div>

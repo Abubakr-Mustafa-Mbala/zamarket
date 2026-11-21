@@ -26,7 +26,11 @@ export default function Products() {
   const [edit, setEdit] = useState(null)
   const [tab, setTab] = useState('founder')
   const { data, loading, error, reload } = useData(() => q(supabase.from('products').select('*,vendor:vendors(business_name)').order('created_at', { ascending: false })).then((rows) => (rows || []).filter((p) => !p.lunch_only)), [])
-  const rows = (data || []).filter((p) => (tab === 'founder' ? p.owner_type === 'founder' : tab === 'vendor' ? p.owner_type === 'vendor' && p.status !== 'submitted' : p.status === 'submitted'))
+  // Cars (and anything else) ZaMarket lists for an owner are not ours: they
+  // never sit under "Our products" and never count as our stock.
+  const forOthers = (p) => p.owner_type === 'founder' && (p.offering_type === 'vehicle' || !!p.third_party_owner)
+  const listed = (data || []).filter(forOthers)
+  const rows = (data || []).filter((p) => (tab === 'founder' ? p.owner_type === 'founder' && !forOthers(p) : tab === 'listed' ? forOthers(p) : tab === 'vendor' ? p.owner_type === 'vendor' && p.status !== 'submitted' : p.status === 'submitted'))
   const submitted = (data || []).filter((p) => p.status === 'submitted').length
   const needsContent = (data || []).filter(p => !p.name?.trim() || !p.description?.trim() || !(Array.isArray(p.images) && p.images.length) || !(Number(p.price) > 0))
   const [qualityOnly, setQualityOnly] = useState(false)
@@ -42,7 +46,8 @@ export default function Products() {
           <button className="btn primary" onClick={() => setEdit({ owner_type: 'founder', status: 'draft', benefits: [], images: [], faqs: [] })}>Add product</button>
         </div>
       </div>
-      <Tabs tabs={[['founder', 'Our products'], ['vendor', 'Vendor products'], ['review', `To review${submitted ? ` (${submitted})` : ''}`]]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['founder', 'Our products'], ['listed', `Listed for owners${listed.length ? ` (${listed.length})` : ''}`], ['vendor', 'Vendor products'], ['review', `To review${submitted ? ` (${submitted})` : ''}`]]} value={tab} onChange={setTab} />
+      {tab === 'listed' && <p className="small muted">Vehicles and items we list for people who have not joined as sellers. They belong to the owner: ZaMarket only earns the agreed fee when one sells, so they are never counted as our stock or our money. Tap one to set whose it is.</p>}
       <div className="card between" style={{ gap: 12, flexWrap: 'wrap' }}>
         <div><strong>Listing quality check</strong><p className="muted small">{needsContent.length} products may need a title, description, image, or valid price.</p></div>
         <label className="small"><input type="checkbox" checked={qualityOnly} onChange={e => setQualityOnly(e.target.checked)} /> Show incomplete listings only</label>
@@ -61,6 +66,10 @@ export default function Products() {
               { key: 'cost', label: 'Cost', num: true, render: (p) => money(effectiveCost(p)) },
               { key: 'margin', label: 'Margin', num: true, render: (p) => { const m = margin(p.price, effectiveCost(p)); return <span className={m < n(settings.target_margin_pct) ? 'warn' : 'ok'}>{pct(m)}</span> } },
               { key: 'stock', label: 'Stock', num: true, render: (p) => <span className={p.stock_available <= 3 ? 'warn' : ''}>{p.stock_available}</span> },
+            ] : []),
+            ...(tab === 'listed' ? [
+              { key: 'owner', label: 'Owner', render: (p) => p.third_party_owner ? p.third_party_owner : <span className="warn">Not set</span> },
+              { key: 'fee', label: 'Our fee', num: true, render: (p) => (p.deal_fee_pct != null ? `${n(p.deal_fee_pct)}%` : '—') },
             ] : []),
           ]}
         />

@@ -176,7 +176,8 @@ export function VehicleView({ p, preview = false, onAsk, onRegister, contact, si
           <dl className="vx-specs one">
             <div><dt>{VI.pin}Where</dt><dd>{v.location || 'Ask us'}</dd></div>
             {v.viewing && <div><dt>{VI.year}When</dt><dd>{v.viewing}</dd></div>}
-            {p.vendor_name && <div><dt>{VI.condition}Listed by</dt><dd>{p.vendor_slug && !preview ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : p.vendor_name}</dd></div>}
+            {p.vendor_name ? <div><dt>{VI.condition}Listed by</dt><dd>{p.vendor_slug && !preview ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : p.vendor_name}</dd></div>
+              : <div><dt>{VI.condition}Listed by</dt><dd>ZaMarket Motors, for the owner</dd></div>}
           </dl>
           {!sold && <button type="button" className="vx-btn ghost" onClick={() => ask('Can I come and see it? When?')}>Arrange a viewing</button>}
         </section>

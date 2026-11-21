@@ -1214,7 +1214,7 @@ export function ProductPage() {
       {p.vendor_slug && <TrustPanel slug={p.vendor_slug} compact />}
       <div className="bb-meta">
         <div><span>Payment</span><span>After we confirm by phone</span></div>
-        <div><span>Sold by</span><span>{p.vendor_name ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : 'ZaMarket'}</span></div>
+        <div><span>{p.offering_type === 'vehicle' && !p.vendor_name ? 'Listed by' : 'Sold by'}</span><span>{p.vendor_name ? <Link to={`/${p.vendor_slug}`}>{p.vendor_name}</Link> : p.offering_type === 'vehicle' ? 'ZaMarket Motors, for the owner' : 'ZaMarket'}</span></div>
       </div>
     </div>
   )

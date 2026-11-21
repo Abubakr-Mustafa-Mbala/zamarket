@@ -793,3 +793,4 @@ button.vx-sound-add { background: transparent; font: inherit; font-weight: 800; 
 .vx-today b { font-size: 1.05rem; }
 .vx-today span { color: #C9BCFF; font-size: .85rem; }
 .vx-today-go { display: grid; gap: 6px; flex: none; }
+.vx-owner-missing { display: block; margin-top: 4px; color: #F5B041; font-size: .8rem; font-weight: 700; }

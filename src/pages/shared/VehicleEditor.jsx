@@ -429,6 +429,7 @@ export function VehicleList() {
                       <span className="vx-admin-main">
                         <strong>{vehicleTitle(v, r.name)}</strong>
                         <span>{money(r.price, { whole: true })} · {(r.images || []).length} photos · {v.location || 'No town yet'}{r.vendor?.business_name ? ` · ${r.vendor.business_name}` : r.third_party_owner ? ` · for ${r.third_party_owner}` : ''}</span>
+                        {!vendorId && !r.vendor_id && !r.third_party_owner && <span className="vx-owner-missing">Whose car is this? Tap to add the owner</span>}
                       </span>
                       <Badge status={r.status} />
                     </Link>
