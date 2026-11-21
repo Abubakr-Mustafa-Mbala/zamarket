@@ -794,3 +794,36 @@ button.vx-sound-add { background: transparent; font: inherit; font-weight: 800; 
 .vx-today span { color: #C9BCFF; font-size: .85rem; }
 .vx-today-go { display: grid; gap: 6px; flex: none; }
 .vx-owner-missing { display: block; margin-top: 4px; color: #F5B041; font-size: .8rem; font-weight: 700; }
+
+/* Talk freely */
+.vx-talk-btn { border-color: var(--vx-accent) !important; color: var(--vx-text) !important; background: rgba(169, 139, 255, .14) !important; }
+.vx-talk-notes { display: grid; gap: 6px; margin: 10px 0; }
+.vx-talk-notes small { color: #A892FF; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; font-size: .72rem; }
+.vx-talk-notes textarea { width: 100%; box-sizing: border-box; background: var(--vx-panel-2); color: var(--vx-text); border: 1px solid var(--vx-line); border-radius: 14px; padding: 12px 14px; font: inherit; font-size: 1.05rem; line-height: 1.5; resize: vertical; }
+.vx-talk-plan { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 8px; max-height: 60vh; overflow-y: auto; }
+.vx-talk-plan > li > button { width: 100%; display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; text-align: left; padding: 8px; border-radius: 14px; background: var(--vx-panel-2); border: 1px solid var(--vx-line); color: var(--vx-text); font: inherit; cursor: pointer; }
+.vx-talk-plan > li > button.on { border-color: var(--vx-accent); }
+.vx-talk-thumb { width: 64px; height: 88px; border-radius: 10px; overflow: hidden; background: #241E45; display: grid; place-items: center; color: #A892FF; }
+.vx-talk-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.vx-talk-said { display: grid; gap: 4px; font-size: .92rem; line-height: 1.4; min-width: 0; }
+.vx-talk-said small { color: var(--vx-muted); font-size: .76rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vx-talk-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(74px, 1fr)); gap: 6px; padding: 8px 2px 2px; }
+.vx-talk-pick button { display: grid; gap: 3px; padding: 4px; border-radius: 10px; background: var(--vx-panel); border: 2px solid transparent; color: var(--vx-text); font: inherit; cursor: pointer; }
+.vx-talk-pick button.on { border-color: var(--vx-accent); }
+.vx-talk-pick img, .vx-talk-pick b { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 7px; display: grid; place-items: center; background: #241E45; color: #A892FF; }
+.vx-talk-pick small { font-size: .66rem; color: var(--vx-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* What do you want to make? — any kind of video, any day */
+.vx-choose { display: grid; gap: 10px; margin: 6px 0 14px; }
+.vx-choose h2 { font-size: 1.05rem; margin: 0; }
+.vx-choose-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.vx-choose-grid button { position: relative; display: grid; gap: 4px; text-align: left; padding: 12px; border-radius: 14px; background: var(--vx-panel-2); border: 1px solid var(--vx-line); color: var(--vx-text); font: inherit; cursor: pointer; min-height: 74px; align-content: start; }
+.vx-choose-grid button b { font-size: .95rem; }
+.vx-choose-grid button small { color: var(--vx-muted); font-size: .76rem; line-height: 1.35; }
+.vx-choose-grid button.on { border-color: var(--vx-accent); background: rgba(169, 139, 255, .16); }
+.vx-choose-grid button em { font-style: normal; font-size: .66rem; font-weight: 800; color: #FCC765; text-transform: uppercase; letter-spacing: .04em; }
+.vx-choose .vx-today-go { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.vx-choose .vx-today-go small { color: var(--vx-muted); flex: 1 1 220px; }
+.vx-video-pick button.sug { outline: 2px solid rgba(252, 199, 101, .6); }
+.vx-video-sug { position: absolute; top: 6px; left: 6px; z-index: 1; font-style: normal; font-size: .62rem; font-weight: 800; padding: 3px 7px; border-radius: 999px; background: #FCC765; color: #1a1300; }
+@media (max-width: 560px) { .vx-choose-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

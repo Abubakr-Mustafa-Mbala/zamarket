@@ -1,4 +1,4 @@
-import { drawFrame, videoLength, heldTime, setPace, setMotion, loadPhotos, endCard, sceneImages, W, H } from './listingVideo'
+import { drawFrame, drawCaptions, videoLength, heldTime, setPace, setMotion, loadPhotos, endCard, sceneImages, W, H } from './listingVideo'
 import { tools } from './videoFinish'
 import { fastEncoder, fastFailed } from './fastEncoder'
 import { soundBed } from './videoSounds'
@@ -94,6 +94,7 @@ export async function renderJob(spec, onProgress, stopped = () => false) {
     apply()
     place()
     drawFrame(ctx, timeAt(i / FPS), slides, imgs, end)
+    if (spec.captions?.length) drawCaptions(ctx, i / FPS, spec.captions, spec.captionsUntil ?? Infinity)
     await video.add(i / FPS, 1 / FPS)
     if (i % 6 === 0) { onProgress?.(i / frames); await breathe() }
   }

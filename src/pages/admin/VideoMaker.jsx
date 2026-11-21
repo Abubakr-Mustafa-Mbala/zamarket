@@ -8,6 +8,7 @@ import { openMic } from '../../lib/studioVoice'
 import { playOpening, hasOpening } from '../../lib/videoFx'
 import { AI_VOICES, AI_TONES, aiVoiceOver } from '../../lib/aiVoice'
 import { placeVoice } from '../../lib/voiceAlign'
+import { hearTalk, editTalk, planSlides, shapeTalk, captionBites } from '../../lib/talkEdit'
 import { videoParts, sceneFrom, voiceFor, loadPhotos, endCard, drawFrame, recordVideo, videoLength, heldTime, voiceController, setPace, pace, PACES, MOTIONS, defaultMotion, setMotion, MARKET_TOPICS, applyPhotoMatch, adCut, sceneImages, explainScenes, sceneSeconds, W, H } from '../../lib/listingVideo'
 import { vehicleOf, vehicleTitle } from '../../lib/vehicle'
 import { loadDealDishes } from '../../lib/lunchData'
@@ -153,6 +154,7 @@ export default function VideoMaker() {
     planned.current = { ...today, skip }
     if (kind === today.kind && items) { setPick(null); setItems([...items]) } else setKind(today.kind)
   }
+  const suggestedId = useMemo(() => (items?.length > 1 ? nextFor(items, { kind })?.id : null), [items, kind])
   const begin = (s) => { markUsed(pick?.id); return startVideo(s) }
   const code = profile?.partner?.code
   const link = pick ? (kind === 'market' ? pick.link : kind === 'lunch'
@@ -481,6 +483,28 @@ export default function VideoMaker() {
   // Your own recording of the whole script, made in one go (here or in any
   // recorder app): each scene is placed where you start reading its line.
   const [reading, setReading] = useState(false)
+  const [talking, setTalking] = useState(false)
+  // Talk freely: the photos the AI editor may use, and the video built from
+  // your recording and its plan.
+  const talkPhotos = useMemo(() => {
+    if (!script) return []
+    const all = [...(pick?.images || []), ...script.slides.flatMap((x) => [x.photo, ...(x.photos || [])])].filter((u) => typeof u === 'string' && /^https:\/\//.test(u))
+    return [...new Set(all)].slice(0, 16)
+  }, [script, pick])
+  const makeTalk = async ({ file, words, moments, captions }) => {
+    if (!fast()) { toast('This phone records videos the slow way, which cannot use a separate recording. Use Chrome, or a newer phone.', true); return false }
+    setBusy('take'); setStage('Cutting the video to your voice…')
+    try {
+      const v = await shapeTalk(file, words[0].s, words[words.length - 1].e)
+      const plan = planSlides(moments, script.slides, talkPhotos, { captions, shift: v.shift })
+      if (!plan.slides.length) throw new Error('Nothing to show. Try again.')
+      const endAt = plan.endAt ?? Math.max(0.5, v.speechEnd + 0.1)
+      const base = spec()
+      await begin({ ...base, script: { ...base.script, slides: plan.slides }, audio: v.audio, marks: [...plan.marks, { i: plan.slides.length, at: endAt }], duration: v.length, captions: captions ? captionBites(words, v.shift) : null, captionsUntil: endAt })
+      toast('Your video is being made, cut to your voice. You can leave this page; it will be in My videos.')
+      return true
+    } catch (e) { toast(/decode|Unable to/i.test(e.message) ? 'That file could not be read. Use an audio or video recording.' : e.message, true); return false } finally { setBusy(''); setStage('') }
+  }
   const [slides, setSlides] = useState(false)
   const useTake = async (file) => {
     if (!fast()) return toast('This phone records videos the slow way, which cannot use a separate recording. Use Chrome, or a newer phone.', true)
@@ -518,24 +542,34 @@ export default function VideoMaker() {
         <div><h1>Video maker</h1><p>Turn a car, a product or a lunch plan into a short vertical video for TikTok, Reels, Facebook and WhatsApp status, made from its own photos and details. No face or camera needed.</p></div>
       </div>
       {!pick && <MyVideos videos={videos} toast={toast} copy={copy} kit={{ sounds, setSounds, sound, setSound, music, fetching }} />}
-      <section className="vx-today">
-        <div>
-          <small>Today’s post · {new Date().toLocaleDateString('en-ZM', { weekday: 'long' })}</small>
-          <b>{today.label}</b>
-          <span>{today.why}</span>
+      {/* Make whatever you want, whenever you want. Today's plan is only a
+          suggestion, marked on its card. */}
+      <section className="vx-choose">
+        <h2>What do you want to make?</h2>
+        <div className="vx-choose-grid">
+          {CHOICES.map((c) => {
+            const on = kind === c.kind && (!c.style || style === c.style)
+            const sug = today.kind === c.kind && (today.style || '') === (c.style || '') && !!today.short === !!c.short
+            return (
+              <button key={c.key} type="button" disabled={!!busy} className={`${on ? 'on' : ''}${sug ? ' sug' : ''}`} onClick={() => { if (c.style) chooseStyle(c.style); setPick(null); setKind(c.kind) }}>
+                <b>{c.label}</b><small>{c.note}</small>{sug && <em>Suggested today</em>}
+              </button>
+            )
+          })}
         </div>
         <div className="vx-today-go">
-          <button type="button" className="vx-btn primary" disabled={!!busy} onClick={() => makeToday(false)}>Make it</button>
+          <small>Not sure? Today’s suggestion: <b>{today.label}</b> · {today.why}.</small>
+          <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => makeToday(false)}>Pick it for me</button>
           {pick && kind === today.kind && <button type="button" className="vx-btn ghost" disabled={!!busy} onClick={() => makeToday(true)}>Another</button>}
         </div>
       </section>
-      <div className="vx-tabs">{KINDS.map(([k, l]) => <button key={k} type="button" className={kind === k ? 'on' : ''} onClick={() => setKind(k)}>{l}</button>)}</div>
 
       {!pick ? (
         items === null ? <Loading /> : !items.length ? <p className="vx-muted">Nothing live here yet.</p> : (
           <div className="vx-video-pick">
             {items.map((p) => (
-              <button key={p.id} type="button" onClick={() => setPick(p)}>
+              <button key={p.id} type="button" onClick={() => setPick(p)} className={p.id === suggestedId ? 'sug' : ''}>
+                {p.id === suggestedId && <em className="vx-video-sug">Not made in a while</em>}
                 {kind === 'market' && <span className="vx-video-topic">ZaMarket</span>}
                 {p.images?.[0] || p.cover_url ? <img src={p.images?.[0] || p.cover_url} alt="" loading="lazy" /> : <span />}
                 <strong>{title(p)}</strong>
@@ -578,12 +612,14 @@ export default function VideoMaker() {
             {aiKind && <AiCheck ai={ai} again={aiAgain} toggle={toggleSeen} isKept={isKept} car={kind === 'vehicle'} />}
             <div className="vx-video-buttons">
               <button type="button" className="vx-btn primary big" disabled={!assets || !!busy} onClick={() => make(false)}>{busy === 'silent' ? 'Recording…' : 'Make video'}</button>
-              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => setReading((x) => !x)}>{busy === 'take' ? 'Placing your voice…' : 'Read the script and record'}</button>
+              <button type="button" className="vx-btn outline vx-talk-btn" disabled={!assets || !!busy} onClick={() => { setTalking((x) => !x); setReading(false) }}>{busy === 'take' && talking ? 'Cutting to your voice…' : 'Talk freely: the video follows you'}</button>
+              <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => { setReading((x) => !x); setTalking(false) }}>{busy === 'take' && reading ? 'Placing your voice…' : 'Read the script and record'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => make(true)}>{busy === 'voice' ? 'Recording your voice…' : 'Record while the scenes play'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={makeAi}>{busy === 'ai' ? 'The AI is reading…' : 'Make it with an AI voice'}</button>
               <button type="button" className="vx-btn outline" disabled={!assets || !!busy} onClick={() => setSlides(true)}>Make photo slides</button>
             </div>
             {slides && assets && <PhotoSlides script={script} assets={assets} slug={pick?.slug || 'zamarket'} caption={script.caption} copy={copy} close={() => setSlides(false)} />}
+            {talking && <TalkFreely key={pick?.id} pick={pick} title={title(pick)} kind={kind} script={script} photos={talkPhotos} busy={!!busy} onMake={makeTalk} toast={toast} close={() => setTalking(false)} />}
             {reading && <ReadScript script={script} endSay={parts.endSay} kind={kind} busy={!!busy} onUse={useTake} hearAi={hearAi} hearing={hearing} toast={toast} close={() => setReading(false)} />}
             <section className="vx-card-block vx-aivoice">
               <h3>AI voice</h3>
@@ -1065,6 +1101,15 @@ const PLAN = {
   6: { kind: 'product', style: 'ad', food: true, label: 'Food and cakes', why: 'Weekend treats sell on Saturday' },
   0: { kind: 'market', label: 'Marketplace video', why: 'Invite shoppers, sellers or affiliates' },
 }
+// Every kind of video, any day. (Kind and style are what the maker uses.)
+const CHOICES = [
+  { key: 'car-explain', kind: 'vehicle', style: 'explain', label: 'Explain a car', note: 'Teach: is it right for you, what to check' },
+  { key: 'car-ad', kind: 'vehicle', style: 'ad', label: 'Car advert', note: 'One car, its best points and price' },
+  { key: 'prod-explain', kind: 'product', style: 'explain', label: 'Explain a product', note: 'What it is, who it’s for, how to use it' },
+  { key: 'prod-ad', kind: 'product', style: 'ad', label: 'Product advert', note: 'Show it and its price' },
+  { key: 'lunch', kind: 'lunch', label: 'Lunch video', note: 'The weekly lunch for offices' },
+  { key: 'market', kind: 'market', label: 'Marketplace video', note: 'Invite shoppers, sellers or affiliates' },
+]
 const USED = 'zm-content-used'
 const usedMap = () => { try { return JSON.parse(localStorage.getItem(USED) || '{}') } catch { return {} } }
 const markUsed = (id) => { if (!id) return; const m = usedMap(); m[id] = Date.now(); try { localStorage.setItem(USED, JSON.stringify(m)) } catch { /* full */ } }
@@ -1150,6 +1195,163 @@ function ReadScript({ script, endSay, kind, busy, onUse, hearAi, hearing, toast,
           <button type="button" className="vx-btn primary big" disabled={busy} onClick={() => onUse(take.blob)}>Use this recording</button>
           <button type="button" className="vx-btn ghost" disabled={busy} onClick={again}>Record again</button>
         </div>
+      )}
+    </section>
+  )
+}
+
+// Talk freely: record yourself explaining the item the way you would to a
+// friend (from your own notes, or none). No scenes to follow and no Next to
+// tap. Then the AI writes down what you said, with the time of every word,
+// and picks for each moment the scene or photo that shows what you are
+// talking about. You see the plan, can change any moment, and make it.
+const TALK_TIPS = {
+  vehicle: 'For example: what car it is, the year and mileage, the engine, inside (seats, screen, space), what it is good for, the price, and where to see it.',
+  product: 'For example: what it is, who it is for, how you use it, what makes it good, the price, and how to order.',
+  lunch: 'For example: what is on the menu, who it is for, the price for the week, how delivery works, and how to book.',
+  market: 'For example: what ZaMarket is, what people can find, how ordering and delivery work, and the website.',
+}
+function TalkFreely({ pick, title, kind, script, photos, busy, onMake, toast, close }) {
+  const noteKey = `zm-talk-notes-${pick?.id || 'x'}`
+  const [notes, setNotes] = useState(() => { try { return localStorage.getItem(noteKey) || '' } catch { return '' } })
+  const saveNotes = (v) => { setNotes(v); try { localStorage.setItem(noteKey, v) } catch { /* full */ } }
+  const [phase, setPhase] = useState('ready') // ready | count | rec | done | hearing | editing | plan
+  const [count, setCount] = useState(0)
+  const [take, setTake] = useState(null)
+  const [secs, setSecs] = useState(0)
+  const [heard, setHeard] = useState(null) // { words, moments }
+  const [plan, setPlan] = useState(null) // moments with .show
+  const [changing, setChanging] = useState(null)
+  const [captions, setCaptions] = useState(() => { try { return localStorage.getItem('zm-talk-captions') !== 'off' } catch { return true } })
+  const chooseCaptions = (v) => { setCaptions(v); try { localStorage.setItem('zm-talk-captions', v ? 'on' : 'off') } catch { /* ignore */ } }
+  const rec = useRef(null)
+  useEffect(() => () => { rec.current?.stop?.(); if (take?.url) URL.revokeObjectURL(take.url) }, [take])
+  useEffect(() => {
+    if (phase !== 'rec') return
+    const at = performance.now()
+    const id = setInterval(() => setSecs((performance.now() - at) / 1000), 250)
+    return () => clearInterval(id)
+  }, [phase])
+  const start = async () => {
+    let mic
+    try { mic = await openMic() } catch (e) { return toast(/Permission|NotAllowed/i.test(e.name || e.message) ? 'Allow the microphone to record your voice.' : e.message, true) }
+    setPhase('count')
+    for (const n of [3, 2, 1]) { setCount(n); await sleep(1000) }
+    setCount(0)
+    const type = pickAudio()
+    // A modest bitrate keeps a 3-minute talk small enough to send.
+    const r = new MediaRecorder(mic, type ? { mimeType: type, audioBitsPerSecond: 64000 } : undefined)
+    const chunks = []
+    r.ondataavailable = (e) => { if (e.data?.size) chunks.push(e.data) }
+    r.onstop = () => {
+      mic.getTracks().forEach((x) => x.stop())
+      const blob = new Blob(chunks, { type: (r.mimeType || type || 'audio/webm').split(';')[0] })
+      setTake({ blob, url: URL.createObjectURL(blob) }); setPhase('done')
+    }
+    rec.current = r; r.start(500); setSecs(0); setPhase('rec')
+  }
+  const stop = () => rec.current?.state === 'recording' && rec.current.stop()
+  const again = () => { if (take?.url) URL.revokeObjectURL(take.url); setTake(null); setHeard(null); setPlan(null); setPhase('ready') }
+  const upload = (f) => {
+    if (!f) return
+    if (f.size > 5_400_000) return toast('That file is too big to send. Record here instead (it is much smaller), or use a recording under about 3 minutes.', true)
+    if (take?.url) URL.revokeObjectURL(take.url)
+    setTake({ blob: f, url: URL.createObjectURL(f), name: f.name }); setHeard(null); setPlan(null); setPhase('done')
+  }
+  const listen = async () => {
+    try {
+      let h = heard
+      if (!h) {
+        setPhase('hearing')
+        h = await hearTalk(take.blob, { title, words: notes.split(/[\n,.]/).map((x) => x.trim()).filter((x) => x && x.length < 40).slice(0, 20) })
+        setHeard(h)
+      }
+      setPhase('editing')
+      const r = await editTalk(h.moments, { title, slides: script.slides, photos })
+      setPlan(r.moments); setPhase('plan')
+    } catch (e) { toast(e.message, true); setPhase('done') }
+  }
+  const visual = (show) => {
+    if (show === 'end') return { label: 'End card: the link and QR code', img: null }
+    if (show.startsWith('p')) return { label: `Photo ${Number(show.slice(1)) + 1}`, img: photos[Number(show.slice(1))] }
+    const sc = script.slides[Number(show.slice(1))]
+    return { label: sc ? (sc.type === 'specs' ? 'Specifications card' : sc.type === 'offer' ? 'Price card' : sc.line || sc.kicker || `Scene ${Number(show.slice(1)) + 1}`) : '?', img: sc?.photo || sc?.photos?.[0] || null }
+  }
+  const options = [...script.slides.map((_, i) => `s${i}`), ...photos.map((_, i) => `p${i}`), 'end']
+  const setShow = (n, show) => { setPlan((p) => p.map((m, i) => (i === n ? { ...m, show } : m))); setChanging(null) }
+  const at = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
+  const make = async () => { if (await onMake({ file: take.blob, words: heard.words, moments: plan, captions })) close() }
+  const recording = phase === 'rec' || phase === 'count'
+  return (
+    <section className="vx-card-block vx-read vx-talk">
+      <div className="between"><h3>Talk freely</h3><button type="button" className="vx-btn ghost" onClick={close} disabled={recording}>Close</button></div>
+      {(phase === 'ready' || recording) && (
+        <>
+          <p className="vx-muted tiny">Explain it your way, at your own pace: add anything that makes it interesting. Nothing moves while you talk. When you stop, the AI listens and cuts the video to your voice, showing what you talk about as you say it.</p>
+          <label className="vx-talk-notes">
+            <small>Your points (optional, only you see them)</small>
+            <textarea rows={recording ? 8 : 5} value={notes} onChange={(e) => saveNotes(e.target.value)} placeholder={TALK_TIPS[kind] || TALK_TIPS.product} readOnly={recording} />
+          </label>
+        </>
+      )}
+      {phase === 'count' && <div className="vx-read-count">{count}</div>}
+      {phase === 'ready' && (
+        <div className="vx-read-actions">
+          <button type="button" className="vx-btn primary big" disabled={busy} onClick={start}>● Record</button>
+          <label className="vx-btn ghost">Use a recording from my phone<input type="file" hidden accept="audio/*,video/*,.m4a,.mp3,.aac,.wav,.ogg,.opus" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = '' }} /></label>
+          <small className="vx-muted">Up to about 3 minutes. 30–90 seconds works best for TikTok and Reels.</small>
+        </div>
+      )}
+      {phase === 'rec' && (
+        <div className="vx-read-actions">
+          <span className="vx-rec-dot">● Recording {at(secs)}</span>
+          <button type="button" className="vx-btn primary big" onClick={stop}>■ Stop</button>
+        </div>
+      )}
+      {phase === 'done' && take && (
+        <div className="vx-read-actions">
+          <audio controls src={take.url} preload="auto" />
+          {take.name && <small className="vx-muted">{take.name}</small>}
+          <button type="button" className="vx-btn primary big" disabled={busy} onClick={listen}>Cut the video to my voice</button>
+          <button type="button" className="vx-btn ghost" disabled={busy} onClick={again}>Record again</button>
+        </div>
+      )}
+      {(phase === 'hearing' || phase === 'editing') && (
+        <div className="vx-ai is-checking"><span className="vx-spin" /><span>{phase === 'hearing' ? 'The AI is writing down what you said, word by word…' : 'Choosing what shows for each moment, looking at the photos…'}</span></div>
+      )}
+      {phase === 'plan' && plan && (
+        <>
+          <p className="vx-muted tiny">This is what shows while you talk. Tap a moment to change its picture.</p>
+          <ol className="vx-talk-plan">
+            {plan.map((m, i) => {
+              const v = visual(m.show)
+              return (
+                <li key={i}>
+                  <button type="button" className={changing === i ? 'on' : ''} onClick={() => setChanging(changing === i ? null : i)}>
+                    <span className="vx-talk-thumb">{v.img ? <img src={v.img} alt="" loading="lazy" /> : <b>{m.show === 'end' ? 'END' : 'Aa'}</b>}</span>
+                    <span className="vx-talk-said"><small>{at(m.start)} · {v.label}</small>“{m.text}”</span>
+                  </button>
+                  {changing === i && (
+                    <div className="vx-talk-pick">
+                      {options.map((o) => { const x = visual(o); return <button key={o} type="button" className={m.show === o ? 'on' : ''} onClick={() => setShow(i, o)} title={x.label}>{x.img ? <img src={x.img} alt="" loading="lazy" /> : <b>{o === 'end' ? 'END' : 'Aa'}</b>}<small>{x.label}</small></button> })}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+          <div className="vx-pace">
+            <span>Your words on screen</span>
+            <div className="vx-tabs">{[[true, 'Captions on'], [false, 'Off']].map(([v, l]) => <button key={l} type="button" className={captions === v ? 'on' : ''} onClick={() => chooseCaptions(v)}>{l}</button>)}</div>
+            <small className="vx-muted">{captions ? 'What you say appears as you say it, the word you are saying in violet. Most people watch with the sound off.' : 'No captions; the scenes keep their own words.'}</small>
+          </div>
+          <div className="vx-read-actions">
+            <audio controls src={take.url} preload="auto" />
+            <button type="button" className="vx-btn primary big" disabled={busy} onClick={make}>{busy ? 'Making…' : 'Make the video'}</button>
+            <button type="button" className="vx-btn ghost" disabled={busy} onClick={listen}>Let the AI choose again</button>
+            <button type="button" className="vx-btn ghost" disabled={busy} onClick={again}>Record again</button>
+          </div>
+        </>
       )}
     </section>
   )

@@ -143,7 +143,7 @@ export function safeLunchScenes(data, photoCount, facts) {
   return { scenes, caption: ok(caption) ? caption : '' }
 }
 
-async function callModel(apiKey, { name, schema, instructions, input, maxTokens, images = null, model = '' }) {
+export async function callModel(apiKey, { name, schema, instructions, input, maxTokens, images = null, model = '' }) {
   const answer = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },

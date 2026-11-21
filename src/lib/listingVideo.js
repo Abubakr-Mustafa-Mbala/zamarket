@@ -1777,3 +1777,36 @@ export function explainScenes(item, kind, written = null) {
   out.push({ kicker: kind === 'vehicle' ? 'On ZaMarket Motors' : 'Get it on ZaMarket', line: name, sub: price, say: `${kind === 'vehicle' ? 'This one is' : 'You can get it'} on ZaMarket${price ? `, for ${price}` : ''}.`, photo: pic(0) })
   return out.map((x) => ({ id: sceneId(), photo: x.photo || null, ...clean({ kicker: '', line: '', sub: '', ...x }) }))
 }
+
+// Your words on screen as you say them (Talk freely): up to three words at a
+// time in a dark pill, the word being said in violet. Real video time, not
+// scene time, so they stay exactly on your voice.
+export function drawCaptions(ctx, t, bites, until = Infinity) {
+  if (!bites?.length || t >= until) return
+  const b = bites.find((x) => t >= x.s && t < x.e + 0.05)
+  if (!b) return
+  const words = b.words.map((x) => x.w)
+  let size = 76
+  ctx.save()
+  const font = (n) => `900 ${n}px Inter, Arial, sans-serif`
+  ctx.font = font(size)
+  const gap = size * 0.28
+  const width = () => words.reduce((a, w) => a + ctx.measureText(w).width, 0) + gap * (words.length - 1)
+  while (width() > W - 200 && size > 44) { size -= 4; ctx.font = font(size) }
+  const tw = width()
+  const y = H * 0.77
+  const pop = Math.min(1, (t - b.s) / 0.12)
+  const sc = 0.9 + 0.1 * (1 - (1 - pop) * (1 - pop))
+  ctx.translate(W / 2, y); ctx.scale(sc, sc); ctx.translate(-W / 2, -y)
+  ctx.fillStyle = 'rgba(14,16,19,.78)'
+  roundRect(ctx, (W - tw) / 2 - 36, y - size * 0.95, tw + 72, size * 1.5, 28); ctx.fill()
+  let x = (W - tw) / 2
+  ctx.textBaseline = 'alphabetic'
+  b.words.forEach((w) => {
+    const now = t >= w.s && t < w.e + 0.08
+    ctx.fillStyle = now ? '#B79CFF' : '#FFFFFF'
+    ctx.fillText(w.w, x, y + size * 0.3)
+    x += ctx.measureText(w.w).width + gap
+  })
+  ctx.restore()
+}
