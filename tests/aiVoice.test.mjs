@@ -132,3 +132,10 @@ test('Meta Pixel: off until an ID is saved, events only, no personal details', a
   assert.match(sql, /'meta_pixel_id', '""'/)
   assert.match(sql, /key <> ''founder_emails''/)
 })
+
+test('vehicle units are written the way they are said', async () => {
+  const { spoken } = await import('../netlify/functions/ai-assist.js')
+  assert.equal(spoken('2.8L Turbo Diesel'), 'two point eight litre Turbo Diesel')
+  assert.equal(spoken('93,000 km'), 'ninety-three thousand kilometres')
+  assert.equal(spoken('4x4'), 'four by four')
+})

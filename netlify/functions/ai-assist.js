@@ -215,12 +215,23 @@ export function numberWords(n) {
   }
   return String(n)
 }
+// "2.8" → "two point eight"
+export function decimalWords(v) {
+  const [w, f] = String(v).split('.')
+  return `${numberWords(Number(w))}${f ? ` point ${[...f].map((d) => ONES[Number(d)]).join(' ')}` : ''}`
+}
 export function spoken(text) {
   return String(text || '')
     .replace(/\bK\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,])/g, (m, whole, cents) => {
       const k = Number(whole.replace(/,/g, '')); const n = cents ? Number(cents.padEnd(2, '0')) : 0
       return `${numberWords(k)} kwacha${n ? ` and ${numberWords(n)} ngwee` : ''}`
     })
+    // Vehicle units: "2.8L" → "two point eight litre", "93,000 km" →
+    // "ninety-three thousand kilometres", "4x4" → "four by four".
+    .replace(/\b(\d+(?:\.\d)?)\s?(?:L|litres?|liters?)\b(?!\w)/g, (m, v) => `${decimalWords(v)} litre`)
+    .replace(/\b(\d{1,3}(?:,\d{3})+|\d+)\s?km\b/gi, (m, v) => `${numberWords(Number(v.replace(/,/g, '')))} kilometres`)
+    .replace(/\b(\d+)\s?cc\b/gi, (m, v) => `${numberWords(Number(v))} C C`)
+    .replace(/\b([4-8])\s?[x×]\s?([24])\b/gi, (m, a, b) => `${numberWords(Number(a))} by ${numberWords(Number(b))}`)
     .replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (m, h, mm) => { const h12 = Number(h) % 12 || 12; return Number(mm) ? `${numberWords(h12)} ${Number(mm) < 10 ? `oh ${numberWords(Number(mm))}` : numberWords(Number(mm))}` : `${numberWords(h12)} o'clock` })
     .replace(/(\w)\s?[–—]\s?(\w)/g, '$1 to $2')
     .replace(/(\d+)\s?%/g, '$1 percent')
